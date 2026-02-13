@@ -77,32 +77,92 @@ shell_join() {
   printf '%s' "${joined% }"
 }
 
-ensure_history_file() {
-  if [[ -f "$HISTORY_FILE" ]]; then
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+repo_relpath() {
+  local path="$1"
+  if [[ "$path" == "$ROOT/"* ]]; then
+    printf '%s' "${path#"$ROOT"/}"
+  else
+    printf '%s' "$path"
+  fi
+}
+
+ensure_dir_writable() {
+  local dir="$1"
+  if [[ -d "$dir" ]]; then
+    if [[ ! -w "$dir" ]]; then
+      die "Directory is not writable: $(repo_relpath "$dir")"
+    fi
+    return 0
+  fi
+  local err=""
+  if ! err="$(mkdir -p "$dir" 2>&1)"; then
+    die "Failed to create directory: $(repo_relpath "$dir"): ${err:-unknown error}"
+  fi
+  if [[ ! -w "$dir" ]]; then
+    die "Directory is not writable after creation: $(repo_relpath "$dir")"
+  fi
+}
+
+ensure_file_writable_if_missing() {
+  local file="$1"
+  local dir
+  dir="$(dirname "$file")"
+  ensure_dir_writable "$dir"
+
+  if [[ -f "$file" ]]; then
+    if [[ ! -w "$file" ]]; then
+      die "File exists but is not writable: $(repo_relpath "$file")"
+    fi
     return 0
   fi
 
-  mkdir -p "$(dirname "$HISTORY_FILE")"
-  : >"$HISTORY_FILE"
+  local err=""
+  if ! err="$( ( : >"$file" ) 2>&1 )"; then
+    die "Failed to create file: $(repo_relpath "$file"): ${err:-unknown error}"
+  fi
+}
+
+ensure_executable_script() {
+  local script="$1"
+  if [[ ! -f "$script" ]]; then
+    die "Required script not found: $(repo_relpath "$script")"
+  fi
+  if [[ ! -x "$script" ]]; then
+    die "Script is not executable: $(repo_relpath "$script"). Fix: chmod +x ai/scripts/*.sh"
+  fi
+}
+
+ensure_history_file() {
+  ensure_file_writable_if_missing "$HISTORY_FILE"
 }
 
 ensure_ai_context_files() {
-  mkdir -p "$ROOT/ai"
+  ensure_dir_writable "$ROOT/ai"
+  ensure_dir_writable "$ROOT/ai/step_plans"
+  ensure_dir_writable "$ROOT/ai/step_review_results"
+  ensure_dir_writable "$ROOT/ai/tmp/orchestrator_logs"
+  ensure_dir_writable "$ROOT/ai/prompts/plan_prompts"
+  ensure_dir_writable "$ROOT/ai/prompts/impl_prompts"
+  ensure_dir_writable "$ROOT/ai/prompts/review_prompts"
 
-  if [[ ! -f "$DECISIONS_FILE" ]]; then
-    : >"$DECISIONS_FILE"
-  fi
-  if [[ ! -f "$BLOCKER_LOG_FILE" ]]; then
-    : >"$BLOCKER_LOG_FILE"
-  fi
-  if [[ ! -f "$OPEN_QUESTIONS_FILE" ]]; then
-    : >"$OPEN_QUESTIONS_FILE"
-  fi
-  if [[ ! -f "$USER_REVIEW_FILE" ]]; then
-    : >"$USER_REVIEW_FILE"
-  fi
+  ensure_file_writable_if_missing "$DECISIONS_FILE"
+  ensure_file_writable_if_missing "$BLOCKER_LOG_FILE"
+  ensure_file_writable_if_missing "$OPEN_QUESTIONS_FILE"
+  ensure_file_writable_if_missing "$USER_REVIEW_FILE"
 
   ensure_history_file
+}
+
+ensure_orchestrator_prereqs() {
+  ensure_executable_script "$ROOT/ai/scripts/ai_plan.sh"
+  ensure_executable_script "$ROOT/ai/scripts/ai_implementation.sh"
+  ensure_executable_script "$ROOT/ai/scripts/ai_review.sh"
+  ensure_executable_script "$ROOT/ai/scripts/post_review.sh"
 }
 
 extract_step_and_title_from_plan() {
@@ -185,9 +245,12 @@ run_with_output_log() {
 
   local log_dir log_path
   log_dir="$ROOT/ai/tmp/orchestrator_logs"
-  mkdir -p "$log_dir"
+  ensure_dir_writable "$log_dir"
   log_path="$log_dir/${PROJECT}-${phase}.latest.log"
-  : >"$log_path"
+  local err=""
+  if ! err="$( ( : >"$log_path" ) 2>&1 )"; then
+    die "Failed to write log file: $(repo_relpath "$log_path"): ${err:-unknown error}"
+  fi
 
   local status=0
   set +e
@@ -249,8 +312,7 @@ load_model_config() {
   local field
 
   if [[ ! -f "$MODELS" ]]; then
-    echo "Models file not found: $MODELS" >&2
-    exit 1
+    die "Models file not found: $(repo_relpath "$MODELS")"
   fi
 
   while IFS= read -r field; do
@@ -278,8 +340,7 @@ load_model_config() {
   )
 
   if [[ ${#fields[@]} -lt 2 || -z "${fields[0]}" || -z "${fields[1]}" ]]; then
-    echo "Invalid or missing $phase model entry in $MODELS (expected: $phase | <command> | <model> | <args... optional>)." >&2
-    exit 1
+    die "Invalid or missing '$phase' entry in $(repo_relpath "$MODELS") (expected: $phase | <command> | <model> | <args... optional>)"
   fi
 
   MODEL_CMD="${fields[0]}"
@@ -292,8 +353,7 @@ load_model_config() {
 
 list_phases() {
   if [[ ! -f "$MODELS" ]]; then
-    echo "Models file not found: $MODELS" >&2
-    exit 1
+    die "Models file not found: $(repo_relpath "$MODELS")"
   fi
   awk -F'|' '
     function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
@@ -719,11 +779,11 @@ if [[ ${#REQUESTED_PHASES[@]} -eq 0 ]]; then
 fi
 
 if [[ ${#REQUESTED_PHASES[@]} -eq 0 ]]; then
-  echo "No phases found in $MODELS." >&2
-  exit 1
+  die "No phases found in $(repo_relpath "$MODELS")"
 fi
 
 if [[ "$DRY_RUN" -eq 0 ]]; then
+  ensure_orchestrator_prereqs
   ensure_ai_context_files
 fi
 

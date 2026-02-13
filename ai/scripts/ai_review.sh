@@ -509,6 +509,7 @@ emit() {
 }
 
 if [[ -n "$OUT" ]]; then
+  mkdir -p "$(dirname "$OUT")"
   emit >"$OUT"
 else
   emit
