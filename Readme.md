@@ -4,7 +4,7 @@
 
 There’s nothing wrong with vibecoding. Building prototypes with AI — is a new superpower and it’s unlocked a huge wave of experimentation and helps people start something new that really matters. 
 But sometimes what you need - is not prototype. Some of us work in complex codebases — often in enterprise environments where predictability, maturity, and long-term maintainability matter more than raw velocity. This is sometimes true for startups as well.
-This framework is built to help when vibecoding is not the best option. It uses AI to support developer productivity, but never at the expense of code quality. 
+This framework is built to help when vibecoding is not the best option. It uses AI to support developer productivity, but never at the expense of code quality. It is also designed to reduce token consumption so one can work comfortably with an entry-level subscription, regardless of how complex one’s codebase is and how many tasks should be implemented.
 
 This approach can be expressed in a few sentences:
 * Governance over “fire-and-forget” prompting. 
@@ -46,16 +46,64 @@ A phase-script can produce a specific artifact (like an implementation plan for 
 
 ### Main process artifacts and responsibilities
 
+Each artifact below serves a specific role in the AI-dev process:
+
+- **requirements_ears.md**: Source of truth for behavioral requirements and acceptance criteria (EARS format).
+- **implementation_plan.md**: Ordered execution plan at the step level; tracks all tasks and subtasks with story point estimates. Work happens bullet-by-bullet. Updated dynamically as the Coordinator refactors the graph.
+- **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include scope, preconditions, architecture, risks, and test strategy.
+- **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
+- **open_questions.md**: Non-blocking questions tracked per step, reviewed at step planning start. Removed once answered.
+- **decisions.md**: Durable technical decisions (Architecture Decision Records) recorded during planning and implementation. Includes decision context, alternatives considered, and rationale. Used to avoid rehashing settled choices.
+- **user_review.md**: Rule-based review insights, generalizable feedback patterns, and references to accepted implementations. Evolves as design patterns stabilize.
+- **step_review_results/**: Post-step audit findings (`review_result-<N>.md`), organized by severity (Critical/High/Medium/Low). Each finding has an explicit disposition (Accepted/Rejected) and follow-up work assignment.
+- **history.md**: Optional step completion log tracking dates, effort, surprises, and key decisions per step.
+
 ### Phases inputs and outputs
 
-### AI-dev-process gates and artifacts
+The AI-dev process runs in three phases per step:
 
-### AI-dev process main rules 
-- we always move from top AI_DEVELOPMENT_PROCESS.md to bottom AGENTS.md, AI_DEVELOPMENT_PROCESS.md newer hold project specific details, AGENTS.md dont know nothing about ai-dev process
+**Phase 1: Planning**
+- Input: Current `implementation_plan.md`, `requirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
+- Output: `ai/step_plans/step-<N>.md` with full scope, architecture, test strategy, and execution command for the implementation phase.
+- Gate: All open questions must be answered before planning completion.
 
-### Underwater obstacles
+**Phase 2: Implementation**
+- Input: Step plan (`ai/step_plans/step-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
+- Output: Implemented changes on a local topic branch (`step-<N>-implementation`), updated tests, docs, and planning artifacts (`blocker_log.md`, `open_questions.md`, `decisions.md`).
+- Gate: All non-review bullets must be `[x]` before user review; all tests must pass.
 
-- What if, during the implementation of step 2, we discover functionality we never considered? In that case the Worker requests the Coordinator to add a task. If the Coordinator decides the task belongs to the same branch (stack), it informs the requesting Worker and the Worker creates a new step in the implementation plan. If the new task changes the graph and affects other tasks, the Coordinator recalculates the graph and asks all Workers to update their implementation plans.
+**Phase 3: Review & Audit**
+- Input: Implemented changes from Phase 2, user feedback, step plan.
+- Output: `ai/step_review_results/review_result-<N>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-review`). No push or merge to `main`/`master`.
+- Gate: Every finding must have an explicit disposition; all accepted work must be captured as follow-up steps or questions.
+
+### AI-dev process main rules
+
+- **Single source of truth for workflow rules**: Behavioral and process rules for AI execution live in `AI_DEVELOPMENT_PROCESS.md`. Scripts stay minimal and phase-scoped. All rules are defined once and referenced; they are never duplicated across phase scripts.
+- **Clean separation of concerns**:
+  - `AI_DEVELOPMENT_PROCESS.md` defines the generic workflow (phases, gates, artifacts, per-step loop). It is project-agnostic and never includes project-specific details.
+  - `AGENTS.md` defines project-specific constraints: build commands, test runners, API specs, validation rules, branch strategy, tool paths, idempotency expectations. It never discusses the AI-dev process itself.
+  - Both files are required; they are kept independent so that workflow improvements do not leak into project configuration, and vice versa.
+- **Phase isolation**: Each phase (planning, implementation, review) is executed in a potentially separate AI-agent session with a distinct prompt. Context is never shared between phases (e.g., planning artifacts are frozen when implementation starts). This ensures each phase uses the most suitable model and reasoning effort.
+- **Determinism over speed**: Every decision, blocker, and new finding is recorded in durable artifacts (`decisions.md`, `blocker_log.md`, `open_questions.md`, `step_review_results/`). This enables reproducibility and allows the project to continue without AI assistance at any point.
+- **Human in the loop**: Complex technical decisions and architectural choices are not made by the Worker alone. Workers must explicitly ask the user for decisions before proceeding; user feedback during review is incorporated as generalizable rules in `user_review.md` to improve future iterations.
+
+### Whats done + planes
+
+V-0.0.1
+1. whats added:
+- main architecture and concept findings
+- based functionality added in form of bash scripts
+- orchestrator added so all steps run semi-automatically form 1 command
+- each phase can be run manually separately
+- orchestrator consumes implementation_plan.md and defile nex step to work automatically
+2. known problems:
+- only codex cli supported
+- you need to manualy ctrl-c from codex session in the end of each phase (planing/implementation/review)
+3. main planes
+- change bash scripts to lightweight cli (wrapper above coding agent cli's), see yasdef-wrapper
+- investigate "skills" usage
+- test how good this framework for frontend/mobile development, not only enterprise backend
 
 
 
