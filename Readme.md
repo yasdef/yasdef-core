@@ -111,8 +111,10 @@ V-0.0.1
 2. known problems:
 - only codex cli supported
 - you need to manualy ctrl-c from codex session in the end of each phase (planing/implementation/review)
+- review step creates relatively small improvement/tech-debt steps (5-8 SP) which is not efficient from token management perspective, should we distinct tech-debt from blockers - place blockers to certain steps and manage tech debt some other way?
 3. main planes
 - security proposals (see below)
+- disticnct tech debt from blockers and create alternative process for tech debt tasks
 - change bash scripts to lightweight cli (wrapper above coding agent cli's), see yasdef-wrapper
 - investigate "skills" usage
 - test how good this framework for frontend/mobile development, not only enterprise backend
