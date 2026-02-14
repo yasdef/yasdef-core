@@ -69,6 +69,8 @@ Before writing code for the step:
 ### 2) Implement bullets (one at a time)
 For each bullet:
 - Execution order (required): within the implementation phase, complete all unchecked implementation bullets in the current step up to (but excluding) `Review step implementation.` before entering Section 4 (User review). Do not run Section 4 after each bullet.
+- Do not pause after the first completed bullet to ask for generic permission to continue. Continue through the remaining unchecked implementation bullets in the same step.
+- Exception: pause and ask the user only when a specific bullet is blocked by a required user decision/input that is necessary to implement that bullet correctly.
 - Treat the step plan as the implementation contract: execute only in-scope items for the current bullet.
 - Review the step plan and supporting artifacts before coding: linked requirements sections, `AGENTS.md`, `ai/decisions.md`, `ai/blocker_log.md`, `ai/open_questions.md`, and `ai/user_review.md`.
 - Convert the step plan's ordered plan into a short implementation checklist and complete items one by one.

@@ -28,8 +28,8 @@ Defaults:
   - Stages and commits all uncommitted files on the current branch.
   - Keeps one consolidated history record per step with:
     - Aggregated token usage + per-phase subsection (planning/implementation/review).
-    - New lines of code added (all files except ai/**), measured from an auto-selected base/implementation diff direction.
-    - New classes added (new Java type files under src/main/java only; excludes ai/docs/scripts), measured from an auto-selected base/implementation diff direction.
+    - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review).
+    - New classes added (new Java type files under src/main/java only; excludes ai/docs/scripts), measured from the step delta to review (base..review when possible, otherwise merge-base..review).
 EOF
 }
 
@@ -177,29 +177,26 @@ detect_default_base_branch() {
 
 resolve_metrics_refs() {
   local merge_base=""
-  merge_base="$(git -C "$ROOT" merge-base "$BASE_BRANCH" "$IMPLEMENTATION_BRANCH" 2>/dev/null || true)"
+  merge_base="$(git -C "$ROOT" merge-base "$BASE_BRANCH" "$REVIEW_BRANCH" 2>/dev/null || true)"
   if [[ -z "$merge_base" ]]; then
-    echo "Could not determine merge-base for $BASE_BRANCH and $IMPLEMENTATION_BRANCH." >&2
+    echo "Could not determine merge-base for $BASE_BRANCH and $REVIEW_BRANCH." >&2
     exit 1
   fi
 
-  if git -C "$ROOT" merge-base --is-ancestor "$BASE_BRANCH" "$IMPLEMENTATION_BRANCH"; then
+  if git -C "$ROOT" merge-base --is-ancestor "$BASE_BRANCH" "$REVIEW_BRANCH"; then
     METRICS_FROM_REF="$BASE_BRANCH"
-    METRICS_TO_REF="$IMPLEMENTATION_BRANCH"
-    METRICS_DIRECTION_NOTE="base..implementation (implementation ahead)"
-    return 0
-  fi
-
-  if git -C "$ROOT" merge-base --is-ancestor "$IMPLEMENTATION_BRANCH" "$BASE_BRANCH"; then
-    METRICS_FROM_REF="$IMPLEMENTATION_BRANCH"
-    METRICS_TO_REF="$BASE_BRANCH"
-    METRICS_DIRECTION_NOTE="implementation..base (base ahead)"
+    METRICS_TO_REF="$REVIEW_BRANCH"
+    METRICS_DIRECTION_NOTE="base..review (review ahead)"
     return 0
   fi
 
   METRICS_FROM_REF="$merge_base"
-  METRICS_TO_REF="$IMPLEMENTATION_BRANCH"
-  METRICS_DIRECTION_NOTE="merge-base..implementation (branches diverged)"
+  METRICS_TO_REF="$REVIEW_BRANCH"
+  if git -C "$ROOT" merge-base --is-ancestor "$REVIEW_BRANCH" "$BASE_BRANCH"; then
+    METRICS_DIRECTION_NOTE="merge-base..review (base ahead; using review delta)"
+  else
+    METRICS_DIRECTION_NOTE="merge-base..review (branches diverged)"
+  fi
 }
 
 count_loc_added_excluding_ai() {

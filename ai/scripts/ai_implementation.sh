@@ -232,6 +232,22 @@ get_process_implementation_sections() {
   ' "$PROCESS"
 }
 
+get_unchecked_implementation_bullets() {
+  local step_section="$1"
+  printf '%s\n' "$step_section" | awk '
+    /^- \[[ xX]\] / {
+      done_flag = substr($0, 4, 1)
+      line = $0
+      sub(/^- \[[ xX]\] /, "", line)
+      if (line ~ /^Plan and discuss the step\./) { next }
+      if (line ~ /^Review step implementation\./) { exit }
+      if (done_flag == " ") {
+        print "- " line
+      }
+    }
+  '
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --step)
@@ -354,6 +370,10 @@ REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
 GIT_STATUS="$(get_git_status)"
 GIT_LAST_COMMIT="$(get_git_last_commit)"
 PROCESS_IMPLEMENTATION_SECTIONS="$(get_process_implementation_sections)"
+IMPLEMENTATION_SCOPE_BULLETS="$(get_unchecked_implementation_bullets "$STEP_SECTION")"
+if [[ -z "$IMPLEMENTATION_SCOPE_BULLETS" ]]; then
+  IMPLEMENTATION_SCOPE_BULLETS="- (none found; verify ai/implementation_plan.md step bullets)"
+fi
 
 if [[ "$FULL_DECISIONS" -eq 1 ]]; then
   DECISIONS_SECTION="$(cat "$DECISIONS")"
@@ -365,9 +385,11 @@ else
 fi
 
 emit() {
-  printf 'Implementation phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
+  printf 'Implementation phase for Step %s\n' "$STEP"
+  printf 'First unchecked bullet: %s\n' "$BULLET"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 2-4, Verification gates, Definition of Done, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
   printf 'Use the step plan and context pack as execution context.\n'
+  printf 'Unchecked implementation bullets currently in scope (before review bullet):\n%s\n' "$IMPLEMENTATION_SCOPE_BULLETS"
   printf '\n'
   printf 'Context pack\n'
   printf '== estimation summary ==\n'
