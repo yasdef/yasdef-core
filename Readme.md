@@ -14,14 +14,25 @@ This approach can be expressed in a few sentences:
 
 ### Quick start
 
+0. Read this carefully:
+⚠️ This is pre-alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project! 
+⚠️ Your AGENTS.md will be used as part of promt to ai-model and ai-model in most cases will examine your project code - make sure you're ok with this.
+✅ You need codex cli https://chatgpt.com/codex available to run this framework, or you can change model in ai/setup/models.md
+
 1. copy-past ai/ folder to the root of your project
+
 2. all bash scripts in ai/scripts should be runnable `chmod +x ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_review.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh`
+
 3. You need to provide `implementation_plan.md` in certain format, it should be in root of your project
+
 4. If you run Worker standalone without Coordinator and dont have implementation_plan.md ask your model to generate it based on any plan or requirements you have. Here is simplest prompt: "examine this project carefully, based ot whats alreay done ant this requirements -- START REQUIREMENTS <past your requirements as plain text or path to file here> -- END OF REQUIREMENTS, generate implementation_plan.md and add it to the root folder of my project. Strictly follow ai/templates/implementation_plan_TEMPLATE.md and use ai/golden_examples/implementation_plan_GOLDEN_EXAMPLE.md as an example"
+
 5. add AGENTS.md in root folder, if you dont know what should be in AGENTS.md ask your model to generate it: "generate AGENTS.MD based on my project specific and best proactices, try to make it concise and well-structured". If you already have AGENTS.md make sure it is not included generai ai-dev process rules so this rules will not contradict with YASDEF own set of rules.
-6. OPTIONAL - allow your ai cli to work with git (except merge to master) to avoid asking permissions all the time
-7. OPTIONAL - allow your ai cli to write in files in /ai folder  to avoid asking permissions all the time
-6. run ai/scripts/orchestrator.sh (it's just bash script) and follow the instructions
+
+6. run `bash ai/scripts/orchestrator.sh` and follow the instructions
+
+7. OPTIONAL - allow your ai cli to work with git (except merge to master) to avoid asking permissions all the time
+
 
 ### Why we need another one
 
@@ -101,11 +112,22 @@ V-0.0.1
 - only codex cli supported
 - you need to manualy ctrl-c from codex session in the end of each phase (planing/implementation/review)
 3. main planes
+- security proposals (see below)
 - change bash scripts to lightweight cli (wrapper above coding agent cli's), see yasdef-wrapper
 - investigate "skills" usage
 - test how good this framework for frontend/mobile development, not only enterprise backend
 
+### security_improvement_proposals
 
+Scope: command-execution safety (non-git concerns).
 
+- Restrict runner command to trusted values only. Do not execute arbitrary binaries from config; use an allowlist-based runner mapping.
+- For implementation execution, use only `ai/setup/models.md` as the trusted source of runner/model/args.
+- Treat step-plan metadata as non-executable context only (for example prompt path/version), not as command authority.
+- Add integrity checks for command-driving artifacts (at minimum `ai/setup/models.md`) using a trust-lock/checksum file and require explicit re-trust after changes.
+- Run child model commands with a minimal environment allowlist by default: `PATH`, `HOME`, `LANG`, `TMPDIR`.
+- Add explicit opt-in for extra environment variables (for example `--pass-env KEY1,KEY2`) instead of inheriting full environment.
 
+### License
 
+This project is licensed under the MIT License. See `LICENSE`.
