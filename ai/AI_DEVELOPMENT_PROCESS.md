@@ -52,6 +52,7 @@ Before writing code for the step:
 - The plan must be concise and explicit about scope, assumptions, risks, tests, and docs/artifacts to update.
 - The plan must include an "Implementation Notes" or "Constraints" section that explicitly references `AGENTS.md` and `ai/AI_DEVELOPMENT_PROCESS.md`.
 - The plan must include an "Architecture / Helper Flow" section describing helper/service design and call flow when applicable.
+- The plan must include an "Applicable UR Shortlist" section with only likely-relevant rules from `ai/user_review.md` (IDs + one-line rationale). If none apply, explicitly write `None applicable`.
 - Execution uses `ai/scripts/ai_implementation.sh` and requires the step plan file; update the plan if execution deviates.
 - Step plans may include a "User Command (manual only - do not execute in assistant)" section. This is for the human operator only; assistants must not run it.
 - Identify prerequisites (schema, endpoints, validators, error codes, auth assumptions).
@@ -73,6 +74,8 @@ For each bullet:
 - Exception: pause and ask the user only when a specific bullet is blocked by a required user decision/input that is necessary to implement that bullet correctly.
 - Treat the step plan as the implementation contract: execute only in-scope items for the current bullet.
 - Review the step plan and supporting artifacts before coding: linked requirements sections, `AGENTS.md`, `ai/decisions.md`, `ai/blocker_log.md`, `ai/open_questions.md`, and `ai/user_review.md`.
+- Before coding, extract a lightweight shortlist of applicable `ai/user_review.md` rules for the current bullet (typically 3-8 IDs with one-line rationale each). Do not copy all URs; include only likely-relevant high-risk rules.
+- If many URs could apply, keep the shortlist concise and mark lower-risk items as reviewed-not-applicable for now; revisit applicability in Section 4 after implementation.
 - Convert the step plan's ordered plan into a short implementation checklist and complete items one by one.
 - If implementation must deviate from the step plan, update the step plan first, then continue implementation.
 - If a required project decision/blocker appears during implementation, stop and ask the user before proceeding.
@@ -94,7 +97,7 @@ For each bullet:
 Entry precondition:
 - All non-review implementation bullets in the current step are marked `[x]`. If any remain unchecked, return to Sections 2-3 and complete them first.
 
-0. Before starting the user review, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the current implementation once again; if there is room to improve the last changes (without scope creep), propose those improvements first.
+0. Before starting the user review, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.
 1. Ask the user for the next review item (a question or a change request). The user may provide feedback one-by-one; if they have multiple items, a short bullet list helps.
 2. When the user responds, do this in order:
    1. Clarify ambiguous requests (ask questions if needed). If the user asked "why", answer the question first.
@@ -132,8 +135,8 @@ Entry precondition:
          - Otherwise, add it as a new later step (e.g., `1.6` → `1.12`) if it’s larger or should be scheduled separately.
          - If the “what to do” is still unclear, add it as an item in `ai/open_questions.md` for an already-created step (so it is reviewed during that step’s planning bullet).
 - Record estimation actuals on the "Review step implementation" bullet (actual SP, token usage or time, surprises). Update future bullet estimates and the step-size target based on the error.
-- Close the "Review step implementation" bullet once the post-step audit write-up is complete and every finding has an explicit disposition recorded (**Accepted** or **Rejected**) and any accepted items are captured as follow-up work (typically as a new step/bullet in `ai/implementation_plan.md`, or as an item in `ai/open_questions.md`/`ai/blocker_log.md` if still unclear).
 - If the "Review step implementation" bullet is complete but missing actuals, do not report this as a user-facing finding/issue. Instead, append a best-effort estimated `Actuals: ...` entry immediately in this phase and continue the audit.
+- Close the "Review step implementation" bullet once the post-step audit write-up is complete and every finding has an explicit disposition recorded (**Accepted** or **Rejected**) and any accepted items are captured as follow-up work (typically as a new step/bullet in `ai/implementation_plan.md`, or as an item in `ai/open_questions.md`/`ai/blocker_log.md` if still unclear).
 - **Commit gate**: only when there are **no accepted unresolved findings** and the user confirms completion, commit all step changes on the current step/review branch and propose the commit commands. If any accepted follow-up work remains, do **not** propose commit commands in this phase. Do not merge to `main`/`master` in this phase.
 - Completion-line gate (review phase): output the exact review completion line (`Review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after post-step audit write-up is complete and every finding has an explicit disposition (**Accepted** or **Rejected**) with accepted items captured as follow-up work.
 

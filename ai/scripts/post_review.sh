@@ -14,6 +14,8 @@ DRY_RUN=0
 METRICS_FROM_REF=""
 METRICS_TO_REF=""
 METRICS_DIRECTION_NOTE=""
+METRICS_USE_INDEX=0
+METRICS_SNAPSHOT_INDEX=""
 
 usage() {
   cat <<'EOF'
@@ -28,8 +30,8 @@ Defaults:
   - Stages and commits all uncommitted files on the current branch.
   - Keeps one consolidated history record per step with:
     - Aggregated token usage + per-phase subsection (planning/implementation/review).
-    - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review).
-    - New classes added (new Java type files under src/main/java only; excludes ai/docs/scripts), measured from the step delta to review (base..review when possible, otherwise merge-base..review).
+    - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
+    - New classes added (new Java type files under src/main/java only; excludes ai/docs/scripts), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
 EOF
 }
 
@@ -199,16 +201,72 @@ resolve_metrics_refs() {
   fi
 }
 
+cleanup_metrics_snapshot() {
+  if [[ -n "$METRICS_SNAPSHOT_INDEX" && -f "$METRICS_SNAPSHOT_INDEX" ]]; then
+    rm -f "$METRICS_SNAPSHOT_INDEX"
+  fi
+}
+
+metrics_git() {
+  if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
+    GIT_INDEX_FILE="$METRICS_SNAPSHOT_INDEX" git -C "$ROOT" "$@"
+  else
+    git -C "$ROOT" "$@"
+  fi
+}
+
+prepare_metrics_snapshot() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+
+  local status_output=""
+  status_output="$(git -C "$ROOT" status --porcelain --untracked-files=all)"
+  if [[ -z "$status_output" ]]; then
+    return 0
+  fi
+
+  METRICS_SNAPSHOT_INDEX="$(mktemp)"
+  if [[ -f "$ROOT/.git/index" ]]; then
+    cp "$ROOT/.git/index" "$METRICS_SNAPSHOT_INDEX"
+  fi
+  GIT_INDEX_FILE="$METRICS_SNAPSHOT_INDEX" git -C "$ROOT" add -A
+  METRICS_USE_INDEX=1
+  METRICS_DIRECTION_NOTE="$METRICS_DIRECTION_NOTE + working-tree snapshot"
+}
+
+ensure_current_branch_matches_review_branch() {
+  local current_branch
+  current_branch="$(get_current_branch)"
+  if [[ "$current_branch" != "$REVIEW_BRANCH" ]]; then
+    echo "Current branch '$current_branch' does not match review branch '$REVIEW_BRANCH'." >&2
+    echo "Switch to $REVIEW_BRANCH and rerun post-review." >&2
+    exit 1
+  fi
+}
+
 count_loc_added_excluding_ai() {
   # Count added lines across the repo, excluding process artifacts under /ai.
-  git -C "$ROOT" diff --numstat "$METRICS_FROM_REF..$METRICS_TO_REF" \
-    | awk -F '\t' '($1 ~ /^[0-9]+$/ && $3 !~ /^ai\//) { sum += $1 } END { print sum + 0 }'
+  if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
+    metrics_git diff --cached --numstat "$METRICS_FROM_REF" \
+      | awk -F '\t' '($1 ~ /^[0-9]+$/ && $3 !~ /^ai\//) { sum += $1 } END { print sum + 0 }'
+  else
+    metrics_git diff --numstat "$METRICS_FROM_REF..$METRICS_TO_REF" \
+      | awk -F '\t' '($1 ~ /^[0-9]+$/ && $3 !~ /^ai\//) { sum += $1 } END { print sum + 0 }'
+  fi
 }
 
 count_new_java_types_added() {
   # Intentionally count only new Java types under src/main/java.
   local count=0
   local path
+  local diff_cmd=()
+  if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
+    diff_cmd=(diff --cached --name-only --diff-filter=A "$METRICS_FROM_REF" -- src/main/java)
+  else
+    diff_cmd=(diff --name-only --diff-filter=A "$METRICS_FROM_REF..$METRICS_TO_REF" -- src/main/java)
+  fi
+
   while IFS= read -r path; do
     [[ -z "$path" ]] && continue
     case "$path" in
@@ -220,11 +278,17 @@ count_new_java_types_added() {
         continue
         ;;
     esac
-    if git -C "$ROOT" show "$METRICS_TO_REF:$path" 2>/dev/null \
-      | grep -Eq '\<(class|interface|enum|record)\>[[:space:]]+[A-Za-z_][A-Za-z0-9_]*'; then
+    local show_target=""
+    if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
+      show_target=":$path"
+    else
+      show_target="$METRICS_TO_REF:$path"
+    fi
+    if metrics_git show "$show_target" 2>/dev/null \
+        | grep -Eq '\<(class|interface|enum|record)\>[[:space:]]+[A-Za-z_][A-Za-z0-9_]*'; then
       count=$((count + 1))
     fi
-  done < <(git -C "$ROOT" diff --name-only --diff-filter=A "$METRICS_FROM_REF..$METRICS_TO_REF" -- src/main/java)
+  done < <(metrics_git "${diff_cmd[@]}")
   printf '%s' "$count"
 }
 
@@ -597,7 +661,10 @@ fi
 ensure_commit_ref_exists "$BASE_BRANCH"
 ensure_commit_ref_exists "$REVIEW_BRANCH"
 ensure_commit_ref_exists "$IMPLEMENTATION_BRANCH"
+ensure_current_branch_matches_review_branch
 resolve_metrics_refs
+trap cleanup_metrics_snapshot EXIT
+prepare_metrics_snapshot
 
 STEP_AND_TITLE="$(extract_step_and_title_from_plan "$STEP_PLAN")"
 IFS='|' read -r STEP_NUM STEP_TITLE <<<"$STEP_AND_TITLE"

@@ -413,6 +413,40 @@ write_step_plan_from_template() {
   done <<<"$body" >"$OUT"
 }
 
+ensure_applicable_ur_shortlist_section() {
+  if grep -Fq "## Applicable UR Shortlist" "$OUT"; then
+    return 0
+  fi
+
+  local today
+  today="$(date +%Y-%m-%d)"
+
+  local tmp_dir tmp
+  tmp_dir="$ROOT/ai/tmp"
+  mkdir -p "$tmp_dir"
+  tmp="$tmp_dir/${PROJECT}-step-${STEP}.ur-shortlist.$$.tmp"
+
+  awk -v today="$today" '
+    BEGIN { inserted = 0 }
+    /^## Plan \(ordered\)/ && inserted == 0 {
+      print "## Applicable UR Shortlist"
+      print "- None applicable for this step/bullet. (reviewed on " today ")"
+      print ""
+      inserted = 1
+    }
+    { print }
+    END {
+      if (inserted == 0) {
+        print ""
+        print "## Applicable UR Shortlist"
+        print "- None applicable for this step/bullet. (reviewed on " today ")"
+      }
+    }
+  ' "$OUT" >"$tmp"
+
+  mv "$tmp" "$OUT"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --step)
@@ -530,6 +564,7 @@ mkdir -p "$(dirname "$OUT")"
 if [[ ! -f "$OUT" ]]; then
   write_step_plan_from_template
 fi
+ensure_applicable_ur_shortlist_section
 ensure_run_command
 
 emit() {

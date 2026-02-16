@@ -26,6 +26,10 @@ Execution model/session (intended): gpt-5.3-codex (executor), session=<fill>
 - Review `ai/blocker_log.md` and `ai/open_questions.md` for Step 1.6b.
 - Confirm the existing idempotency key persistence strategy for commands.
 
+## Applicable UR Shortlist
+- UR-0004 — avoid single-field wrappers; this step touches response shape and could accidentally introduce wrapper DTOs.
+- UR-0011 — avoid `Optional` parameters in method signatures while adding validator/service method changes.
+
 ## Plan (ordered)
 - 1. Locate existing idempotent command patterns (service + repository); align implementation.
 - 2. Add/adjust validator so it runs before any writes.
@@ -57,4 +61,3 @@ Execution model/session (intended): gpt-5.3-codex (executor), session=<fill>
 
 ## Sources (if any)
 - (none)
-

@@ -33,6 +33,10 @@ Execution model/session (intended): <fill>
 - Review `ai/blocker_log.md` and `ai/open_questions.md` for the current step.
 - <missing prerequisites or required decisions>
 
+## Applicable UR Shortlist
+- <UR-xxxx — one-line rationale for relevance>
+- None applicable for this step/bullet. (use only when no UR rules apply)
+
 ## Plan (ordered)
 - 1. <subtask, concrete outcome>
 - 2. <subtask, concrete outcome>
