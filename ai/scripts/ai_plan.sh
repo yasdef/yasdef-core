@@ -10,30 +10,59 @@ BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
 REQUIREMENTS="$ROOT/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
-MODELS="$ROOT/ai/setup/models.md"
 STEP_PLAN_TEMPLATE="$ROOT/ai/templates/step_plan_TEMPLATE.md"
 STEP_PLAN_GOLDEN="$ROOT/ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md"
 
 STEP=""
 OUT=""
-FULL_DECISIONS=0
-INCLUDE_AGENTS=1
-INCLUDE_MODELS=1
+DESIGN_FILE=""
+INCLUDE_AGENTS=0
 BRANCH_NAME=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_plan.sh [--step 1.3] [--out file] [--full-decisions] [--no-include-agents] [--no-include-models] [--branch-name name]
+Usage: ai/scripts/ai_plan.sh [--step 1.3] [--out file] [--design file] [--include-agents] [--branch-name name]
 
 Defaults:
   - If --step is omitted, uses the first unchecked bullet in ai/implementation_plan.md.
   - If --out is omitted, uses ai/step_plans/step-<step>.md (created from ai/templates/step_plan_TEMPLATE.md if missing).
-  - ai/decisions.md is summarized to Accepted ADR titles unless --full-decisions is set.
-  - AGENTS.md is included by default; use --no-include-agents to omit.
-  - ai/setup/models.md is included by default; use --no-include-models to omit.
-  - Implementation run command uses ai/setup/models.md (phase | command | model | extra args optional).
+  - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required; hard fail if missing).
+  - ai/decisions.md is pointer-only by default.
+  - AGENTS.md is referenced by default (pointer-only); use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-plan unless --branch-name is provided.
 EOF
+}
+
+confirm_start_planning_if_interactive() {
+  local step="$1"
+  local title="$2"
+  local out="$3"
+  local branch_name="$4"
+
+  # If stdout is being captured (e.g., orchestrator redirects into a prompt file), do not prompt.
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    return 0
+  fi
+
+  local answer=""
+  while true; do
+    printf 'Start planning phase for Step %s - %s\n' "$step" "$title" >&2
+    printf 'This will create/switch to branch: %s\n' "$branch_name" >&2
+    printf 'This will write/update: %s\n' "$out" >&2
+    printf 'Proceed? [y/n] ' >&2
+    IFS= read -r answer || answer=""
+    case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
+      y)
+        return 0
+        ;;
+      n|'')
+        return 1
+        ;;
+      *)
+        echo "Please answer 'y' or 'n'." >&2
+        ;;
+    esac
+  done
 }
 
 require_option_arg() {
@@ -44,15 +73,6 @@ require_option_arg() {
     usage >&2
     exit 1
   fi
-}
-
-shell_join() {
-  local joined=""
-  local arg
-  for arg in "$@"; do
-    joined+=$(printf '%q ' "$arg")
-  done
-  printf '%s' "${joined% }"
 }
 
 get_next_unchecked() {
@@ -100,14 +120,43 @@ get_step_first_unchecked() {
   ' "$PLAN"
 }
 
+get_step_target_bullets() {
+  local step="$1"
+  awk -v step="$step" '
+    BEGIN { step_re = step; gsub(/\./, "\\.", step_re) }
+    $0 ~ "^### Step "step_re" " { in_step=1; next }
+    in_step && $0 ~ "^## " { exit }
+    in_step && $0 ~ "^### Step " { exit }
+    in_step && $0 ~ /^- \[[ xX]\] / {
+      line = $0
+      sub(/^- \[[ xX]\] /, "- ", line)
+      raw = line
+      sub(/^- /, "", raw)
+      if (raw ~ /^Plan and discuss the step([[:space:]\.]|$)/) next
+      if (raw ~ /^Review step implementation([[:space:]\.]|$)/) next
+      print line
+    }
+  ' "$PLAN"
+}
+
 get_step_section() {
   local step="$1"
   awk -v step="$step" '
     BEGIN { step_re = step; gsub(/\./, "\\.", step_re) }
     $0 ~ "^### Step "step_re" " { in_step=1 }
+    in_step && $0 ~ "^## " && $0 !~ "^### Step "step_re" " { exit }
     in_step && $0 ~ "^### Step " && $0 !~ "^### Step "step_re" " { exit }
     in_step { print }
   ' "$PLAN"
+}
+
+get_design_target_bullets() {
+  local file="$1"
+  awk '
+    /^## Target Bullets/ { in_section=1; next }
+    in_section && /^## / { exit }
+    in_section && /^- / { print }
+  ' "$file"
 }
 
 get_blocker_log_section() {
@@ -128,6 +177,42 @@ get_open_questions_section() {
     in_step && $0 ~ "^## Step " && $0 !~ "^## Step "step_re" " { exit }
     in_step { print }
   ' "$OPEN_QUESTIONS"
+}
+
+get_markdown_section_body() {
+  local file="$1"
+  local heading="$2"
+  awk -v heading="$heading" '
+    $0 == heading { in_section=1; next }
+    in_section && /^## / { exit }
+    in_section { print }
+  ' "$file"
+}
+
+get_design_adr_heading() {
+  local file="$1"
+  if grep -Fq "## Applicable ADR Shortlist (from ai/decisions.md)" "$file"; then
+    printf '## Applicable ADR Shortlist (from ai/decisions.md)'
+    return 0
+  fi
+  if grep -Fq "## Applicable ADR Shortlist" "$file"; then
+    printf '## Applicable ADR Shortlist'
+    return 0
+  fi
+  return 1
+}
+
+get_design_ur_heading() {
+  local file="$1"
+  if grep -Fq "## Applicable UR Shortlist" "$file"; then
+    printf '## Applicable UR Shortlist'
+    return 0
+  fi
+  if grep -Fq "## Applicable User Review Rules" "$file"; then
+    printf '## Applicable User Review Rules'
+    return 0
+  fi
+  return 1
 }
 
 open_questions_has_any() {
@@ -162,111 +247,6 @@ extract_requirement_section() {
     in_req && $0 ~ "^### Requirement " && $0 !~ "^### Requirement "req_re" " { exit }
     in_req { print }
   ' "$REQUIREMENTS"
-}
-
-get_model_entry() {
-  local phase="$1"
-  if [[ ! -f "$MODELS" ]]; then
-    echo "Models file not found: $MODELS" >&2
-    exit 1
-  fi
-  awk -F'|' -v phase="$phase" '
-    function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
-    /^[[:space:]]*#/ { next }
-    NF < 3 { next }
-    {
-      key = trim($1)
-      cmd = trim($2)
-      model = trim($3)
-      if (tolower(key) == tolower(phase)) {
-        print cmd
-        print model
-        for (i = 4; i <= NF; i++) {
-          arg = trim($i)
-          if (arg != "") { print arg }
-        }
-        exit
-      }
-    }
-  ' "$MODELS"
-}
-
-ensure_run_command() {
-  local fields=()
-  local field
-  while IFS= read -r field; do
-    fields+=("$field")
-  done < <(get_model_entry "implementation")
-
-  if [[ ${#fields[@]} -lt 2 ]]; then
-    echo "Implementation model not found in $MODELS. Add: implementation | <command> | <model>" >&2
-    exit 1
-  fi
-
-  local run_cmd run_model
-  run_cmd="${fields[0]}"
-  run_model="${fields[1]}"
-  if [[ -z "$run_cmd" || -z "$run_model" ]]; then
-    echo "Invalid implementation model entry in $MODELS (expected: implementation | <command> | <model>)." >&2
-    exit 1
-  fi
-  local run_args_parts=()
-  if [[ ${#fields[@]} -gt 2 ]]; then
-    run_args_parts=("${fields[@]:2}")
-  fi
-
-  local plan_path
-  if [[ "$OUT" == "$ROOT/"* ]]; then
-    plan_path="${OUT#"$ROOT"/}"
-  else
-    plan_path="$OUT"
-  fi
-  local prompt_out
-  prompt_out="ai/prompts/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"
-
-  local prompt_cmd
-  prompt_cmd="$(shell_join ai/scripts/ai_implementation.sh --step-plan "$plan_path" --out "$prompt_out")"
-
-  local run_line
-  run_line="$(printf '%q' "$run_cmd") -m $(printf '%q' "$run_model")"
-  local run_arg
-  for run_arg in "${run_args_parts[@]}"; do
-    run_line+=" $(printf '%q' "$run_arg")"
-  done
-  run_line+=" $(printf '%q' "run $prompt_out")"
-  run_line="$prompt_cmd && $run_line"
-
-  local block
-  block="$(cat <<EOF
-
-## User Command (manual only - do not execute in assistant)
-This command is for the human operator to run locally if needed.
-AI_RUN_COMMAND_VERSION: 2
-AI_RUN_KIND: implementation
-AI_STEP_PLAN: $plan_path
-AI_PROMPT_OUT: $prompt_out
-AI_IMPL_RUN_CMD: $run_cmd
-AI_IMPL_MODEL: $run_model
-$(for run_arg in "${run_args_parts[@]}"; do printf 'AI_IMPL_ARG: %s\n' "$run_arg"; done)
-AI_RUN_COMMAND: $run_line
-\`$run_line\`
-EOF
-)"
-
-  if grep -Fq "## User Command (manual only - do not execute in assistant)" "$OUT"; then
-    local tmp_dir tmp
-    tmp_dir="$ROOT/ai/tmp"
-    mkdir -p "$tmp_dir"
-    tmp="$tmp_dir/${PROJECT}-step-${STEP}.plan.$$.tmp"
-    awk '
-      /^## User Command \(manual only - do not execute in assistant\)/ { exit }
-      { print }
-    ' "$OUT" >"$tmp"
-    printf '%s\n' "$block" >>"$tmp"
-    mv "$tmp" "$OUT"
-  else
-    printf '%s\n' "$block" >>"$OUT"
-  fi
 }
 
 get_requirements_section() {
@@ -309,8 +289,8 @@ get_requirement_tags() {
 
 get_process_planning_sections() {
   awk '
-    /^### 1\)/ { in_scope=1 }
-    /^### 2\)/ { exit }
+    /^### 2\)/ { in_scope=1 }
+    /^### 3\)/ { exit }
     in_scope { print }
   ' "$PROCESS"
 }
@@ -392,7 +372,11 @@ write_step_plan_from_template() {
         printf 'Date: %s\n' "$date"
         ;;
       "- <bullet text>")
-        printf -- '- %s\n' "$BULLET"
+        if [[ -n "$TARGET_BULLETS" ]]; then
+          printf '%s\n' "$TARGET_BULLETS"
+        else
+          printf '%s\n' "- (missing; extract from feature design)"
+        fi
         ;;
       "## Requirement Tags")
         printf '%s\n' "$line"
@@ -459,14 +443,15 @@ while [[ $# -gt 0 ]]; do
       OUT="$2"
       shift 2
       ;;
+    --design)
+      require_option_arg "--design" "${2:-}"
+      DESIGN_FILE="$2"
+      shift 2
+      ;;
     --branch-name)
       require_option_arg "--branch-name" "${2:-}"
       BRANCH_NAME="$2"
       shift 2
-      ;;
-    --full-decisions)
-      FULL_DECISIONS=1
-      shift
       ;;
     --include-agents)
       INCLUDE_AGENTS=1
@@ -474,14 +459,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-include-agents)
       INCLUDE_AGENTS=0
-      shift
-      ;;
-    --include-models)
-      INCLUDE_MODELS=1
-      shift
-      ;;
-    --no-include-models)
-      INCLUDE_MODELS=0
       shift
       ;;
     -h|--help)
@@ -524,12 +501,39 @@ if [[ -z "$OUT" ]]; then
   OUT="$ROOT/ai/step_plans/step-$STEP.md"
 fi
 
+if [[ -z "$DESIGN_FILE" ]]; then
+  DESIGN_FILE="$ROOT/ai/step_designs/step-$STEP-design.md"
+fi
+
+if [[ ! -f "$DESIGN_FILE" ]]; then
+  echo "Feature design artifact not found at $DESIGN_FILE." >&2
+  echo "Run ai/scripts/ai_design.sh --step $STEP first." >&2
+  exit 1
+fi
+
+PLANNING_BRANCH="$BRANCH_NAME"
+if [[ -z "$PLANNING_BRANCH" ]]; then
+  PLANNING_BRANCH="step-$STEP-plan"
+fi
+if ! confirm_start_planning_if_interactive "$STEP" "$STEP_TITLE" "$OUT" "$PLANNING_BRANCH"; then
+  echo "Aborted." >&2
+  exit 1
+fi
+
 ensure_planning_branch
 
 STEP_SECTION="$(get_step_section "$STEP")"
 if [[ -z "$STEP_SECTION" ]]; then
   echo "Step $STEP section not found in ai/implementation_plan.md." >&2
   exit 1
+fi
+
+TARGET_BULLETS="$(get_design_target_bullets "$DESIGN_FILE")"
+if [[ -z "$TARGET_BULLETS" ]]; then
+  TARGET_BULLETS="$(get_step_target_bullets "$STEP")"
+fi
+if [[ -z "$TARGET_BULLETS" ]]; then
+  TARGET_BULLETS="- (no execution bullets found)"
 fi
 
 BLOCKER_LOG_SECTION="$(get_blocker_log_section "$STEP")"
@@ -550,14 +554,25 @@ fi
 
 REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
 REQ_TAGS="$(get_requirement_tags "$STEP_SECTION")"
-
-if [[ "$FULL_DECISIONS" -eq 1 ]]; then
-  DECISIONS_SECTION="$(cat "$DECISIONS")"
+DESIGN_AGENTS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints")"
+if [[ -z "$DESIGN_AGENTS_SECTION" ]]; then
+  DESIGN_AGENTS_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+fi
+if DESIGN_UR_HEADING="$(get_design_ur_heading "$DESIGN_FILE")"; then
+  DESIGN_UR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_UR_HEADING")"
 else
-  DECISIONS_SECTION="$(list_accepted_adrs)"
-  if [[ -z "$DECISIONS_SECTION" ]]; then
-    DECISIONS_SECTION="- (none)"
-  fi
+  DESIGN_UR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+fi
+if [[ -z "$DESIGN_UR_SECTION" ]]; then
+  DESIGN_UR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+fi
+if DESIGN_ADR_HEADING="$(get_design_adr_heading "$DESIGN_FILE")"; then
+  DESIGN_ADR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_ADR_HEADING")"
+else
+  DESIGN_ADR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+fi
+if [[ -z "$DESIGN_ADR_SECTION" ]]; then
+  DESIGN_ADR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
 fi
 
 mkdir -p "$(dirname "$OUT")"
@@ -565,7 +580,6 @@ if [[ ! -f "$OUT" ]]; then
   write_step_plan_from_template
 fi
 ensure_applicable_ur_shortlist_section
-ensure_run_command
 
 emit() {
   local out_label
@@ -575,36 +589,55 @@ emit() {
     out_label="$OUT"
   fi
 
-  printf 'Planning phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 1, Estimation Gates, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
+  local design_label
+  if [[ "$DESIGN_FILE" == "$ROOT/"* ]]; then
+    design_label="${DESIGN_FILE#"$ROOT"/}"
+  else
+    design_label="$DESIGN_FILE"
+  fi
+
+  printf 'Planning phase for Step %s.\n' "$STEP"
+  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 2, Estimation Gates, Prompt governance) as the process rules for this phase.\n'
+  printf 'Strict workflow: execute Section 2 in two mandatory sub-phases: 2.1) Planning draft and decision capture, then 2.2) Plan quality gates and closure.\n'
+  printf 'Do not start 2.2 before finishing 2.1 outputs (draft plan sections, prerequisites, assumptions, risks, tests/docs, and `Decisions Needed` entries).\n'
+  printf 'In 2.2, enforce all planning quality gates: open-questions gate, things-to-decide gate, and decision-confirmation gate (ask the user when a plan-critical choice lacks explicit direction).\n'
+  printf 'Do not mark planning complete while any gate is unresolved; continue planning discussion and update artifacts until all gates pass.\n'
+  printf 'Use the feature design artifact as the primary input and convert it into an execution-focused step plan.\n'
+  printf 'Execution scope must come from design target bullets (excluding planning/review bullets).\n'
+  printf 'Derive non-negotiable invariants from design-extracted ADR shortlist + AGENTS constraints.\n'
+  printf 'When planning phase is fully complete, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
+  printf 'Commit gate: when you commit planning artifacts, include both the step plan and the feature design artifact (do not commit only %s).\n' "$out_label"
+  printf 'Minimum commit set (if changed): %s, %s\n' "$out_label" "$design_label"
   printf 'Write/update the step plan at: %s\n' "$OUT"
+  printf 'Feature design artifact (required): %s\n' "$DESIGN_FILE"
   if [[ "$OPEN_QUESTIONS_HAS_ANY" -eq 1 ]]; then
     printf 'Open questions currently present for this step: YES.\n'
   else
     printf 'Open questions currently present for this step: NO.\n'
   fi
-  printf 'Use templates/golden examples from the context pack.\n'
+  printf 'Use golden examples from the context pack.\n'
   printf '\n'
   printf 'Context pack\n'
   printf '== ai/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
+  printf '== ai/step_designs/step-%s-design.md ==\n' "$STEP"
+  cat "$DESIGN_FILE"
+  printf '\n\n'
+  printf '== Design-extracted target bullets ==\n'
+  printf '%s\n\n' "$TARGET_BULLETS"
+  printf '== Design-extracted AGENTS constraints ==\n'
+  printf '%s\n\n' "$DESIGN_AGENTS_SECTION"
+  printf '== Design-extracted user review rules ==\n'
+  printf '%s\n\n' "$DESIGN_UR_SECTION"
+  printf '== Design-extracted ADR shortlist ==\n'
+  printf '%s\n\n' "$DESIGN_ADR_SECTION"
   printf '== %s ==\n' "$out_label"
   cat "$OUT"
   printf '\n\n'
-  if [[ -f "$STEP_PLAN_TEMPLATE" ]]; then
-    printf '== ai/templates/step_plan_TEMPLATE.md ==\n'
-    cat "$STEP_PLAN_TEMPLATE"
-    printf '\n\n'
-  fi
   if [[ -f "$STEP_PLAN_GOLDEN" ]]; then
     printf '== ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md ==\n'
-    cat "$STEP_PLAN_GOLDEN"
-    printf '\n\n'
-  fi
-  if [[ "$INCLUDE_MODELS" -eq 1 && -f "$MODELS" ]]; then
-    printf '== ai/setup/models.md ==\n'
-    cat "$MODELS"
-    printf '\n\n'
+    printf 'Read directly from repo as example reference.\n'
+    printf 'Path: ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md\n\n'
   fi
   printf '== reqirements_ears.md (linked requirements) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
@@ -613,7 +646,8 @@ emit() {
   printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$OPEN_QUESTIONS_SECTION"
   printf '== ai/decisions.md (Accepted ADRs) ==\n'
-  printf '%s\n\n' "$DECISIONS_SECTION"
+  printf 'Pointer-only by default: rely on design-extracted ADR shortlist above.\n'
+  printf 'Path: ai/decisions.md\n\n'
   printf '== ai/AI_DEVELOPMENT_PROCESS.md (Planning + Estimation) ==\n'
   planning_sections="$(get_process_planning_sections)"
   estimation_gates="$(get_process_estimation_gates)"
@@ -629,6 +663,10 @@ emit() {
   if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
     printf '\n\n== AGENTS.md ==\n'
     cat "$AGENTS"
+  else
+    printf '\n\n== AGENTS.md ==\n'
+    printf 'Read directly from repo and extract only constraints relevant to this step.\n'
+    printf 'Path: AGENTS.md\n'
   fi
 }
 

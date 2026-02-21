@@ -27,9 +27,10 @@ Defaults:
   - --review-branch defaults to step-<step>-review.
   - --implementation-branch defaults to step-<step>-implementation.
   - --history-out defaults to ai/history.md.
-  - Stages and commits all uncommitted files on the current branch.
+  - If uncommitted review changes exist, commits them first as a review-completion guard.
+  - Then writes post-review history and commits remaining uncommitted changes on the current branch.
   - Keeps one consolidated history record per step with:
-    - Aggregated token usage + per-phase subsection (planning/implementation/review).
+    - Aggregated token usage + per-phase subsection (design/planning/implementation/review).
     - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
     - New classes added (new Java type files under src/main/java only; excludes ai/docs/scripts), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
 EOF
@@ -504,9 +505,10 @@ append_consolidated_entry() {
   local step_plan="$3"
   local loc_added="$4"
   local classes_added="$5"
-  local planning_usage="$6"
-  local implementation_usage="$7"
-  local review_usage="$8"
+  local design_usage="$6"
+  local planning_usage="$7"
+  local implementation_usage="$8"
+  local review_usage="$9"
   local ts
   ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
@@ -517,7 +519,7 @@ append_consolidated_entry() {
   local reasoning_sum=0
 
   local usage
-  for usage in "$planning_usage" "$implementation_usage" "$review_usage"; do
+  for usage in "$design_usage" "$planning_usage" "$implementation_usage" "$review_usage"; do
     [[ -z "$usage" ]] && continue
     total_sum=$((total_sum + $(extract_usage_value "$usage" total)))
     input_sum=$((input_sum + $(extract_usage_value "$usage" input)))
@@ -548,6 +550,9 @@ append_consolidated_entry() {
       "$(format_int_with_commas "$cached_sum")" \
       "$(format_int_with_commas "$output_sum")" \
       "$(format_int_with_commas "$reasoning_sum")"
+    if [[ -n "$design_usage" ]]; then
+      printf -- '  - Phase: design - %s\n' "$design_usage"
+    fi
     if [[ -n "$planning_usage" ]]; then
       printf -- '  - Phase: planning - %s\n' "$planning_usage"
     fi
@@ -583,6 +588,24 @@ commit_uncommitted_changes() {
 
   git -C "$ROOT" commit -m "$commit_message"
   printf 'Committed all uncommitted files on branch %s.\n' "$branch"
+}
+
+commit_pending_review_changes_guard() {
+  local step="$1"
+  local title="$2"
+  local status_output commit_message
+  status_output="$(git -C "$ROOT" status --porcelain --untracked-files=all)"
+  if [[ -z "$status_output" ]]; then
+    return 0
+  fi
+
+  git -C "$ROOT" add -A
+  commit_message="Step $step review completion"
+  if [[ -n "$title" ]]; then
+    commit_message="$commit_message - $title"
+  fi
+  git -C "$ROOT" commit -m "$commit_message"
+  printf 'Committed pending review-phase changes on branch %s before post-review metrics/history.\n' "$(get_current_branch)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -678,10 +701,14 @@ fi
 LOC_ADDED="$(count_loc_added_excluding_ai)"
 CLASSES_ADDED="$(count_new_java_types_added)"
 
+DESIGN_USAGE="$(extract_token_usage_from_log design)"
 PLANNING_USAGE="$(extract_token_usage_from_log planning)"
 IMPLEMENTATION_USAGE="$(extract_token_usage_from_log implementation)"
 REVIEW_USAGE="$(extract_token_usage_from_log review)"
 
+if [[ -z "$DESIGN_USAGE" ]]; then
+  DESIGN_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" design)"
+fi
 if [[ -z "$PLANNING_USAGE" ]]; then
   PLANNING_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" planning)"
 fi
@@ -713,6 +740,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf 'metrics range: %s..%s (%s)\n' "$METRICS_FROM_REF" "$METRICS_TO_REF" "$METRICS_DIRECTION_NOTE"
   printf 'current branch: %s\n' "$dry_run_branch"
   printf 'uncommitted changes present: %s\n' "$dry_run_changes"
+  printf 'design usage: %s\n' "${DESIGN_USAGE:-<none>}"
   printf 'planning usage: %s\n' "${PLANNING_USAGE:-<none>}"
   printf 'implementation usage: %s\n' "${IMPLEMENTATION_USAGE:-<none>}"
   printf 'review usage: %s\n' "${REVIEW_USAGE:-<none>}"
@@ -722,6 +750,8 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   exit 0
 fi
 
+commit_pending_review_changes_guard "$STEP_NUM" "$STEP_TITLE"
+
 ensure_history_file
 remove_step_sections_from_history "$STEP_NUM"
 append_consolidated_entry \
@@ -730,6 +760,7 @@ append_consolidated_entry \
   "$STEP_PLAN" \
   "$LOC_ADDED" \
   "$CLASSES_ADDED" \
+  "$DESIGN_USAGE" \
   "$PLANNING_USAGE" \
   "$IMPLEMENTATION_USAGE" \
   "$REVIEW_USAGE"

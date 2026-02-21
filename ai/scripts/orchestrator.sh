@@ -46,20 +46,22 @@ RAN_POST_REVIEW=0
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/orchestrator.sh [--phase planning|implementation|review|post_review] [--dry-run] [--help] [-- <ai_plan.sh args>]
+Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|review|post_review] [--dry-run] [--help] [-- <ai_plan.sh args>]
 
 Default behavior:
   - Runs all phases in ai/setup/models.md, in order, then runs post_review.
+  - design runs ai/scripts/ai_design.sh and generates/updates a feature-design artifact.
   - planning runs ai/scripts/ai_plan.sh using the planning model entry.
-  - implementation runs ai/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command (includes user review per AI_DEVELOPMENT_PROCESS.md section 4).
+  - implementation runs ai/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command (includes user review per AI_DEVELOPMENT_PROCESS.md section 5).
   - review runs ai/scripts/ai_review.sh for the latest step plan (post-step audit prompt), then runs the review model command.
   - post_review runs ai/scripts/post_review.sh for the latest step plan and appends post-review metrics to ai/history.md.
-  - When running interactively, asks for confirmation before implementation/review.
+  - When running interactively, asks for confirmation before planning/implementation/review.
   - Writes per-phase logs to ai/tmp/orchestrator_logs/<project>-<phase>.latest.log (overwritten each run; safe to delete).
   - post_review consolidates per-step token usage and metrics into ai/history.md.
 
 Examples:
   ai/scripts/orchestrator.sh
+  ai/scripts/orchestrator.sh --phase design -- --step 1.3
   ai/scripts/orchestrator.sh --phase planning -- --step 1.3 --out ai/tmp/step-1.3.md
   ai/scripts/orchestrator.sh --phase implementation
   ai/scripts/orchestrator.sh --phase review
@@ -143,9 +145,11 @@ ensure_history_file() {
 
 ensure_ai_context_files() {
   ensure_dir_writable "$ROOT/ai"
+  ensure_dir_writable "$ROOT/ai/step_designs"
   ensure_dir_writable "$ROOT/ai/step_plans"
   ensure_dir_writable "$ROOT/ai/step_review_results"
   ensure_dir_writable "$ROOT/ai/tmp/orchestrator_logs"
+  ensure_dir_writable "$ROOT/ai/prompts/design_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/plan_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/impl_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/review_prompts"
@@ -159,6 +163,7 @@ ensure_ai_context_files() {
 }
 
 ensure_orchestrator_prereqs() {
+  ensure_executable_script "$ROOT/ai/scripts/ai_design.sh"
   ensure_executable_script "$ROOT/ai/scripts/ai_plan.sh"
   ensure_executable_script "$ROOT/ai/scripts/ai_implementation.sh"
   ensure_executable_script "$ROOT/ai/scripts/ai_review.sh"
@@ -276,7 +281,7 @@ confirm_phase_if_interactive() {
   fi
 
   case "$(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]')" in
-    implementation|review)
+    planning|implementation|review)
       ;;
     *)
       return 0
@@ -369,8 +374,13 @@ list_phases() {
 run_planning_phase() {
   load_model_config "planning"
 
-  local planning_prompt_out
-  planning_prompt_out="$ROOT/ai/prompts/plan_prompts/${PROJECT}.planning.prompt.txt"
+  local step planning_prompt_out
+  step="$(resolve_step_for_phase_from_args "planning" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")"
+  if [[ -n "$step" ]]; then
+    planning_prompt_out="$ROOT/ai/prompts/plan_prompts/${PROJECT}-step-$step.planning.prompt.txt"
+  else
+    planning_prompt_out="$ROOT/ai/prompts/plan_prompts/${PROJECT}.planning.prompt.txt"
+  fi
 
   local plan_cmd=("$ROOT/ai/scripts/ai_plan.sh")
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
@@ -405,6 +415,57 @@ run_planning_phase() {
 
   local status=0
   if run_with_output_log "planning" "${cmd[@]}"; then
+    status=0
+  else
+    status=$?
+  fi
+  return "$status"
+}
+
+run_design_phase() {
+  load_model_config "design"
+
+  local step design_prompt_out
+  step="$(resolve_step_for_phase_from_args "design" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")"
+  if [[ -n "$step" ]]; then
+    design_prompt_out="$ROOT/ai/prompts/design_prompts/${PROJECT}-step-$step.design.prompt.txt"
+  else
+    design_prompt_out="$ROOT/ai/prompts/design_prompts/${PROJECT}.design.prompt.txt"
+  fi
+
+  local design_cmd=("$ROOT/ai/scripts/ai_design.sh")
+  if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
+    design_cmd+=("${PLAN_ARGS[@]}")
+  fi
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    local dry_design_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
+    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
+      dry_design_cmd+=("${MODEL_ARGS[@]}")
+    fi
+    if [[ "$MODEL_CMD" == "codex" ]]; then
+      dry_design_cmd+=("<contents of $design_prompt_out>")
+    else
+      dry_design_cmd+=("run $design_prompt_out")
+    fi
+    echo "$(shell_join "${design_cmd[@]}") > $(printf '%q' "$design_prompt_out") && $(shell_join "${dry_design_cmd[@]}")"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$design_prompt_out")"
+  "${design_cmd[@]}" >"$design_prompt_out"
+
+  local prompt_arg
+  prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$design_prompt_out")"
+
+  local cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
+  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
+    cmd+=("${MODEL_ARGS[@]}")
+  fi
+  cmd+=("$prompt_arg")
+
+  local status=0
+  if run_with_output_log "design" "${cmd[@]}"; then
     status=0
   else
     status=$?
@@ -471,6 +532,151 @@ get_step_from_plan_path() {
   printf '%s' "$step"
 }
 
+try_get_step_from_plan_path() {
+  local file="$1"
+  local base
+  base="$(basename "$file")"
+  if [[ "$base" =~ ^step-(.+)\.md$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+get_step_from_design_path() {
+  local file="$1"
+  local base
+  base="$(basename "$file")"
+  if [[ "$base" =~ ^step-(.+)-design\.md$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+get_first_unchecked_step() {
+  awk '
+    /^### Step / {
+      line = $0
+      sub(/^### Step /, "", line)
+      split(line, parts, " ")
+      step_num = parts[1]
+      next
+    }
+    /^- \[ \]/ {
+      print step_num
+      exit
+    }
+  ' "$ROOT/ai/implementation_plan.md"
+}
+
+resolve_step_for_phase_from_args() {
+  local phase="$1"
+  shift || true
+  local args=("$@")
+  local i=0
+
+  while [[ $i -lt ${#args[@]} ]]; do
+    local arg="${args[$i]}"
+    case "$arg" in
+      --step)
+        if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+          printf '%s' "${args[$((i + 1))]}"
+          return 0
+        fi
+        ;;
+      --step=*)
+        printf '%s' "${arg#--step=}"
+        return 0
+        ;;
+      --design-out)
+        if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+          local step=""
+          step="$(get_step_from_design_path "${args[$((i + 1))]}" || true)"
+          if [[ -n "$step" ]]; then
+            printf '%s' "$step"
+            return 0
+          fi
+          i=$((i + 1))
+        fi
+        ;;
+      --design-out=*)
+        local step=""
+        step="$(get_step_from_design_path "${arg#--design-out=}" || true)"
+        if [[ -n "$step" ]]; then
+          printf '%s' "$step"
+          return 0
+        fi
+        ;;
+      --design)
+        if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+          local step=""
+          step="$(get_step_from_design_path "${args[$((i + 1))]}" || true)"
+          if [[ -n "$step" ]]; then
+            printf '%s' "$step"
+            return 0
+          fi
+          i=$((i + 1))
+        fi
+        ;;
+      --design=*)
+        local step=""
+        step="$(get_step_from_design_path "${arg#--design=}" || true)"
+        if [[ -n "$step" ]]; then
+          printf '%s' "$step"
+          return 0
+        fi
+        ;;
+      --out)
+        if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+          if [[ "$phase" == "planning" ]]; then
+            local step=""
+            step="$(try_get_step_from_plan_path "${args[$((i + 1))]}" || true)"
+            if [[ -n "$step" ]]; then
+              printf '%s' "$step"
+              return 0
+            fi
+          fi
+          i=$((i + 1))
+        fi
+        ;;
+      --out=*)
+        if [[ "$phase" == "planning" ]]; then
+          local step=""
+          step="$(try_get_step_from_plan_path "${arg#--out=}" || true)"
+          if [[ -n "$step" ]]; then
+            printf '%s' "$step"
+            return 0
+          fi
+        fi
+        ;;
+      --)
+        break
+        ;;
+      --branch-name)
+        if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+          i=$((i + 1))
+        fi
+        ;;
+      --branch-name=*)
+        ;;
+      -*)
+        ;;
+      *)
+        printf '%s' "$arg"
+        return 0
+        ;;
+    esac
+    i=$((i + 1))
+  done
+
+  local inferred=""
+  inferred="$(get_first_unchecked_step || true)"
+  if [[ -n "$inferred" ]]; then
+    printf '%s' "$inferred"
+  fi
+}
+
 get_current_branch_name() {
   git -C "$ROOT" branch --show-current 2>/dev/null || true
 }
@@ -512,64 +718,9 @@ build_model_prompt_arg() {
   fi
 }
 
-extract_implementation_metadata() {
-  local file="$1"
-  local line value
-
-  META_VERSION=""
-  META_STEP_PLAN=""
-  META_PROMPT_OUT=""
-  META_IMPL_CMD=""
-  META_IMPL_MODEL=""
-  META_IMPL_ARGS=()
-
-  while IFS= read -r line; do
-    case "$line" in
-      AI_RUN_COMMAND_VERSION:*)
-        value="${line#AI_RUN_COMMAND_VERSION: }"
-        META_VERSION="$value"
-        ;;
-      AI_STEP_PLAN:*)
-        value="${line#AI_STEP_PLAN: }"
-        META_STEP_PLAN="$value"
-        ;;
-      AI_PROMPT_OUT:*)
-        value="${line#AI_PROMPT_OUT: }"
-        META_PROMPT_OUT="$value"
-        ;;
-      AI_IMPL_RUN_CMD:*)
-        value="${line#AI_IMPL_RUN_CMD: }"
-        META_IMPL_CMD="$value"
-        ;;
-      AI_IMPL_MODEL:*)
-        value="${line#AI_IMPL_MODEL: }"
-        META_IMPL_MODEL="$value"
-        ;;
-      AI_IMPL_ARG:*)
-        value="${line#AI_IMPL_ARG: }"
-        META_IMPL_ARGS+=("$value")
-        ;;
-    esac
-  done < "$file"
-
-  if [[ "$META_VERSION" != "2" ]]; then
-    return 1
-  fi
-  if [[ -n "$META_STEP_PLAN" ]]; then
-    local meta_base current_base
-    meta_base="$(basename "$META_STEP_PLAN")"
-    current_base="$(basename "$file")"
-    if [[ "$meta_base" != "$current_base" ]]; then
-      return 1
-    fi
-  fi
-  if [[ -n "$META_IMPL_CMD" && -n "$META_IMPL_MODEL" && -n "$META_PROMPT_OUT" ]]; then
-    return 0
-  fi
-  return 1
-}
-
 run_implementation_phase() {
+  load_model_config "implementation"
+
   local latest_plan
   latest_plan="$(get_preferred_step_plan)"
 
@@ -580,19 +731,7 @@ run_implementation_phase() {
     exit 1
   fi
 
-  if extract_implementation_metadata "$latest_plan"; then
-    prompt_out="$META_PROMPT_OUT"
-    if [[ "$prompt_out" != /* ]]; then
-      prompt_out="$ROOT/$prompt_out"
-    fi
-    MODEL_CMD="$META_IMPL_CMD"
-    MODEL_MODEL="$META_IMPL_MODEL"
-    MODEL_ARGS=("${META_IMPL_ARGS[@]}")
-  else
-    echo "Latest step plan is missing required implementation metadata (AI_RUN_COMMAND_VERSION: 2): $latest_plan" >&2
-    echo "Regenerate the step plan with ai/scripts/ai_plan.sh before running implementation." >&2
-    exit 1
-  fi
+  prompt_out="$ROOT/ai/prompts/impl_prompts/${PROJECT}-step-$step.prompt.txt"
 
   local prompt_cmd=("$ROOT/ai/scripts/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out")
 
@@ -702,6 +841,9 @@ run_phase() {
   local phase="$1"
 
   case "$(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]')" in
+    design)
+      run_design_phase
+      ;;
     planning)
       run_planning_phase
       ;;
@@ -771,7 +913,8 @@ done
 
 if [[ ${#REQUESTED_PHASES[@]} -eq 0 ]]; then
   while IFS= read -r phase; do
-    [[ -n "$phase" ]] && REQUESTED_PHASES+=("$phase")
+    [[ -z "$phase" ]] && continue
+    REQUESTED_PHASES+=("$phase")
   done < <(list_phases)
   if ! array_contains_ci "post_review" "${REQUESTED_PHASES[@]+"${REQUESTED_PHASES[@]}"}"; then
     REQUESTED_PHASES+=("post_review")
@@ -804,12 +947,22 @@ done
 if [[ "$DRY_RUN" -eq 0 && "$RAN_REVIEW" -eq 1 ]]; then
   latest_plan="$(get_preferred_step_plan || true)"
   step="$(get_step_from_plan_path "$latest_plan" 2>/dev/null || true)"
-  if [[ -n "$step" ]]; then
-    echo "Review phase completed for step $step." >&2
-    echo "If tests already passed and you approve the result, the next manual step is to commit on step-$step-review." >&2
+  if [[ "$RAN_POST_REVIEW" -eq 0 ]]; then
+    if [[ -n "$step" ]]; then
+      echo "Review phase completed for step $step." >&2
+      echo "Run post_review phase:" >&2
+      echo "  ai/scripts/orchestrator.sh --phase post_review -- --step $step" >&2
+    else
+      echo "Review phase completed." >&2
+      echo "Run post_review phase:" >&2
+      echo "  ai/scripts/orchestrator.sh --phase post_review" >&2
+    fi
   else
-    echo "Review phase completed." >&2
-    echo "If tests already passed and you approve the result, the next manual step is to commit on the review branch." >&2
+    if [[ -n "$step" ]]; then
+      echo "Review + post_review completed for step $step." >&2
+    else
+      echo "Review + post_review completed." >&2
+    fi
   fi
   echo "Logs: ai/tmp/orchestrator_logs (overwritten each run; safe to delete)." >&2
   if [[ "$RAN_POST_REVIEW" -eq 1 ]]; then

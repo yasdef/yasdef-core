@@ -7,6 +7,7 @@ Entry template:
 ## <YYYY-MM-DDTHH:MM:SSZ>
 - Step: <step number> - <step title>
 - Token usage: total=<n> input=<n> (+ <n> cached) output=<n> (reasoning <n>), including:
+  - Phase: design - total=<n> input=<n> (+ <n> cached) output=<n> (reasoning <n>)
   - Phase: planning - total=<n> input=<n> (+ <n> cached) output=<n> (reasoning <n>)
   - Phase: implementation - total=<n> input=<n> (+ <n> cached) output=<n> (reasoning <n>)
   - Phase: review - total=<n> input=<n> (+ <n> cached) output=<n> (reasoning <n>)

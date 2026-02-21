@@ -5,7 +5,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="$(basename "$ROOT")"
 PLAN="$ROOT/ai/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
-DECISIONS="$ROOT/ai/decisions.md"
 BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
 REQUIREMENTS="$ROOT/reqirements_ears.md"
@@ -15,20 +14,27 @@ USER_REVIEW="$ROOT/ai/user_review.md"
 STEP=""
 OUT=""
 STEP_PLAN=""
-FULL_DECISIONS=0
-INCLUDE_AGENTS=1
+DESIGN_FILE=""
+INCLUDE_AGENTS=0
+SKIP_BRANCH=0
+DESIGN_UR_HEADING=""
+DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--out file] [--full-decisions] [--no-include-agents]
+Usage: ai/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents] [--no-branch]
 
 Defaults:
   - If --step is omitted, uses the first unchecked bullet in ai/implementation_plan.md.
   - If --step-plan is omitted, uses ai/step_plans/step-<step>.md (required).
+  - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required).
   - If --out is omitted, writes to ai/prompts/impl_prompts/<project>-step-<step>.prompt.txt.
-  - ai/decisions.md is summarized to Accepted ADR titles unless --full-decisions is set.
-  - AGENTS.md is included by default; use --no-include-agents to omit.
+  - ai/decisions.md is pointer-only by default; rely on design-extracted ADR shortlist.
+  - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
+  - --no-include-agents is accepted for compatibility and keeps pointer-only behavior.
+  - ai/user_review.md is pointer-only by default (use design-extracted shortlist in prompt context).
   - Always creates/switches to branch step-<step>-implementation.
+  - Use --no-branch to skip git branch creation/switch (prompt generation only).
 EOF
 }
 
@@ -70,6 +76,56 @@ require_option_arg() {
     usage >&2
     exit 1
   fi
+}
+
+get_markdown_section_body() {
+  local file="$1"
+  local heading="$2"
+  awk -v heading="$heading" '
+    $0 == heading { in_section=1; next }
+    in_section && /^## / { exit }
+    in_section { print }
+  ' "$file"
+}
+
+get_design_ur_heading() {
+  local file="$1"
+  if grep -Fq "## Applicable UR Shortlist" "$file"; then
+    printf '## Applicable UR Shortlist'
+    return 0
+  fi
+  if grep -Fq "## Applicable User Review Rules" "$file"; then
+    printf '## Applicable User Review Rules'
+    return 0
+  fi
+  return 1
+}
+
+get_design_adr_heading() {
+  local file="$1"
+  if grep -Fq "## Applicable ADR Shortlist (from ai/decisions.md)" "$file"; then
+    printf '## Applicable ADR Shortlist (from ai/decisions.md)'
+    return 0
+  fi
+  if grep -Fq "## Applicable ADR Shortlist" "$file"; then
+    printf '## Applicable ADR Shortlist'
+    return 0
+  fi
+  return 1
+}
+
+get_target_bullets_from_design() {
+  local file="$1"
+  awk '
+    /^## Target Bullets/ { in_section=1; next }
+    in_section && /^## / { exit }
+    in_section && /^- / {
+      line = $0
+      sub(/^- /, "", line)
+      sub(/^\[[ xX]\][[:space:]]*/, "", line)
+      print "- " line
+    }
+  ' "$file"
 }
 
 get_next_unchecked() {
@@ -122,6 +178,7 @@ get_step_section() {
   awk -v step="$step" '
     BEGIN { step_re = step; gsub(/\./, "\\.", step_re) }
     $0 ~ "^### Step "step_re" " { in_step=1 }
+    in_step && $0 ~ "^## " && $0 !~ "^### Step "step_re" " { exit }
     in_step && $0 ~ "^### Step " && $0 !~ "^### Step "step_re" " { exit }
     in_step { print }
   ' "$PLAN"
@@ -145,20 +202,6 @@ get_open_questions_section() {
     in_step && $0 ~ "^## Step " && $0 !~ "^## Step "step_re" " { exit }
     in_step { print }
   ' "$OPEN_QUESTIONS"
-}
-
-list_accepted_adrs() {
-  awk '
-    function flush() {
-      if (header != "" && status ~ /^Accepted/) {
-        sub(/^## /, "", header)
-        print "- " header
-      }
-    }
-    /^## ADR-/ { flush(); header=$0; status=""; next }
-    /^- \*\*Status\*\*: / { status=$0; sub(/^- \*\*Status\*\*: /, "", status); next }
-    END { flush() }
-  ' "$DECISIONS"
 }
 
 get_last_review_actuals() {
@@ -224,28 +267,21 @@ get_git_last_commit() {
   git -C "$ROOT" log -1 --oneline 2>/dev/null
 }
 
-get_process_implementation_sections() {
-  awk '
-    /^### 2\)/ { in_scope=1 }
-    /^### 5\)/ { exit }
-    in_scope { print }
-  ' "$PROCESS"
+derive_step_from_step_plan_path() {
+  local file="$1"
+  local base step
+  base="$(basename "$file")"
+  if [[ "$base" =~ ^step-(.+)\.md$ ]]; then
+    step="${BASH_REMATCH[1]}"
+    printf '%s' "$step"
+    return 0
+  fi
+  return 1
 }
 
-get_unchecked_implementation_bullets() {
-  local step_section="$1"
-  printf '%s\n' "$step_section" | awk '
-    /^- \[[ xX]\] / {
-      done_flag = substr($0, 4, 1)
-      line = $0
-      sub(/^- \[[ xX]\] /, "", line)
-      if (line ~ /^Plan and discuss the step\./) { next }
-      if (line ~ /^Review step implementation\./) { exit }
-      if (done_flag == " ") {
-        print "- " line
-      }
-    }
-  '
+get_step_plan_section() {
+  local heading="$1"
+  get_markdown_section_body "$STEP_PLAN" "$heading"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -265,9 +301,10 @@ while [[ $# -gt 0 ]]; do
       STEP_PLAN="$2"
       shift 2
       ;;
-    --full-decisions)
-      FULL_DECISIONS=1
-      shift
+    --design)
+      require_option_arg "--design" "${2:-}"
+      DESIGN_FILE="$2"
+      shift 2
       ;;
     --include-agents)
       INCLUDE_AGENTS=1
@@ -275,6 +312,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-include-agents)
       INCLUDE_AGENTS=0
+      shift
+      ;;
+    --no-branch)
+      SKIP_BRANCH=1
       shift
       ;;
     -h|--help)
@@ -293,6 +334,13 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -z "$STEP" && -n "$STEP_PLAN" ]]; then
+  derived_step="$(derive_step_from_step_plan_path "$STEP_PLAN" || true)"
+  if [[ -n "$derived_step" ]]; then
+    STEP="$derived_step"
+  fi
+fi
 
 if [[ -z "$STEP" ]]; then
   line="$(get_next_unchecked)"
@@ -317,16 +365,28 @@ if [[ -z "$STEP_PLAN" ]]; then
   STEP_PLAN="$ROOT/ai/step_plans/step-$STEP.md"
 fi
 
+if [[ -z "$DESIGN_FILE" ]]; then
+  DESIGN_FILE="$ROOT/ai/step_designs/step-$STEP-design.md"
+fi
+
 if [[ -z "$OUT" ]]; then
   OUT="$ROOT/ai/prompts/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"
 fi
-
-ensure_implementation_branch
 
 if [[ ! -f "$STEP_PLAN" ]]; then
   echo "Step plan not found at $STEP_PLAN." >&2
   echo "Run ai/scripts/ai_plan.sh --step $STEP --out $STEP_PLAN first." >&2
   exit 1
+fi
+
+if [[ ! -f "$DESIGN_FILE" ]]; then
+  echo "Feature design not found at $DESIGN_FILE." >&2
+  echo "Run ai/scripts/ai_design.sh --step $STEP first." >&2
+  exit 1
+fi
+
+if [[ "$SKIP_BRANCH" -eq 0 ]]; then
+  ensure_implementation_branch
 fi
 
 STEP_SECTION="$(get_step_section "$STEP")"
@@ -369,27 +429,92 @@ fi
 REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
 GIT_STATUS="$(get_git_status)"
 GIT_LAST_COMMIT="$(get_git_last_commit)"
-PROCESS_IMPLEMENTATION_SECTIONS="$(get_process_implementation_sections)"
-IMPLEMENTATION_SCOPE_BULLETS="$(get_unchecked_implementation_bullets "$STEP_SECTION")"
-if [[ -z "$IMPLEMENTATION_SCOPE_BULLETS" ]]; then
-  IMPLEMENTATION_SCOPE_BULLETS="- (none found; verify ai/implementation_plan.md step bullets)"
+
+DESIGN_TARGET_BULLETS="$(get_target_bullets_from_design "$DESIGN_FILE")"
+if [[ -z "$DESIGN_TARGET_BULLETS" ]]; then
+  DESIGN_TARGET_BULLETS="- (missing in design artifact)"
+fi
+DESIGN_PROPOSAL_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Proposal / Design Details")"
+if [[ -z "$DESIGN_PROPOSAL_SECTION" ]]; then
+  DESIGN_PROPOSAL_SECTION="- (missing in design artifact)"
+fi
+DESIGN_RISKS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Risks and Mitigations")"
+if [[ -z "$DESIGN_RISKS_SECTION" ]]; then
+  DESIGN_RISKS_SECTION="- (missing in design artifact)"
+fi
+DESIGN_AGENTS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints")"
+if [[ -z "$DESIGN_AGENTS_SECTION" ]]; then
+  DESIGN_AGENTS_SECTION="- (missing in design artifact)"
+fi
+if DESIGN_UR_HEADING="$(get_design_ur_heading "$DESIGN_FILE")"; then
+  DESIGN_UR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_UR_HEADING")"
+else
+  DESIGN_UR_HEADING="## Applicable UR Shortlist"
+  DESIGN_UR_SECTION="- (missing in design artifact)"
+fi
+if [[ -z "$DESIGN_UR_SECTION" ]]; then
+  DESIGN_UR_SECTION="- (missing in design artifact)"
+fi
+if DESIGN_ADR_HEADING="$(get_design_adr_heading "$DESIGN_FILE")"; then
+  DESIGN_ADR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_ADR_HEADING")"
+else
+  DESIGN_ADR_HEADING="## Applicable ADR Shortlist (from ai/decisions.md)"
+  DESIGN_ADR_SECTION="- (missing in design artifact)"
+fi
+if [[ -z "$DESIGN_ADR_SECTION" ]]; then
+  DESIGN_ADR_SECTION="- (missing in design artifact)"
+fi
+DESIGN_DECISIONS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Things to Decide (for final planning discussion)")"
+if [[ -z "$DESIGN_DECISIONS_SECTION" ]]; then
+  DESIGN_DECISIONS_SECTION="- None."
 fi
 
-if [[ "$FULL_DECISIONS" -eq 1 ]]; then
-  DECISIONS_SECTION="$(cat "$DECISIONS")"
-else
-  DECISIONS_SECTION="$(list_accepted_adrs)"
-  if [[ -z "$DECISIONS_SECTION" ]]; then
-    DECISIONS_SECTION="- (none)"
-  fi
+STEP_PLAN_TARGET_BULLETS_SECTION="$(get_step_plan_section "## Target Bullets")"
+if [[ -z "$STEP_PLAN_TARGET_BULLETS_SECTION" ]]; then
+  STEP_PLAN_TARGET_BULLETS_SECTION="- (missing in step plan)"
+fi
+STEP_PLAN_DESIGN_ANCHOR_SECTION="$(get_step_plan_section "## Design Anchor (scope source of truth)")"
+if [[ -z "$STEP_PLAN_DESIGN_ANCHOR_SECTION" ]]; then
+  STEP_PLAN_DESIGN_ANCHOR_SECTION="- (missing in step plan)"
+fi
+STEP_PLAN_ORDERED_PLAN_SECTION="$(get_step_plan_section "## Plan (ordered)")"
+if [[ -z "$STEP_PLAN_ORDERED_PLAN_SECTION" ]]; then
+  STEP_PLAN_ORDERED_PLAN_SECTION="- (missing in step plan)"
+fi
+STEP_PLAN_IMPLEMENTATION_NOTES_SECTION="$(get_step_plan_section "## Implementation Notes / Constraints")"
+if [[ -z "$STEP_PLAN_IMPLEMENTATION_NOTES_SECTION" ]]; then
+  STEP_PLAN_IMPLEMENTATION_NOTES_SECTION="- (missing in step plan)"
+fi
+STEP_PLAN_TESTS_SECTION="$(get_step_plan_section "## Tests")"
+if [[ -z "$STEP_PLAN_TESTS_SECTION" ]]; then
+  STEP_PLAN_TESTS_SECTION="- (missing in step plan)"
+fi
+STEP_PLAN_DOCS_SECTION="$(get_step_plan_section "## Docs / Artifacts")"
+if [[ -z "$STEP_PLAN_DOCS_SECTION" ]]; then
+  STEP_PLAN_DOCS_SECTION="- (missing in step plan)"
+fi
+STEP_PLAN_RISKS_SECTION="$(get_step_plan_section "## Risks / Edge Cases")"
+if [[ -z "$STEP_PLAN_RISKS_SECTION" ]]; then
+  STEP_PLAN_RISKS_SECTION="- (missing in step plan)"
+fi
+STEP_PLAN_DECISIONS_NEEDED_SECTION="$(get_step_plan_section "## Decisions Needed")"
+if [[ -z "$STEP_PLAN_DECISIONS_NEEDED_SECTION" ]]; then
+  STEP_PLAN_DECISIONS_NEEDED_SECTION="- (missing in step plan)"
 fi
 
 emit() {
   printf 'Implementation phase for Step %s\n' "$STEP"
-  printf 'First unchecked bullet: %s\n' "$BULLET"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 2-4, Verification gates, Definition of Done, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
-  printf 'Use the step plan and context pack as execution context.\n'
-  printf 'Unchecked implementation bullets currently in scope (before review bullet):\n%s\n' "$IMPLEMENTATION_SCOPE_BULLETS"
+  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 3-5, Verification gates, Definition of Done, Prompt governance) as authoritative process rules.\n'
+  printf 'First rule (execution order, required): within the implementation phase, execute step plan `## Plan (ordered)` end-to-end as one implementation batch for the current step. Use unchecked implementation bullets in `ai/implementation_plan.md` only as tracking boundaries (up to but excluding `Review step implementation.`), and enter Section 5 only after Sections 4 and 4.1 are complete.\n'
+  printf 'Run AI_DEVELOPMENT_PROCESS Section 4 verification gate after implementation is complete for this step (single mandatory end-of-step gate).\n'
+  printf 'Before Section 5, ensure step-plan `## Target Bullets` and current-step non-review implementation bullets represent the same scope; if not, resolve alignment first.\n'
+  printf 'Before Section 5, execute AI_DEVELOPMENT_PROCESS Section 4.1 (Tracking closure): mark non-review implementation bullets `[x]` only for implemented and verified work; if any remain `[ ]`, return to Sections 3-4.\n'
+  printf 'Use step plan `## Target Bullets` only as the Section 5 user-review checklist.\n'
+  printf 'After implementation + verification gate, follow AI_DEVELOPMENT_PROCESS ### 5) User review until user confirms completion - no more comments about implementation from user side.\n'
+  printf 'When user confirms completion of implementation phase, end your final response with this exact last line: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
+  printf 'Use step plan + feature design as primary execution context.\n'
+  printf 'Feature design artifact: %s\n' "$DESIGN_FILE"
+  printf 'Step plan artifact: %s\n' "$STEP_PLAN"
   printf '\n'
   printf 'Context pack\n'
   printf '== estimation summary ==\n'
@@ -422,11 +547,45 @@ emit() {
     printf 'Working tree: clean or unavailable\n'
   fi
   printf '\n'
-  printf '== ai/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
-  printf '%s\n\n' "$STEP_SECTION"
-  printf '== ai/step_plans/step-%s.md ==\n' "$STEP"
-  cat "$STEP_PLAN"
-  printf '\n\n'
+  printf '== ai/implementation_plan.md (tracking summary) ==\n'
+  printf 'Step: %s - %s\n' "$STEP" "$STEP_TITLE"
+  printf 'Path: ai/implementation_plan.md\n\n'
+  printf '== ai/step_plans/step-%s.md (execution + review excerpts) ==\n' "$STEP"
+  printf 'Path: ai/step_plans/step-%s.md\n\n' "$STEP"
+  printf '== ## Design Anchor (scope source of truth) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_DESIGN_ANCHOR_SECTION"
+  printf '== ## Plan (ordered) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_ORDERED_PLAN_SECTION"
+  printf '== Step plan implementation constraints (`## Implementation Notes / Constraints`) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_IMPLEMENTATION_NOTES_SECTION"
+  printf '== Step plan tests (`## Tests`) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_TESTS_SECTION"
+  printf '== Step plan docs/artifacts (`## Docs / Artifacts`) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_DOCS_SECTION"
+  printf '== Step plan risks (`## Risks / Edge Cases`) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_RISKS_SECTION"
+  printf '== Step plan decisions (`## Decisions Needed`) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_DECISIONS_NEEDED_SECTION"
+  printf '== User review checklist only (`## Target Bullets`) ==\n'
+  printf 'Use this checklist in Section 5; do not use it as the primary execution list.\n'
+  printf '%s\n\n' "$STEP_PLAN_TARGET_BULLETS_SECTION"
+  printf '== ai/step_designs/step-%s-design.md ==\n' "$STEP"
+  printf 'Read directly from repo (authoritative design artifact).\n'
+  printf 'Path: ai/step_designs/step-%s-design.md\n\n' "$STEP"
+  printf '== Design-extracted target bullets ==\n'
+  printf '%s\n\n' "$DESIGN_TARGET_BULLETS"
+  printf '== Design-extracted proposal/design details ==\n'
+  printf '%s\n\n' "$DESIGN_PROPOSAL_SECTION"
+  printf '== Design-extracted risks and mitigations ==\n'
+  printf '%s\n\n' "$DESIGN_RISKS_SECTION"
+  printf '== Design-extracted AGENTS constraints ==\n'
+  printf '%s\n\n' "$DESIGN_AGENTS_SECTION"
+  printf '== Design-extracted UR shortlist ==\n'
+  printf '%s\n\n' "$DESIGN_UR_SECTION"
+  printf '== Design-extracted ADR shortlist ==\n'
+  printf '%s\n\n' "$DESIGN_ADR_SECTION"
+  printf '== Design decisions to confirm (must be resolved in plan) ==\n'
+  printf '%s\n\n' "$DESIGN_DECISIONS_SECTION"
   printf '== reqirements_ears.md (linked requirements) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
@@ -434,21 +593,21 @@ emit() {
   printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$OPEN_QUESTIONS_SECTION"
   printf '== ai/decisions.md (Accepted ADRs) ==\n'
-  printf '%s\n\n' "$DECISIONS_SECTION"
-  if [[ -f "$USER_REVIEW" ]]; then
-    printf '== ai/user_review.md ==\n'
-    cat "$USER_REVIEW"
-    printf '\n\n'
-  fi
-  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Sections 2-4) ==\n'
-  if [[ -n "$PROCESS_IMPLEMENTATION_SECTIONS" ]]; then
-    printf '%s\n' "$PROCESS_IMPLEMENTATION_SECTIONS"
-  else
-    cat "$PROCESS"
-  fi
+  printf 'Pointer-only by default: rely on design-extracted ADR shortlist above.\n'
+  printf 'Path: ai/decisions.md\n\n'
+  printf '== ai/user_review.md ==\n'
+  printf 'Pointer-only by default: rely on design-extracted UR shortlist above.\n'
+  printf 'Path: ai/user_review.md\n\n'
+  printf '== ai/AI_DEVELOPMENT_PROCESS.md ==\n'
+  printf 'Read directly from repo; apply Sections 3-5 for this phase.\n'
+  printf 'Path: ai/AI_DEVELOPMENT_PROCESS.md\n'
   if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
     printf '\n\n== AGENTS.md ==\n'
     cat "$AGENTS"
+  else
+    printf '\n\n== AGENTS.md ==\n'
+    printf 'Pointer-only by default; rely on design-extracted AGENTS constraints above.\n'
+    printf 'Path: AGENTS.md\n'
   fi
 }
 

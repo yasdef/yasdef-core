@@ -5,19 +5,13 @@ Date: 2026-02-09
 Planner model/session: gpt-5.2 (planner), session=<fill>
 Execution model/session (intended): gpt-5.3-codex (executor), session=<fill>
 
-## Target Bullet
+## Target Bullets
 - Add idempotency enforcement for market close command. (SP=3) [REQ-12.1]
+- Add integration test coverage for duplicate Idempotency-Key behavior. (SP=1) [REQ-12.1]
 
-## Goal
-- Closing a market is idempotent and cannot double-apply.
-
-## In Scope
-- Command validator enforcement prior to ledger/projection writes
-- Integration test covering duplicate Idempotency-Key behavior
-
-## Out of Scope
-- Refactoring unrelated service/repository code
-- Changing event schemas or stream routing
+## Design Anchor (scope source of truth)
+- Feature design: `ai/step_designs/step-1.6b-design.md`
+- Scope contract lives in design sections: `## Goal`, `## In Scope`, `## Out of Scope`
 
 ## Requirement Tags
 - REQ-12.1

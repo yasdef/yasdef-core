@@ -102,7 +102,7 @@ The AI-dev process runs in three phases per step:
 
 ### What's done + plans
 
-V-0.0.1 (current)
+V-0.0.1
 
 1. what's added:
 - main architecture and concept findings
@@ -114,11 +114,18 @@ V-0.0.1 (current)
 - each finished step of plan has recorded metrics (including token counts) in history.md
 - each phase can be run separately (manually)
 
+V-0.0.2 (current)
+
+1. whats added
+- new design step
+- phase scripts improved significantly
+
 2. known problems/to-do's:
 - only codex cli supported
 - you need to manually ctrl-c from codex session in the end of each phase (planning/implementation/review)
 - review step creates relatively small improvement/tech-debt steps (5-8 SP) which is not efficient from token management perspective
 - should we distinct tech-debt from blockers - place blockers to certain steps and manage tech debt some other way?
+- incorrect SP countion on post_review
 
 3. main plans
 - security proposals (see below)
