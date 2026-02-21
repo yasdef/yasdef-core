@@ -22,7 +22,7 @@ This approach can be expressed in a few sentences:
 1. Copy-paste the `ai/` folder to the root of your project.
 
 2. Make the bash scripts in `ai/scripts` executable:
-  `chmod +x ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_review.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh`
+  `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_review.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh`
 
 3. You need to provide `implementation_plan.md` in certain format, it should be in root of your project
 
@@ -50,7 +50,7 @@ This approach can be expressed in a few sentences:
 
 - **Worker:** Workers are the actual code implementers. They take the implementation plan as input and split it into reasonable steps. Each step is implemented following a strict AI-dev process. The main goal is to guarantee high code quality while reducing manual coding burden for the operator. This shifts the human operator's role from coding to making complex technical decisions and ensuring architectural quality.
 
-- **AI-dev process:** The AI_DEVELOPMENT_PROCESS.md is a set of rules for Workers and a strict sequence of gates that involve the human operator in some loops. The process has three main phases: planning, implementation, and review. We do not share ai-context between these phases. Each phase can run in a separate AI-agent session. We run phase-scripts to create a stable, comprehensive prompt from the process artifacts and pass it to the chosen model.
+- **AI-dev process:** The AI_DEVELOPMENT_PROCESS.md is a set of rules for Workers and a strict sequence of gates that involve the human operator in some loops. The process flow is: design -> plan -> implementation + user review -> post-step audit and review (AI) -> post-review (non-AI). We do not share ai-context between model-driven phases. We run phase-scripts to create a stable, comprehensive prompt from the process artifacts and pass it to the chosen model.
 
 - **Phase-script behavior:** A phase-script managed by orchestrator, creates prompt, then model (via pipe orchestrator -> cli) consumes the script's result as a prompt. Specifically, orchestrator runs a coding agent (cli) with parameters like model, reasoning effort, and a request to run a script. Script-driven prompt generation make input prompt stable and guaranty it fils up context with correct set of system files. 
 
@@ -63,9 +63,9 @@ This approach can be expressed in a few sentences:
   - `AI_DEVELOPMENT_PROCESS.md` defines the generic workflow (phases, gates, artifacts, per-step loop). It is project-agnostic and never includes project-specific details.
   - `AGENTS.md` defines project-specific constraints: build commands, test runners, API specs, validation rules, branch strategy, tool paths, idempotency expectations. It never discusses the AI-dev process itself.
   - Both files are required; they are kept independent so that workflow improvements do not leak into project configuration, and vice versa.
-- **Phase isolation**: Each phase (planning, implementation, review) is executed in a separate AI-agent session with a distinct prompt. Context is never shared between phases (e.g., planning artifacts are frozen when implementation starts). This ensures each phase uses the most suitable model and reasoning effort.
+- **Phase isolation**: Each model-driven phase (design, planning, implementation + user review, post-step audit/review) is executed in a separate AI-agent session with a distinct prompt. Context is never shared between phases (e.g., planning artifacts are frozen when implementation starts). Post-review is a non-AI phase. This ensures each phase uses the most suitable model and reasoning effort.
 - **Determinism over speed**: Every decision, blocker, and new finding is recorded in durable artifacts (`decisions.md`, `blocker_log.md`, `open_questions.md`, `step_review_results/`). This enables reproducibility and allows the project to continue without AI assistance at any point. Since technical decisions records in structured format to further retro with team or/and with AI
-- **Human in the loop**: Complex technical decisions and architectural choices are not made by the Worker. Workers must explicitly ask the user for decisions before proceeding; user feedback during review is incorporated as generalizable rules in `user_review.md` to improve future iterations. 
+- **Human in the loop**: Complex technical decisions and architectural choices are not made by the Worker. Workers must explicitly ask the user for decisions before proceeding; user feedback during implementation + user review is incorporated as generalizable rules in `user_review.md` to improve future iterations. 
 
 ### Main process artifacts and responsibilities
 
@@ -73,6 +73,7 @@ Each artifact below serves a specific role in the AI-dev process:
 
 - **requirements_ears.md**: Source of truth for behavioral requirements and acceptance criteria (EARS format).
 - **implementation_plan.md**: Ordered execution plan at the step level; tracks all tasks and subtasks with story point estimates. Work happens bullet-by-bullet. Updated dynamically as the Coordinator refactors the graph.
+- **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
 - **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include scope, preconditions, architecture, risks, and test strategy.
 - **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
 - **open_questions.md**: Non-blocking questions tracked per step, reviewed at step planning start. Removed once answered.
@@ -83,22 +84,33 @@ Each artifact below serves a specific role in the AI-dev process:
 
 ### Phases inputs and outputs
 
-The AI-dev process runs in three phases per step:
+The AI-dev process runs in five phases per step:
 
-**Phase 1: Planning**
+**Phase 1: Design**
+- Input: Current `implementation_plan.md`, `requirements_ears.md`, `decisions.md`, existing architecture/context docs.
+- Output: `ai/designs/feature-<N>.md` with feature-level design decisions and constraints.
+- Gate: Design assumptions and unknowns are captured before planning starts.
+
+**Phase 2: Planning**
 - Input: Current `implementation_plan.md`, `requirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
+- Input (additional): `ai/designs/feature-<N>.md`.
 - Output: `ai/step_plans/step-<N>.md` with full scope, architecture, test strategy, and execution command for the implementation phase.
 - Gate: All open questions must be answered before planning completion.
 
-**Phase 2: Implementation**
-- Input: Step plan (`ai/step_plans/step-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
+**Phase 3: Implementation + User Review**
+- Input: Step plan (`ai/step_plans/step-<N>.md`), design (`ai/designs/feature-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
 - Output: Implemented changes on a local topic branch (`step-<N>-implementation`), updated tests, docs, and planning artifacts (`blocker_log.md`, `open_questions.md`, `decisions.md`).
 - Gate: All non-review bullets must be `[x]` before user review; all tests must pass.
 
-**Phase 3: Review & Audit**
-- Input: Implemented changes from Phase 2 (git changes), user feedback, step plan.
+**Phase 4: Post-Step Audit & Review (AI)**
+- Input: Implemented changes from Phase 3 (git changes), user feedback, step plan, design.
 - Output: `ai/step_review_results/review_result-<N>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-review`). No push or merge to `main`/`master`.
 - Gate: Every finding must have an explicit disposition; all accepted work must be captured as follow-up steps or questions.
+
+**Phase 5: Post-Review**
+- Input: `ai/step_review_results/review_result-<N>.md`, updated plan artifacts, review branch state.
+- Output: Post-review updates (for example metrics/history updates and follow-up step alignment), performed without AI model execution.
+- Gate: Review dispositions are reflected in planning artifacts before next step starts.
 
 ### What's done + plans
 
@@ -109,7 +121,7 @@ V-0.0.1
 - based functionality in form of bash scripts
 - templates and golden examples for all artifacts
 - orchestrator.sh, so all steps run semi-automatically from 1 command
-- orchestrator runs planing|implementation|review - each in it's own session
+- orchestrator runs phase sessions with isolated context
 - different model and reasonong depth for each phase (/setup/models.sh)
 - each finished step of plan has recorded metrics (including token counts) in history.md
 - each phase can be run separately (manually)
@@ -122,7 +134,7 @@ V-0.0.2 (current)
 
 2. known problems/to-do's:
 - only codex cli supported
-- you need to manually ctrl-c from codex session in the end of each phase (planning/implementation/review)
+- you need to manually ctrl-c from codex session in the end of each model-driven phase
 - review step creates relatively small improvement/tech-debt steps (5-8 SP) which is not efficient from token management perspective
 - should we distinct tech-debt from blockers - place blockers to certain steps and manage tech debt some other way?
 - incorrect SP countion on post_review
