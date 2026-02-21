@@ -15,9 +15,9 @@ This approach can be expressed in a few sentences:
 ### Quick start
 
 0. Read this carefully:
-⚠️ This is pre-alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project!
-⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that.
-✅ You need the Codex CLI (https://chatgpt.com/codex) available to run this framework, or you can change the model in `ai/setup/models.md` but scripts was not tested with another CLI's
+- ⚠️ This is pre-alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project!
+- ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that.
+- ✅ You need the Codex CLI (https://chatgpt.com/codex) available to run this framework, or you can change the model in `ai/setup/models.md` but scripts was not tested with another CLI's
 
 1. Copy-paste the `ai/` folder to the root of your project.
 
