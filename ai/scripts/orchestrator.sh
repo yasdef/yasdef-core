@@ -43,10 +43,20 @@ REQUESTED_PHASES=()
 PLAN_ARGS=()
 RAN_REVIEW=0
 RAN_POST_REVIEW=0
+RESUME_STEP=""
+RESUME_MODE=0
+EXPLICIT_PHASE_INPUT=0
+RESUME_START_PHASE=""
+RESUME_ALL_DONE=0
+PHASE_EVAL_PHASES=()
+PHASE_EVAL_STATES=()
+PHASE_EVAL_DETAILS=()
+IMPLEMENTATION_PLAN_FILE="$ROOT/ai/implementation_plan.md"
+CANONICAL_PHASES=(design planning implementation review post_review)
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|review|post_review] [--dry-run] [--help] [-- <ai_plan.sh args>]
+Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|review|post_review] [--resume <step>] [--dry-run] [--help] [-- <ai_plan.sh args>]
 
 Default behavior:
   - Runs all phases in ai/setup/models.md, in order, then runs post_review.
@@ -55,6 +65,8 @@ Default behavior:
   - implementation runs ai/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command (includes user review per AI_DEVELOPMENT_PROCESS.md section 5).
   - review runs ai/scripts/ai_review.sh for the latest step plan (post-step audit prompt), then runs the review model command.
   - post_review runs ai/scripts/post_review.sh for the latest step plan and appends post-review metrics to ai/history.md.
+  - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
+  - --resume is mutually exclusive with explicit --phase.
   - When running interactively, asks for confirmation before planning/implementation/review.
   - Writes per-phase logs to ai/tmp/orchestrator_logs/<project>-<phase>.latest.log (overwritten each run; safe to delete).
   - post_review consolidates per-step token usage and metrics into ai/history.md.
@@ -66,6 +78,8 @@ Examples:
   ai/scripts/orchestrator.sh --phase implementation
   ai/scripts/orchestrator.sh --phase review
   ai/scripts/orchestrator.sh --phase post_review
+  ai/scripts/orchestrator.sh --resume 1.3
+  ai/scripts/orchestrator.sh --resume 1.3 --dry-run
   ai/scripts/orchestrator.sh --dry-run
 EOF
 }
@@ -721,11 +735,20 @@ build_model_prompt_arg() {
 run_implementation_phase() {
   load_model_config "implementation"
 
-  local latest_plan
-  latest_plan="$(get_preferred_step_plan)"
+  local latest_plan step prompt_out
+  if [[ -n "$RESUME_STEP" ]]; then
+    step="$RESUME_STEP"
+    latest_plan="$ROOT/ai/step_plans/step-$step.md"
+  else
+    latest_plan="$(get_preferred_step_plan)"
+    step="$(get_step_from_plan_path "$latest_plan")"
+  fi
 
-  local step prompt_out
-  step="$(get_step_from_plan_path "$latest_plan")"
+  if [[ ! -f "$latest_plan" ]]; then
+    echo "Step plan not found: $latest_plan" >&2
+    exit 1
+  fi
+
   if [[ -z "$step" ]]; then
     echo "Could not determine step from plan file: $latest_plan" >&2
     exit 1
@@ -771,8 +794,19 @@ run_review_phase() {
   load_model_config "review"
 
   local latest_plan step prompt_out
-  latest_plan="$(get_preferred_step_plan)"
-  step="$(get_step_from_plan_path "$latest_plan")"
+  if [[ -n "$RESUME_STEP" ]]; then
+    step="$RESUME_STEP"
+    latest_plan="$ROOT/ai/step_plans/step-$step.md"
+  else
+    latest_plan="$(get_preferred_step_plan)"
+    step="$(get_step_from_plan_path "$latest_plan")"
+  fi
+
+  if [[ ! -f "$latest_plan" ]]; then
+    echo "Step plan not found: $latest_plan" >&2
+    exit 1
+  fi
+
   if [[ -z "$step" ]]; then
     echo "Could not determine step from plan file: $latest_plan" >&2
     exit 1
@@ -815,8 +849,19 @@ run_review_phase() {
 
 run_post_review_phase() {
   local latest_plan step
-  latest_plan="$(get_preferred_step_plan)"
-  step="$(get_step_from_plan_path "$latest_plan")"
+  if [[ -n "$RESUME_STEP" ]]; then
+    step="$RESUME_STEP"
+    latest_plan="$ROOT/ai/step_plans/step-$step.md"
+  else
+    latest_plan="$(get_preferred_step_plan)"
+    step="$(get_step_from_plan_path "$latest_plan")"
+  fi
+
+  if [[ ! -f "$latest_plan" ]]; then
+    echo "Step plan not found: $latest_plan" >&2
+    exit 1
+  fi
+
   if [[ -z "$step" ]]; then
     echo "Could not determine step from plan file: $latest_plan" >&2
     exit 1
@@ -878,6 +923,374 @@ array_contains_ci() {
   return 1
 }
 
+step_exists_in_implementation_plan() {
+  local step="$1"
+  if [[ ! -f "$IMPLEMENTATION_PLAN_FILE" ]]; then
+    return 1
+  fi
+
+  awk -v target="$step" '
+    /^### Step / {
+      line = $0
+      sub(/^### Step /, "", line)
+      split(line, parts, " ")
+      if (parts[1] == target) {
+        found = 1
+        exit
+      }
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$IMPLEMENTATION_PLAN_FILE"
+}
+
+find_explicit_step_arg() {
+  local args=("$@")
+  local i=0
+  while [[ $i -lt ${#args[@]} ]]; do
+    case "${args[$i]}" in
+      --step)
+        if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+          printf '%s' "${args[$((i + 1))]}"
+          return 0
+        fi
+        ;;
+      --step=*)
+        printf '%s' "${args[$i]#--step=}"
+        return 0
+        ;;
+      --)
+        break
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  return 1
+}
+
+ensure_resume_step_in_plan_args() {
+  local explicit_step=""
+  explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
+  if [[ -n "$explicit_step" && "$explicit_step" != "$RESUME_STEP" ]]; then
+    die "Conflicting step arguments: --resume $RESUME_STEP and --step $explicit_step"
+  fi
+
+  if [[ -z "$explicit_step" ]]; then
+    PLAN_ARGS+=(--step "$RESUME_STEP")
+  fi
+}
+
+phase_eval_set() {
+  local phase="$1"
+  local state="$2"
+  local detail="$3"
+  PHASE_EVAL_PHASES+=("$phase")
+  PHASE_EVAL_STATES+=("$state")
+  PHASE_EVAL_DETAILS+=("$detail")
+}
+
+phase_eval_step_bullet_counts() {
+  local step="$1"
+  awk -v target="$step" '
+    BEGIN {
+      in_step=0
+      have_plan=0
+      plan_checked=0
+      have_review=0
+      review_checked=0
+      impl_total=0
+      impl_checked=0
+    }
+    /^### Step / {
+      line = $0
+      sub(/^### Step /, "", line)
+      split(line, parts, " ")
+      in_step = (parts[1] == target)
+      next
+    }
+    in_step && /^### Step / { in_step=0 }
+    in_step && /^- \[[ xX]\]/ {
+      raw = $0
+      checked = (raw ~ /^- \[[xX]\]/)
+      text = raw
+      sub(/^- \[[ xX]\][[:space:]]*/, "", text)
+      text_l = tolower(text)
+
+      if (text_l ~ /^plan and discuss the step([[:space:]\.]|$)/) {
+        have_plan=1
+        if (checked) plan_checked=1
+        next
+      }
+      if (text_l ~ /^review step implementation([[:space:]\.]|$)/) {
+        have_review=1
+        if (checked) review_checked=1
+        next
+      }
+
+      impl_total++
+      if (checked) impl_checked++
+    }
+    END {
+      printf "%d|%d|%d|%d|%d|%d", have_plan, plan_checked, have_review, review_checked, impl_total, impl_checked
+    }
+  ' "$IMPLEMENTATION_PLAN_FILE"
+}
+
+check_required_sections() {
+  local file="$1"
+  shift
+  local required=("$@")
+  local missing=()
+  local section
+
+  for section in "${required[@]}"; do
+    if ! awk -v target="$section" '
+      /^##[[:space:]]+/ {
+        line = $0
+        sub(/^##[[:space:]]+/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        if (line == target) { found = 1; exit }
+      }
+      END { exit(found ? 0 : 1) }
+    ' "$file"; then
+      missing+=("$section")
+    fi
+  done
+
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    printf 'ok'
+  else
+    printf '%s' "${missing[*]}"
+  fi
+}
+
+evaluate_design_phase() {
+  local step="$1"
+  local design_file="$ROOT/ai/step_designs/step-$step-design.md"
+  if [[ ! -f "$design_file" ]]; then
+    phase_eval_set "design" "incomplete" "missing ai/step_designs/step-$step-design.md"
+    return 0
+  fi
+
+  local missing_sections=""
+  missing_sections="$(check_required_sections "$design_file" "Goal" "In Scope" "Out of Scope")"
+  if [[ "$missing_sections" != "ok" ]]; then
+    phase_eval_set "design" "invalid" "missing required sections: $missing_sections"
+    return 0
+  fi
+
+  phase_eval_set "design" "complete" "design artifact present with required sections"
+}
+
+evaluate_planning_phase() {
+  local step="$1"
+  local step_plan="$ROOT/ai/step_plans/step-$step.md"
+  local counts="$2"
+  local have_plan plan_checked
+
+  IFS='|' read -r have_plan plan_checked _ <<<"$counts"
+
+  if [[ ! -f "$step_plan" ]]; then
+    phase_eval_set "planning" "incomplete" "missing ai/step_plans/step-$step.md"
+    return 0
+  fi
+
+  local missing_sections=""
+  missing_sections="$(check_required_sections "$step_plan" "Target Bullets" "Plan (ordered)")"
+  if [[ "$missing_sections" != "ok" ]]; then
+    phase_eval_set "planning" "invalid" "step plan missing required sections: $missing_sections"
+    return 0
+  fi
+
+  if [[ "$have_plan" -eq 0 ]]; then
+    phase_eval_set "planning" "invalid" "implementation plan missing 'Plan and discuss the step' bullet"
+    return 0
+  fi
+
+  if [[ "$plan_checked" -eq 1 ]]; then
+    phase_eval_set "planning" "complete" "step plan present and planning gate is [x]"
+  else
+    phase_eval_set "planning" "incomplete" "planning gate not checked in ai/implementation_plan.md"
+  fi
+}
+
+evaluate_implementation_phase() {
+  local counts="$1"
+  local impl_total impl_checked
+
+  IFS='|' read -r _ _ _ _ impl_total impl_checked <<<"$counts"
+
+  if [[ "$impl_total" -eq 0 ]]; then
+    phase_eval_set "implementation" "invalid" "no implementation bullets found for step"
+    return 0
+  fi
+
+  if [[ "$impl_checked" -eq "$impl_total" ]]; then
+    phase_eval_set "implementation" "complete" "all implementation bullets are [x]"
+    return 0
+  fi
+
+  if [[ "$impl_checked" -eq 0 ]]; then
+    phase_eval_set "implementation" "incomplete" "no implementation bullets are checked"
+    return 0
+  fi
+
+  phase_eval_set "implementation" "invalid" "partial implementation markers ($impl_checked/$impl_total checked)"
+}
+
+evaluate_review_phase() {
+  local step="$1"
+  local review_file="$ROOT/ai/step_review_results/review_result-$step.md"
+  if [[ ! -f "$review_file" ]]; then
+    phase_eval_set "review" "incomplete" "missing ai/step_review_results/review_result-$step.md"
+    return 0
+  fi
+
+  if ! grep -Eq '^##[[:space:]]+Disposition \(per issue\)' "$review_file"; then
+    phase_eval_set "review" "invalid" "missing '## Disposition (per issue)' section"
+    return 0
+  fi
+
+  local issues_count dispositions_count
+  issues_count="$(awk '
+    BEGIN { in_issue=0; c=0 }
+    /^## (Critical|High|Medium|Low)[[:space:]]*$/ { in_issue=1; next }
+    /^## / { in_issue=0; next }
+    in_issue && /^- / {
+      if ($0 !~ /^- \(none\)/) c++
+    }
+    END { print c+0 }
+  ' "$review_file")"
+  dispositions_count="$(grep -Ec '^\s*-\s+\*\*(Accepted|Rejected)\*\*:' "$review_file" || true)"
+
+  if [[ "$issues_count" -gt 0 && "$dispositions_count" -lt "$issues_count" ]]; then
+    phase_eval_set "review" "invalid" "review dispositions incomplete ($dispositions_count/$issues_count)"
+    return 0
+  fi
+
+  phase_eval_set "review" "complete" "review artifact present with required disposition gate"
+}
+
+evaluate_post_review_phase() {
+  local step="$1"
+  local counts="$2"
+  local review_checked
+  IFS='|' read -r _ _ _ review_checked _ _ <<<"$counts"
+
+  if [[ "$review_checked" -ne 1 ]]; then
+    phase_eval_set "post_review" "incomplete" "review gate 'Review step implementation' is not [x]"
+    return 0
+  fi
+
+  local history_file="$ROOT/ai/history.md"
+  if [[ ! -f "$history_file" ]]; then
+    phase_eval_set "post_review" "incomplete" "missing ai/history.md"
+    return 0
+  fi
+
+  if ! grep -Eq "^- Step:[[:space:]]+$step([[:space:]]|$)" "$history_file"; then
+    phase_eval_set "post_review" "incomplete" "no history record found for step $step"
+    return 0
+  fi
+
+  phase_eval_set "post_review" "complete" "review gate closed and history contains step record"
+}
+
+evaluate_resume_phase_states() {
+  local step="$1"
+  PHASE_EVAL_PHASES=()
+  PHASE_EVAL_STATES=()
+  PHASE_EVAL_DETAILS=()
+
+  if [[ ! -f "$IMPLEMENTATION_PLAN_FILE" ]]; then
+    die "Required file not found: $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")"
+  fi
+
+  local counts=""
+  counts="$(phase_eval_step_bullet_counts "$step")"
+  evaluate_design_phase "$step"
+  evaluate_planning_phase "$step" "$counts"
+  evaluate_implementation_phase "$counts"
+  evaluate_review_phase "$step"
+  evaluate_post_review_phase "$step" "$counts"
+}
+
+resolve_resume_start_phase() {
+  local i=0
+  RESUME_START_PHASE=""
+  RESUME_ALL_DONE=1
+
+  while [[ $i -lt ${#PHASE_EVAL_PHASES[@]} ]]; do
+    if [[ "${PHASE_EVAL_STATES[$i]}" != "complete" ]]; then
+      RESUME_START_PHASE="${PHASE_EVAL_PHASES[$i]}"
+      RESUME_ALL_DONE=0
+      return 0
+    fi
+    i=$((i + 1))
+  done
+}
+
+build_resume_requested_phases() {
+  REQUESTED_PHASES=()
+  if [[ "$RESUME_ALL_DONE" -eq 1 ]]; then
+    return 0
+  fi
+
+  local include=0
+  local phase
+  for phase in "${CANONICAL_PHASES[@]}"; do
+    if [[ "$phase" == "$RESUME_START_PHASE" ]]; then
+      include=1
+    fi
+    if [[ "$include" -eq 1 ]]; then
+      REQUESTED_PHASES+=("$phase")
+    fi
+  done
+}
+
+print_resume_dry_run_report() {
+  local step="$1"
+  echo "Resume dry-run for step $step"
+  local i=0
+  while [[ $i -lt ${#PHASE_EVAL_PHASES[@]} ]]; do
+    printf '  - %s: %s (%s)\n' \
+      "${PHASE_EVAL_PHASES[$i]}" \
+      "${PHASE_EVAL_STATES[$i]}" \
+      "${PHASE_EVAL_DETAILS[$i]}"
+    i=$((i + 1))
+  done
+
+  if [[ "$RESUME_ALL_DONE" -eq 1 ]]; then
+    echo "Selected start phase: none (all phases complete)"
+    echo "Skipped phases: design, planning, implementation, review, post_review"
+    echo "Executed phases: (none)"
+    return 0
+  fi
+
+  echo "Selected start phase: $RESUME_START_PHASE"
+
+  local skipped=()
+  local executed=()
+  local include=0
+  local phase
+  for phase in "${CANONICAL_PHASES[@]}"; do
+    if [[ "$phase" == "$RESUME_START_PHASE" ]]; then
+      include=1
+    fi
+    if [[ "$include" -eq 1 ]]; then
+      executed+=("$phase")
+    else
+      skipped+=("$phase")
+    fi
+  done
+
+  if [[ ${#skipped[@]} -eq 0 ]]; then
+    echo "Skipped phases: (none)"
+  else
+    echo "Skipped phases: ${skipped[*]}"
+  fi
+  echo "Executed phases: ${executed[*]}"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --phase)
@@ -887,7 +1300,23 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       REQUESTED_PHASES+=("$2")
+      EXPLICIT_PHASE_INPUT=1
       shift 2
+      ;;
+    --resume)
+      if [[ -z "${2:-}" ]]; then
+        echo "--resume requires a value." >&2
+        usage >&2
+        exit 1
+      fi
+      RESUME_STEP="$2"
+      RESUME_MODE=1
+      shift 2
+      ;;
+    --resume=*)
+      RESUME_STEP="${1#--resume=}"
+      RESUME_MODE=1
+      shift
       ;;
     --dry-run)
       DRY_RUN=1
@@ -911,7 +1340,28 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ${#REQUESTED_PHASES[@]} -eq 0 ]]; then
+if [[ "$RESUME_MODE" -eq 1 && "$EXPLICIT_PHASE_INPUT" -eq 1 ]]; then
+  die "Invalid arguments: --resume cannot be combined with explicit --phase selection."
+fi
+
+if [[ "$RESUME_MODE" -eq 1 ]]; then
+  if [[ ! -f "$IMPLEMENTATION_PLAN_FILE" ]]; then
+    die "Required file not found: $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")"
+  fi
+  if ! step_exists_in_implementation_plan "$RESUME_STEP"; then
+    die "Unknown step '$RESUME_STEP' in $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")."
+  fi
+
+  ensure_resume_step_in_plan_args
+  evaluate_resume_phase_states "$RESUME_STEP"
+  resolve_resume_start_phase
+  build_resume_requested_phases
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    print_resume_dry_run_report "$RESUME_STEP"
+  fi
+fi
+
+if [[ "$RESUME_MODE" -eq 0 && ${#REQUESTED_PHASES[@]} -eq 0 ]]; then
   while IFS= read -r phase; do
     [[ -z "$phase" ]] && continue
     REQUESTED_PHASES+=("$phase")
@@ -922,6 +1372,9 @@ if [[ ${#REQUESTED_PHASES[@]} -eq 0 ]]; then
 fi
 
 if [[ ${#REQUESTED_PHASES[@]} -eq 0 ]]; then
+  if [[ "$RESUME_MODE" -eq 1 && "$RESUME_ALL_DONE" -eq 1 ]]; then
+    exit 0
+  fi
   die "No phases found in $(repo_relpath "$MODELS")"
 fi
 

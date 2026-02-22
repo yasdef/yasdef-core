@@ -32,6 +32,10 @@ This approach can be expressed in a few sentences:
 
 6. Run the orchestrator:
   `bash ai/scripts/orchestrator.sh` and follow the instructions.
+  To recover interrupted work for a specific step deterministically:
+  `bash ai/scripts/orchestrator.sh --resume <step>`
+  Preview planned resume behavior without executing:
+  `bash ai/scripts/orchestrator.sh --resume <step> --dry-run`
 
 7. OPTIONAL — allow your AI CLI to work with git (except merge to `main`/`master`) to avoid repeated permission prompts.
   `bash ai/scripts/orchestrator.sh --dry-run`
@@ -55,6 +59,9 @@ This approach can be expressed in a few sentences:
 - **Phase-script behavior:** A phase-script managed by orchestrator, creates prompt, then model (via pipe orchestrator -> cli) consumes the script's result as a prompt. Specifically, orchestrator runs a coding agent (cli) with parameters like model, reasoning effort, and a request to run a script. Script-driven prompt generation make input prompt stable and guaranty it fils up context with correct set of system files. 
 
 - **Orchestration:** Since each phase starts as a terminal command, we can orchestrate the whole process from top-level script `ai/scripts/orchestrator.sh`.
+  - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> review -> post_review`) and starts at the first unfinished phase.
+  - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
+  - Safety rule: `--resume` cannot be combined with explicit `--phase`.
 
 ### AI-dev process main rules
 
