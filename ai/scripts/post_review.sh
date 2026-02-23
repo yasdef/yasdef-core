@@ -311,7 +311,6 @@ extract_token_usage_from_log() {
   local candidates=(
     "$ROOT/ai/logs/${PROJECT}-${phase}-latest-log"
     "$ROOT/ai/logs/${PROJECT}-${phase}-${STEP_NUM}-log"
-    "$ROOT/ai/tmp/orchestrator_logs/${PROJECT}-${phase}.latest.log"
   )
   local log_path line
 
