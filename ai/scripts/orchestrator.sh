@@ -1107,13 +1107,19 @@ phase_eval_step_bullet_counts() {
       text = raw
       sub(/^- \[[ xX]\][[:space:]]*/, "", text)
       text_l = tolower(text)
+      gate_text = text_l
 
-      if (text_l ~ /^plan and discuss the step([[:space:]\.]|$)/) {
+      # Allow gate bullets to be prefixed with tags like [REQ-1].
+      while (gate_text ~ /^\[[^]]+\][[:space:]]*/) {
+        sub(/^\[[^]]+\][[:space:]]*/, "", gate_text)
+      }
+
+      if (gate_text ~ /^plan and discuss the step([[:space:]\.]|$)/) {
         have_plan=1
         if (checked) plan_checked=1
         next
       }
-      if (text_l ~ /^review step implementation([[:space:]\.]|$)/) {
+      if (gate_text ~ /^review step implementation([[:space:]\.]|$)/) {
         have_review=1
         if (checked) review_checked=1
         next

@@ -93,6 +93,7 @@ write_impl_plan() {
   local impl_a_checked="$3"
   local impl_b_checked="$4"
   local review_checked="$5"
+  local gate_prefix="${6:-}"
 
   local plan_box=" "
   local impl_a_box=" "
@@ -107,10 +108,10 @@ write_impl_plan() {
   cat >"$repo_dir/ai/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
 Est. step total: 5 SP
-- [$plan_box] Plan and discuss the step (SP=1)
+- [$plan_box] ${gate_prefix}Plan and discuss the step (SP=1)
 - [$impl_a_box] Implement part A (SP=2)
 - [$impl_b_box] Implement part B (SP=1)
-- [$review_box] Review step implementation (SP=1)
+- [$review_box] ${gate_prefix}Review step implementation (SP=1)
 EOF
 }
 
@@ -146,6 +147,20 @@ test_resume_starts_at_review() {
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1"
   write_impl_plan "$repo_dir" 1 1 1 0
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "review: incomplete (missing ai/step_review_results/review_result-1.1.md)"
+  assert_contains "$out" "Selected start phase: review"
+  assert_contains "$out" "Executed phases: review post_review"
+}
+
+test_resume_starts_at_review_with_prefixed_gates() {
+  local repo_dir="$TMP_ROOT/repo-review-prefixed-gates"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0 "[REQ-1] "
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
@@ -209,6 +224,7 @@ test_dry_run_is_deterministic() {
 test_resume_starts_at_planning
 test_partial_markers_rerun_implementation
 test_resume_starts_at_review
+test_resume_starts_at_review_with_prefixed_gates
 test_cli_validation
 test_missing_step_error
 test_dry_run_is_deterministic
