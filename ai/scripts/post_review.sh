@@ -308,16 +308,27 @@ EOF
 
 extract_token_usage_from_log() {
   local phase="$1"
-  local log_path="$ROOT/ai/tmp/orchestrator_logs/${PROJECT}-${phase}.latest.log"
-  if [[ ! -f "$log_path" ]]; then
+  local candidates=(
+    "$ROOT/ai/logs/${PROJECT}-${phase}-latest-log"
+    "$ROOT/ai/logs/${PROJECT}-${phase}-${STEP_NUM}-log"
+    "$ROOT/ai/tmp/orchestrator_logs/${PROJECT}-${phase}.latest.log"
+  )
+  local log_path line
+
+  for log_path in "${candidates[@]}"; do
+    if [[ ! -f "$log_path" ]]; then
+      continue
+    fi
+    line="$(grep -aE 'Token usage:' "$log_path" 2>/dev/null | tail -n 1 || true)"
+    if [[ -n "$line" ]]; then
+      printf '%s' "${line#*Token usage:}" | tr -d '\r' | sed -E 's/^[[:space:]]+//'
+      return 0
+    fi
+  done
+
+  if [[ -z "${line:-}" ]]; then
     return 0
   fi
-  local line
-  line="$(grep -aE 'Token usage:' "$log_path" 2>/dev/null | tail -n 1 || true)"
-  if [[ -z "$line" ]]; then
-    return 0
-  fi
-  printf '%s' "${line#*Token usage:}" | tr -d '\r' | sed -E 's/^[[:space:]]+//'
 }
 
 extract_phase_usage_from_history() {

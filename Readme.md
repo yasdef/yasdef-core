@@ -32,6 +32,8 @@ This approach can be expressed in a few sentences:
 
 6. Run the orchestrator:
   `bash ai/scripts/orchestrator.sh` and follow the instructions.
+  Use debug mode to keep per-step artifacts:
+  `bash ai/scripts/orchestrator.sh --debug --phase design -- --step 1.3`
   To recover interrupted work for a specific step deterministically:
   `bash ai/scripts/orchestrator.sh --resume <step>`
   Preview planned resume behavior without executing:
@@ -62,6 +64,9 @@ This approach can be expressed in a few sentences:
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> review -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
   - Safety rule: `--resume` cannot be combined with explicit `--phase`.
+  - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`ai/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
+  - Default mode (without `--debug`): orchestrator writes only latest-per-phase artifacts (`ai/logs/<project>-<phase>-latest-log` and `ai/prompts/<phase>_prompts/<project>-latest-<phase>-prompt.txt`), overwriting those latest files each run.
+  - Non-debug safeguard: previously generated step-specific prompt files are not modified when `--debug` is off.
 
 ### AI-dev process main rules
 

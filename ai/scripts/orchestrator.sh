@@ -39,6 +39,7 @@ USER_REVIEW_FILE="$ROOT/ai/user_review.md"
 cd "$ROOT"
 
 DRY_RUN=0
+DEBUG_MODE=0
 REQUESTED_PHASES=()
 PLAN_ARGS=()
 RAN_REVIEW=0
@@ -56,7 +57,7 @@ CANONICAL_PHASES=(design planning implementation review post_review)
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|review|post_review] [--resume <step>] [--dry-run] [--help] [-- <ai_plan.sh args>]
+Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|review|post_review] [--resume <step>] [--debug] [--dry-run] [--help] [-- <ai_plan.sh args>]
 
 Default behavior:
   - Runs all phases in ai/setup/models.md, in order, then runs post_review.
@@ -67,8 +68,10 @@ Default behavior:
   - post_review runs ai/scripts/post_review.sh for the latest step plan and appends post-review metrics to ai/history.md.
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
   - --resume is mutually exclusive with explicit --phase.
+  - --debug enables per-step/per-phase artifact files for logs and prompts.
+  - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
   - When running interactively, asks for confirmation before planning/implementation/review.
-  - Writes per-phase logs to ai/tmp/orchestrator_logs/<project>-<phase>.latest.log (overwritten each run; safe to delete).
+  - Writes per-phase logs to ai/logs/<project>-<phase>-latest-log (or step-specific names with --debug).
   - post_review consolidates per-step token usage and metrics into ai/history.md.
 
 Examples:
@@ -80,6 +83,7 @@ Examples:
   ai/scripts/orchestrator.sh --phase post_review
   ai/scripts/orchestrator.sh --resume 1.3
   ai/scripts/orchestrator.sh --resume 1.3 --dry-run
+  ai/scripts/orchestrator.sh --debug --phase design -- --step 1.3
   ai/scripts/orchestrator.sh --dry-run
 EOF
 }
@@ -162,7 +166,7 @@ ensure_ai_context_files() {
   ensure_dir_writable "$ROOT/ai/step_designs"
   ensure_dir_writable "$ROOT/ai/step_plans"
   ensure_dir_writable "$ROOT/ai/step_review_results"
-  ensure_dir_writable "$ROOT/ai/tmp/orchestrator_logs"
+  ensure_dir_writable "$ROOT/ai/logs"
   ensure_dir_writable "$ROOT/ai/prompts/design_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/plan_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/impl_prompts"
@@ -258,14 +262,102 @@ append_token_usage_history() {
   } >>"$HISTORY_FILE"
 }
 
+normalize_phase_token() {
+  local phase="$1"
+  printf '%s' "$phase" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+normalize_step_token() {
+  local step="${1:-}"
+  if [[ -z "$step" ]]; then
+    printf 'unknown-step'
+    return 0
+  fi
+  printf '%s' "$step" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+resolve_log_path() {
+  local phase="$1"
+  local step="${2:-}"
+  local phase_token step_token
+  phase_token="$(normalize_phase_token "$phase")"
+  step_token="$(normalize_step_token "$step")"
+
+  if [[ "$DEBUG_MODE" -eq 1 ]]; then
+    printf '%s/ai/logs/%s-%s-%s-log' "$ROOT" "$PROJECT" "$phase_token" "$step_token"
+  else
+    printf '%s/ai/logs/%s-%s-latest-log' "$ROOT" "$PROJECT" "$phase_token"
+  fi
+}
+
+resolve_prompt_output_path() {
+  local phase="$1"
+  local step="${2:-}"
+  local base_dir=""
+  local file_name=""
+
+  case "$phase" in
+    design)
+      base_dir="$ROOT/ai/prompts/design_prompts"
+      if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        if [[ -n "$step" ]]; then
+          file_name="${PROJECT}-step-$step.design.prompt.txt"
+        else
+          file_name="${PROJECT}.design.prompt.txt"
+        fi
+      else
+        file_name="${PROJECT}-latest-design-prompt.txt"
+      fi
+      ;;
+    planning)
+      base_dir="$ROOT/ai/prompts/plan_prompts"
+      if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        if [[ -n "$step" ]]; then
+          file_name="${PROJECT}-step-$step.planning.prompt.txt"
+        else
+          file_name="${PROJECT}.planning.prompt.txt"
+        fi
+      else
+        file_name="${PROJECT}-latest-planning-prompt.txt"
+      fi
+      ;;
+    implementation)
+      base_dir="$ROOT/ai/prompts/impl_prompts"
+      if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        file_name="${PROJECT}-step-$step.prompt.txt"
+      else
+        file_name="${PROJECT}-latest-implementation-prompt.txt"
+      fi
+      ;;
+    review)
+      base_dir="$ROOT/ai/prompts/review_prompts"
+      if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        file_name="${PROJECT}-step-$step.review.prompt.txt"
+      else
+        file_name="${PROJECT}-latest-review-prompt.txt"
+      fi
+      ;;
+    *)
+      die "Unsupported phase for prompt output path: $phase"
+      ;;
+  esac
+
+  printf '%s/%s' "$base_dir" "$file_name"
+}
+
 run_with_output_log() {
   local phase="$1"
-  shift
+  local step="${2:-}"
+  shift 2
 
   local log_dir log_path
-  log_dir="$ROOT/ai/tmp/orchestrator_logs"
+  log_dir="$ROOT/ai/logs"
   ensure_dir_writable "$log_dir"
-  log_path="$log_dir/${PROJECT}-${phase}.latest.log"
+  log_path="$(resolve_log_path "$phase" "$step")"
   local err=""
   if ! err="$( ( : >"$log_path" ) 2>&1 )"; then
     die "Failed to write log file: $(repo_relpath "$log_path"): ${err:-unknown error}"
@@ -390,11 +482,7 @@ run_planning_phase() {
 
   local step planning_prompt_out
   step="$(resolve_step_for_phase_from_args "planning" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")"
-  if [[ -n "$step" ]]; then
-    planning_prompt_out="$ROOT/ai/prompts/plan_prompts/${PROJECT}-step-$step.planning.prompt.txt"
-  else
-    planning_prompt_out="$ROOT/ai/prompts/plan_prompts/${PROJECT}.planning.prompt.txt"
-  fi
+  planning_prompt_out="$(resolve_prompt_output_path "planning" "$step")"
 
   local plan_cmd=("$ROOT/ai/scripts/ai_plan.sh")
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
@@ -411,6 +499,8 @@ run_planning_phase() {
     else
       dry_planning_cmd+=("run $planning_prompt_out")
     fi
+    echo "dry-run prompt: $(repo_relpath "$planning_prompt_out")"
+    echo "dry-run log: $(repo_relpath "$(resolve_log_path "planning" "$step")")"
     echo "$(shell_join "${plan_cmd[@]}") > $(printf '%q' "$planning_prompt_out") && $(shell_join "${dry_planning_cmd[@]}")"
     return 0
   fi
@@ -428,7 +518,7 @@ run_planning_phase() {
   cmd+=("$prompt_arg")
 
   local status=0
-  if run_with_output_log "planning" "${cmd[@]}"; then
+  if run_with_output_log "planning" "$step" "${cmd[@]}"; then
     status=0
   else
     status=$?
@@ -441,11 +531,7 @@ run_design_phase() {
 
   local step design_prompt_out
   step="$(resolve_step_for_phase_from_args "design" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")"
-  if [[ -n "$step" ]]; then
-    design_prompt_out="$ROOT/ai/prompts/design_prompts/${PROJECT}-step-$step.design.prompt.txt"
-  else
-    design_prompt_out="$ROOT/ai/prompts/design_prompts/${PROJECT}.design.prompt.txt"
-  fi
+  design_prompt_out="$(resolve_prompt_output_path "design" "$step")"
 
   local design_cmd=("$ROOT/ai/scripts/ai_design.sh")
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
@@ -462,6 +548,8 @@ run_design_phase() {
     else
       dry_design_cmd+=("run $design_prompt_out")
     fi
+    echo "dry-run prompt: $(repo_relpath "$design_prompt_out")"
+    echo "dry-run log: $(repo_relpath "$(resolve_log_path "design" "$step")")"
     echo "$(shell_join "${design_cmd[@]}") > $(printf '%q' "$design_prompt_out") && $(shell_join "${dry_design_cmd[@]}")"
     return 0
   fi
@@ -479,7 +567,7 @@ run_design_phase() {
   cmd+=("$prompt_arg")
 
   local status=0
-  if run_with_output_log "design" "${cmd[@]}"; then
+  if run_with_output_log "design" "$step" "${cmd[@]}"; then
     status=0
   else
     status=$?
@@ -754,7 +842,7 @@ run_implementation_phase() {
     exit 1
   fi
 
-  prompt_out="$ROOT/ai/prompts/impl_prompts/${PROJECT}-step-$step.prompt.txt"
+  prompt_out="$(resolve_prompt_output_path "implementation" "$step")"
 
   local prompt_cmd=("$ROOT/ai/scripts/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out")
 
@@ -768,6 +856,8 @@ run_implementation_phase() {
     else
       dry_impl_cmd+=("run $prompt_out")
     fi
+    echo "dry-run prompt: $(repo_relpath "$prompt_out")"
+    echo "dry-run log: $(repo_relpath "$(resolve_log_path "implementation" "$step")")"
     echo "$(shell_join "${prompt_cmd[@]}") && $(shell_join "${dry_impl_cmd[@]}")"
     return 0
   fi
@@ -782,7 +872,7 @@ run_implementation_phase() {
   fi
   impl_cmd+=("$prompt_arg")
   local status=0
-  if run_with_output_log "implementation" "${impl_cmd[@]}"; then
+  if run_with_output_log "implementation" "$step" "${impl_cmd[@]}"; then
     status=0
   else
     status=$?
@@ -812,7 +902,7 @@ run_review_phase() {
     exit 1
   fi
 
-  prompt_out="$ROOT/ai/prompts/review_prompts/${PROJECT}-step-$step.review.prompt.txt"
+  prompt_out="$(resolve_prompt_output_path "review" "$step")"
   local prompt_cmd=("$ROOT/ai/scripts/ai_review.sh" --step-plan "$latest_plan" --out "$prompt_out")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -825,6 +915,8 @@ run_review_phase() {
     else
       dry_review_cmd+=("run $prompt_out")
     fi
+    echo "dry-run prompt: $(repo_relpath "$prompt_out")"
+    echo "dry-run log: $(repo_relpath "$(resolve_log_path "review" "$step")")"
     echo "$(shell_join "${prompt_cmd[@]}") && $(shell_join "${dry_review_cmd[@]}")"
     return 0
   fi
@@ -839,7 +931,7 @@ run_review_phase() {
   fi
   review_cmd+=("$prompt_arg")
   local status=0
-  if run_with_output_log "review" "${review_cmd[@]}"; then
+  if run_with_output_log "review" "$step" "${review_cmd[@]}"; then
     status=0
   else
     status=$?
@@ -869,12 +961,13 @@ run_post_review_phase() {
 
   local cmd=("$ROOT/ai/scripts/post_review.sh" --step "$step")
   if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "dry-run log: $(repo_relpath "$(resolve_log_path "post_review" "$step")")"
     echo "$(shell_join "${cmd[@]}")"
     return 0
   fi
 
   local status=0
-  if run_with_output_log "post_review" "${cmd[@]}"; then
+  if run_with_output_log "post_review" "$step" "${cmd[@]}"; then
     status=0
   else
     status=$?
@@ -1322,6 +1415,10 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=1
       shift
       ;;
+    --debug)
+      DEBUG_MODE=1
+      shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -1417,7 +1514,11 @@ if [[ "$DRY_RUN" -eq 0 && "$RAN_REVIEW" -eq 1 ]]; then
       echo "Review + post_review completed." >&2
     fi
   fi
-  echo "Logs: ai/tmp/orchestrator_logs (overwritten each run; safe to delete)." >&2
+  if [[ "$DEBUG_MODE" -eq 1 ]]; then
+    echo "Logs: ai/logs (<project>-<phase>-<step>-log)." >&2
+  else
+    echo "Logs: ai/logs (<project>-<phase>-latest-log, overwritten each run)." >&2
+  fi
   if [[ "$RAN_POST_REVIEW" -eq 1 ]]; then
     echo "History: ai/history.md (single consolidated step record updated)." >&2
   else
