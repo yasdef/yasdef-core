@@ -147,6 +147,15 @@ Entry precondition:
 
 0. Before starting the user review, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.
 0.1. Start user review with a concise checklist pass over step plan `## Target Bullets`: confirm each target bullet is implemented and confirm Section 4 verification was run and reported.
+0.2. Before asking for review feedback, provide a brief human-review explanation mode (plain language) covering exactly:
+   1. what was changed and how,
+   2. how to start code review,
+   3. what should be checked first.
+0.3. Explanation-mode output constraints:
+   - Keep it concise (short checklist-style summary; avoid long narrative).
+   - Scope it to current-step changes only.
+   - Reference concrete changed areas (files/components/tests) when available.
+   - Do not replace detailed artifacts/diffs; treat explanation mode as review onboarding.
 1. Ask the user for the next review item (a question or a change request). The user may provide feedback one-by-one; if they have multiple items, a short bullet list helps.
 2. When the user responds, do this in order:
    1. Clarify ambiguous requests (ask questions if needed). If the user asked "why", answer the question first.

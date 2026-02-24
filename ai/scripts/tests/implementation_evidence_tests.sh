@@ -185,10 +185,22 @@ test_ai_implementation_prompt_uses_concise_evidence_gate() {
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
   assert_contains "$prompt" 'Before any implementation bullet `[ ]` -> `[x]`, apply the proof gate in ai/AI_DEVELOPMENT_PROCESS.md Section 4.1 and keep bullets `[ ]` when proof is missing.'
+  assert_contains "$prompt" 'Before the first Section 5 feedback request, emit the brief three-part human-review explanation mode defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5.'
   if [[ "$prompt" == *"Implementation evidence artifact (required):"* ]]; then
     echo "Assertion failed: prompt must not require dedicated implementation evidence artifact" >&2
     exit 1
   fi
+}
+
+test_process_doc_defines_human_review_explanation_mode() {
+  local process_doc="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
+  local content
+  content="$(cat "$process_doc")"
+  assert_contains "$content" "Before asking for review feedback, provide a brief human-review explanation mode (plain language) covering exactly:"
+  assert_contains "$content" "what was changed and how"
+  assert_contains "$content" "how to start code review"
+  assert_contains "$content" "what should be checked first"
+  assert_contains "$content" "Keep it concise (short checklist-style summary; avoid long narrative)."
 }
 
 test_orchestrator_does_not_block_review_without_evidence() {
@@ -215,6 +227,7 @@ test_orchestrator_does_not_block_review_without_evidence() {
 }
 
 test_ai_implementation_prompt_uses_concise_evidence_gate
+test_process_doc_defines_human_review_explanation_mode
 test_orchestrator_does_not_block_review_without_evidence
 
 echo "All implementation evidence tests passed."

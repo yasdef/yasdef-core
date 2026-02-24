@@ -511,6 +511,7 @@ emit() {
   printf 'Before Section 5, execute AI_DEVELOPMENT_PROCESS Section 4.1 (Tracking closure): mark non-review implementation bullets `[x]` only for implemented and verified work; if any remain `[ ]`, return to Sections 3-4.\n'
   printf 'Before any implementation bullet `[ ]` -> `[x]`, apply the proof gate in ai/AI_DEVELOPMENT_PROCESS.md Section 4.1 and keep bullets `[ ]` when proof is missing.\n'
   printf 'Use step plan `## Target Bullets` only as the Section 5 user-review checklist.\n'
+  printf 'Before the first Section 5 feedback request, emit the brief three-part human-review explanation mode defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5.\n'
   printf 'After implementation + verification gate, follow AI_DEVELOPMENT_PROCESS ### 5) User review until user confirms completion - no more comments about implementation from user side.\n'
   printf 'When user confirms completion of implementation phase, end your final response with this exact last line: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Use step plan + feature design as primary execution context.\n'
