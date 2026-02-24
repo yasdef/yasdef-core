@@ -7,6 +7,7 @@ Notes:
 - Do not restate scope in this artifact. `## Goal`, `## In Scope`, and `## Out of Scope` live in the feature design and are the scope contract.
 - Planning completion gate: do not consider planning finished while any open questions remain for the step; resolve/close them (and record durable decisions in `ai/decisions.md`) before finishing planning.
 - Planning completion gate: every item from design `## Things to Decide (for final planning discussion)` (or `## Things to Decide`) must have an explicit outcome in `## Decisions Needed` (`Accepted`, `Deferred`, or `Blocked`).
+- If a planning-time decision prompt is needed to resolve unclear/blocking choices, ask exactly two numbered options (`1.` recommended/default, `2.` alternative), each with short rationale. User should be able to reply with only `1` or `2`.
 - Implementation contract: `## Plan (ordered)` is the primary execution checklist for implementation phase.
 - Review contract: `## Target Bullets` is the Section 5 user-review checklist to confirm scope completion.
 

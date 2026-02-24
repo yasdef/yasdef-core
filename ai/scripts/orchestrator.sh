@@ -1213,7 +1213,8 @@ evaluate_planning_phase() {
 }
 
 evaluate_implementation_phase() {
-  local counts="$1"
+  local step="$1"
+  local counts="$2"
   local impl_total impl_checked
 
   IFS='|' read -r _ _ _ _ impl_total impl_checked <<<"$counts"
@@ -1308,7 +1309,7 @@ evaluate_resume_phase_states() {
   counts="$(phase_eval_step_bullet_counts "$step")"
   evaluate_design_phase "$step"
   evaluate_planning_phase "$step" "$counts"
-  evaluate_implementation_phase "$counts"
+  evaluate_implementation_phase "$step" "$counts"
   evaluate_review_phase "$step"
   evaluate_post_review_phase "$step" "$counts"
 }

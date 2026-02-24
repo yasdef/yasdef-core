@@ -90,6 +90,9 @@ Before step planning:
 - Open-questions quality gate: do not consider the planning bullet complete while any open questions remain for the step. Ask questions one-by-one (at most one per assistant message), wait for the user's answer, then update the step plan and remove/close the answered question(s) in `ai/open_questions.md`.
 - Things-to-decide quality gate: do not consider the planning bullet complete while any design "Things to Decide" item lacks an explicit recorded outcome in the step plan. If unresolved, ask the user, then update the step plan and tracking artifacts.
 - Decision-confirmation quality gate: if a plan-critical choice has multiple viable options and no explicit prior user direction, ask the user and record the answer before closing planning.
+- Decision prompt format (when the decision-confirmation gate triggers): use exactly two options in numbered format. Option `1.` must be the recommended/default choice with short rationale; option `2.` must be the alternative with short trade-off rationale.
+- Decision prompt scope gate: ask decision prompts only for unclear/blocking planning choices. If artifacts/rules already define a clear path, do not ask a decision prompt.
+- Decision prompt actionability gate: keep the two options mutually exclusive and actionable, and explicitly allow the user to reply with only `1` or `2`.
 - If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
 - Only when the plan is accepted, open questions are resolved/closed, and all design "Things to Decide" items have explicit outcomes, immediately mark the "Plan and discuss the step" bullet as done and add Step sections to `ai/blocker_log.md` and `ai/open_questions.md` (even if "none"), then commit the planning artifacts.
 - Completion-line gate: output the exact planning completion line (`Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after verifying in `ai/implementation_plan.md` that this step's "Plan and discuss the step." bullet is marked `[x]` (and included in the planning commit when changed).
@@ -126,6 +129,14 @@ Before step planning:
   - If a decision replaces a prior one: mark the older ADR as **Superseded** and link to the superseding ADR.
 
 #### 4.1) Tracking closure (required before Section 5)
+- Evidence-based completion gate: before changing any implementation bullet from `[ ]` to `[x]`, run an explicit self-check: "Did we implement this bullet?"
+- Allowed outcomes per bullet:
+  - `PROVEN`: concrete implementation evidence exists; marking `[x]` is allowed.
+  - `NOT_PROVEN`: implementation evidence is missing/incomplete; keep `[ ]`.
+- Required proof for `PROVEN`:
+  1 - Code implementation references exist: specific changed file path(s) plus relevant symbols (function/class/module/config key) that contain the core logic implementing the bullet — not comments, stubs, or placeholders.
+	2 -	Behavioral reachability is shown: the implementation is wired into real execution flow (e.g., invoked by routes, jobs, UI actions, CLI commands, or event handlers), not unused or orphaned code.
+	3 -	Test evidence exists: new or updated automated tests validate the bullet’s behavior, or there is an explicit, credible mapping to existing test coverage that exercises the same logic and assertions.
 - After Section 4 verification passes, mark each non-review implementation bullet in the current step as `[x]` only if that bullet is fully implemented and covered by the completed Section 4 gate.
 - If any non-review implementation bullet remains incomplete or unverified, keep it `[ ]`, record blockers/open questions as needed, and return to Sections 3-4.
 - Enter Section 5 only when all non-review implementation bullets are marked `[x]`.

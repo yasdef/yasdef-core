@@ -158,6 +158,14 @@ V-0.0.2 (current)
 - investigate "skills" usage
 - test how good this framework for frontend/mobile development, not only enterprise backend
 
+V-0.0.3
+
+1. whats added
+- CRP-023 — Evidence-Based Bullet Completion Gate (model check if implementation plan bulets are realy implemented with strict prove of implementation gate)
+- CRP-025 — Orchestrator Explicit Debug Mode for Logs and Prompts (if no --debug flag only "latest" step atrifacts will be recorded)
+- CRP-026 — Strict Numbered Decision Prompts in Planning (on planing model always asked with 1 and 2 to simplify user answer)
+- CRP-028 — Orchestrator Resume Mode per Step (run orchestrator with --resume <step> flag to proceed current step from last finished phase)
+
 ### security_improvement_proposals
 
 Scope: command-execution safety (non-git concerns).
