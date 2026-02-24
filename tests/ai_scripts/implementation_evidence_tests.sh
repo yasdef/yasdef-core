@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 

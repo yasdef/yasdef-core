@@ -29,6 +29,7 @@ This approach can be expressed in a few sentences:
 4. If you run Worker standalone without Coordinator and don't have implementation_plan.md ask your model to generate it based on any plan or requirements you have. You can find prompt in "Helpers" block below. 
 
 5. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
+  Script tests are canonical under `tests/ai_scripts/` (not under `ai/`).
 
 6. Run the orchestrator:
   `bash ai/scripts/orchestrator.sh` and follow the instructions.
@@ -138,33 +139,33 @@ V-0.0.1
 - each finished step of plan has recorded metrics (including token counts) in history.md
 - each phase can be run separately (manually)
 
-V-0.0.2 (current)
+V-0.0.2
 
 1. whats added
 - new design step
 - phase scripts improved significantly
 
-2. known problems/to-do's:
-- only codex cli supported
-- you need to manually ctrl-c from codex session in the end of each model-driven phase
-- review step creates relatively small improvement/tech-debt steps (5-8 SP) which is not efficient from token management perspective
-- should we distinct tech-debt from blockers - place blockers to certain steps and manage tech debt some other way?
-- incorrect SP countion on post_review
-
-3. main plans
-- security proposals (see below)
-- distinct tech debt from blockers and create alternative process for tech debt tasks
-- change bash scripts to lightweight cli (wrapper above coding agent cli's), see yasdef-wrapper
-- investigate "skills" usage
-- test how good this framework for frontend/mobile development, not only enterprise backend
-
-V-0.0.3
+V-0.0.3 (current)
 
 1. whats added
 - CRP-023 — Evidence-Based Bullet Completion Gate (model check if implementation plan bulets are realy implemented with strict prove of implementation gate)
 - CRP-025 — Orchestrator Explicit Debug Mode for Logs and Prompts (if no --debug flag only "latest" step atrifacts will be recorded)
 - CRP-026 — Strict Numbered Decision Prompts in Planning (on planing model always asked with 1 and 2 to simplify user answer)
 - CRP-028 — Orchestrator Resume Mode per Step (run orchestrator with --resume <step> flag to proceed current step from last finished phase)
+- CRP-011 — Human Review Explanation Mode ai helps user to perform codereview
+
+2. known problems/to-do's:
+- only codex cli supported
+- you need to manually ctrl-c from codex session in the end of each model-driven phase
+- review step creates relatively small improvement/tech-debt steps (5-8 SP) which is not efficient from token management perspective
+- incorrect SP countion on post_review
+
+3. main plans
+- distinct tech debt from blockers and create alternative process for tech debt tasks
+- change bash scripts to lightweight cli (wrapper above coding agent cli's), see yasdef-wrapper
+- investigate "skills" usage
+- coordinator service
+- test how good this framework for frontend/mobile development, not only enterprise backend
 
 ### security_improvement_proposals
 
