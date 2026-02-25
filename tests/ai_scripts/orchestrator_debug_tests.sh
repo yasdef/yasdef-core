@@ -34,6 +34,17 @@ assert_equal() {
   fi
 }
 
+assert_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" != *"$needle"* ]]; then
+    echo "Assertion failed: expected output to contain: $needle" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 setup_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
@@ -54,6 +65,10 @@ EOF
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-implementation}"
 EOF
+  cat >"$repo_dir/ai/scripts/ai_user_review.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "PROMPT_MARKER=${PROMPT_MARKER:-default-user-review}"
+EOF
   cat >"$repo_dir/ai/scripts/ai_review.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-review}"
@@ -68,14 +83,23 @@ echo "MODEL_MARKER=${MODEL_MARKER:-default-model}"
 echo "Token usage: input=1 output=1 total=2"
 EOF
   chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_review.sh" \
+    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_review.sh" \
     "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/fake_model.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
 design | ai/scripts/fake_model.sh | mock-model
 planning | ai/scripts/fake_model.sh | mock-model
 implementation | ai/scripts/fake_model.sh | mock-model
+user_review | ai/scripts/fake_model.sh | mock-model
 review | ai/scripts/fake_model.sh | mock-model
+EOF
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Target Bullets
+- demo
+## Plan (ordered)
+- 1. demo
 EOF
 }
 
@@ -147,8 +171,36 @@ run_latest_overwrite_and_legacy_preserved() {
   assert_equal "$step_before" "$step_after"
 }
 
+run_user_review_dry_run_reports_prompt_and_log_paths() {
+  local repo_dir="$TMP_ROOT/repo-user-review-latest"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+
+  local out
+  out="$(
+    cd "$repo_dir" &&
+    PROMPT_MARKER=ur MODEL_MARKER=ur ai/scripts/orchestrator.sh --dry-run --phase user_review
+  )"
+
+  local latest_prompt="$repo_dir/ai/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
+  assert_contains "$out" "dry-run prompt: ai/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
+  assert_contains "$out" "dry-run log: ai/logs/repo-user-review-latest-user-review-latest-log"
+  assert_contains "$out" "$latest_prompt"
+}
+
+run_source_includes_user_review_interactive_confirmation() {
+  local repo_dir="$TMP_ROOT/repo-confirmation-check"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  local out
+  out="$(grep -n "planning|implementation|user_review|review" "$repo_dir/ai/scripts/orchestrator.sh" || true)"
+  assert_contains "$out" "planning|implementation|user_review|review"
+}
+
 run_non_debug_design_writes_latest_only
 run_debug_design_writes_step_specific
 run_latest_overwrite_and_legacy_preserved
+run_user_review_dry_run_reports_prompt_and_log_paths
+run_source_includes_user_review_interactive_confirmation
 
 echo "All orchestrator debug tests passed."

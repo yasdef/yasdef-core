@@ -135,39 +135,46 @@ Before step planning:
   - `NOT_PROVEN`: implementation evidence is missing/incomplete; keep `[ ]`.
 - Required proof for `PROVEN`:
   1 - Code implementation references exist: specific changed file path(s) plus relevant symbols (function/class/module/config key) that contain the core logic implementing the bullet — not comments, stubs, or placeholders.
-	2 -	Behavioral reachability is shown: the implementation is wired into real execution flow (e.g., invoked by routes, jobs, UI actions, CLI commands, or event handlers), not unused or orphaned code.
-	3 -	Test evidence exists: new or updated automated tests validate the bullet’s behavior, or there is an explicit, credible mapping to existing test coverage that exercises the same logic and assertions.
-- After Section 4 verification passes, mark each non-review implementation bullet in the current step as `[x]` only if that bullet is fully implemented and covered by the completed Section 4 gate.
+  2 - Behavioral reachability is shown: the implementation is wired into real execution flow (e.g., invoked by routes, jobs, UI actions, CLI commands, or event handlers), not unused or orphaned code.
+  3 - Test evidence exists: new or updated automated tests validate the bullet’s behavior, or there is an explicit, credible mapping to existing test coverage that exercises the same logic and assertions.
+- Evidence Reasoning Summary output (required): after Section 4 verification and Section 4.1 tracking closure, emit an `Evidence Reasoning Summary` in the implementation response before Section 5 review exchange.
+- Evidence Reasoning Summary format and content rules:
+  1 - Keep it compact and scannable (short bullet list; no long narrative).
+  2 - Include each implemented target bullet (or in-scope non-review implementation bullet) exactly once with status `PROVEN` or `NOT_PROVEN`.
+  3 - For every `PROVEN` bullet, include: code references (file path + key symbol), reachability from a concrete entrypoint first (controller/handler/job/UI/CLI), then supporting service/persistence flow as needed, and test evidence (new/updated tests or explicit credible mapping to existing coverage).
+  4 - No guesses: if any required evidence element is missing or uncertain, mark the bullet `NOT_PROVEN` and keep it unchecked (`[ ]`).
 - If any non-review implementation bullet remains incomplete or unverified, keep it `[ ]`, record blockers/open questions as needed, and return to Sections 3-4.
 - Enter Section 5 only when all non-review implementation bullets are marked `[x]`.
 
 ### 5) User review (required before moving to the next step)
 Entry precondition:
-- All non-review implementation bullets in the current step are marked `[x]`, and Sections 4 + 4.1 are complete. If any remain unchecked, return to Sections 3-4.1 and complete them first.
+- This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: all non-review implementation bullets in the current step are marked `[x]`, and Sections 4 + 4.1 are complete.
 
-0. Before starting the user review, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.
-0.1. Start user review with a concise checklist pass over step plan `## Target Bullets`: confirm each target bullet is implemented and confirm Section 4 verification was run and reported.
-0.2. Before asking for review feedback, provide a brief human-review explanation mode (plain language) covering exactly:
-   1. what was changed and how,
-   2. how to start code review,
-   3. what should be checked first.
-0.3. Explanation-mode output constraints:
+1. Before starting the user review loop, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.
+2. Before asking for review feedback, provide a concise `Review Brief` (plain language, product-level) covering exactly:
+   1. what was changed and how (concrete system flow),
+   2. how to start code review (where to begin and recommended order),
+   3. what should be checked first (top correctness/risk hotspots).
+3. Review Brief output constraints:
    - Keep it concise (short checklist-style summary; avoid long narrative).
    - Scope it to current-step changes only.
-   - Reference concrete changed areas (files/components/tests) when available.
-   - Do not replace detailed artifacts/diffs; treat explanation mode as review onboarding.
-1. Ask the user for the next review item (a question or a change request). The user may provide feedback one-by-one; if they have multiple items, a short bullet list helps.
-2. When the user responds, do this in order:
+   - Reference concrete changed entrypoints/files/components/tests when available.
+   - Do not narrate artifact creation; focus on reviewer onboarding.
+   - Do not guess review ordering/entrypoints. If specific entrypoints are unclear, use cautious non-speculative guidance.
+   - Keep Evidence Reasoning Summary separate; do not merge proof-gate entries into the Review Brief.
+   - Use `ai/golden_examples/review_brief_GOLDEN_EXAMPLE.md` as the tone/structure anchor.
+4. Ask the user for the next review item (a question or a change request). The user may provide feedback one-by-one; if they have multiple items, a short bullet list helps.
+5. When the user responds, do this in order:
    1. Clarify ambiguous requests (ask questions if needed). If the user asked "why", answer the question first.
    2. Implement the requested changes (and any directly necessary test/doc updates). Do not implement changes that were not requested; propose them as suggestions and ask.
    3. Immediately update `ai/user_review.md` with any generalizable rule(s) derived from the user feedback and the implementation change (include references). If there are no generalizable rules, explicitly state that and do not change `ai/user_review.md`.
-3. Summarize what changed and ask for the next review round.
-4. Repeat steps 1-3 until the user explicitly confirms the review is complete (e.g., "done", "no more comments").
-5. Only after the user confirms completion, run one final verification test command for the step (prefer the repo’s full verification gate from `AGENTS.md`) and report the result.
-6. If the final verification passes, propose the next step: Post-step audit (Section 6).
+6. Summarize what changed and ask for the next review round.
+7. Repeat steps 4-6 until the user explicitly confirms the review is complete (e.g., "done", "no more comments").
+8. Only after the user confirms completion, run one final verification test command for the step (prefer the repo’s full verification gate from `AGENTS.md`) and report the result.
+9. If the final verification passes, propose the next step: Post-step audit/review (Section 6).
 - Do not run Section 6 in the implementation phase; Section 6 is executed in the review phase.
 
-### 6) Post-step audit (required before moving to the next step)
+### 6) Post-step audit/review (required before moving to the next step)
 
 #### 6.1) Audit review and findings
 - Entry precondition for this phase: Section 5 (User review) is already complete. Do not ask the user to reconfirm Section 5 during post-step audit.

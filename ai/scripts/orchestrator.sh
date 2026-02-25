@@ -53,24 +53,25 @@ PHASE_EVAL_PHASES=()
 PHASE_EVAL_STATES=()
 PHASE_EVAL_DETAILS=()
 IMPLEMENTATION_PLAN_FILE="$ROOT/ai/implementation_plan.md"
-CANONICAL_PHASES=(design planning implementation review post_review)
+CANONICAL_PHASES=(design planning implementation user_review review post_review)
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|review|post_review] [--resume <step>] [--debug] [--dry-run] [--help] [-- <ai_plan.sh args>]
+Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|user_review|review|post_review] [--resume <step>] [--debug] [--dry-run] [--help] [-- <ai_plan.sh args>]
 
 Default behavior:
   - Runs all phases in ai/setup/models.md, in order, then runs post_review.
   - design runs ai/scripts/ai_design.sh and generates/updates a feature-design artifact.
   - planning runs ai/scripts/ai_plan.sh using the planning model entry.
-  - implementation runs ai/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command (includes user review per AI_DEVELOPMENT_PROCESS.md section 5).
+  - implementation runs ai/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command.
+  - user_review runs ai/scripts/ai_user_review.sh for the latest step plan, validates entry gate markers, then runs the user_review model command.
   - review runs ai/scripts/ai_review.sh for the latest step plan (post-step audit prompt), then runs the review model command.
   - post_review runs ai/scripts/post_review.sh for the latest step plan and appends post-review metrics to ai/history.md.
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
   - --resume is mutually exclusive with explicit --phase.
   - --debug enables per-step/per-phase artifact files for logs and prompts.
   - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
-  - When running interactively, asks for confirmation before planning/implementation/review.
+  - When running interactively, asks for confirmation before planning/implementation/user_review/review.
   - Writes per-phase logs to ai/logs/<project>-<phase>-latest-log (or step-specific names with --debug).
   - post_review consolidates per-step token usage and metrics into ai/history.md.
 
@@ -79,6 +80,7 @@ Examples:
   ai/scripts/orchestrator.sh --phase design -- --step 1.3
   ai/scripts/orchestrator.sh --phase planning -- --step 1.3 --out ai/tmp/step-1.3.md
   ai/scripts/orchestrator.sh --phase implementation
+  ai/scripts/orchestrator.sh --phase user_review
   ai/scripts/orchestrator.sh --phase review
   ai/scripts/orchestrator.sh --phase post_review
   ai/scripts/orchestrator.sh --resume 1.3
@@ -170,6 +172,7 @@ ensure_ai_context_files() {
   ensure_dir_writable "$ROOT/ai/prompts/design_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/plan_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/impl_prompts"
+  ensure_dir_writable "$ROOT/ai/prompts/user_review_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/review_prompts"
 
   ensure_file_writable_if_missing "$DECISIONS_FILE"
@@ -184,6 +187,7 @@ ensure_orchestrator_prereqs() {
   ensure_executable_script "$ROOT/ai/scripts/ai_design.sh"
   ensure_executable_script "$ROOT/ai/scripts/ai_plan.sh"
   ensure_executable_script "$ROOT/ai/scripts/ai_implementation.sh"
+  ensure_executable_script "$ROOT/ai/scripts/ai_user_review.sh"
   ensure_executable_script "$ROOT/ai/scripts/ai_review.sh"
   ensure_executable_script "$ROOT/ai/scripts/post_review.sh"
 }
@@ -333,6 +337,14 @@ resolve_prompt_output_path() {
         file_name="${PROJECT}-latest-implementation-prompt.txt"
       fi
       ;;
+    user_review)
+      base_dir="$ROOT/ai/prompts/user_review_prompts"
+      if [[ "$DEBUG_MODE" -eq 1 ]]; then
+        file_name="${PROJECT}-step-$step.user-review.prompt.txt"
+      else
+        file_name="${PROJECT}-latest-user-review-prompt.txt"
+      fi
+      ;;
     review)
       base_dir="$ROOT/ai/prompts/review_prompts"
       if [[ "$DEBUG_MODE" -eq 1 ]]; then
@@ -387,7 +399,7 @@ confirm_phase_if_interactive() {
   fi
 
   case "$(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]')" in
-    planning|implementation|review)
+    planning|implementation|user_review|review)
       ;;
     *)
       return 0
@@ -785,7 +797,7 @@ get_current_branch_name() {
 
 get_step_from_branch_name() {
   local branch="$1"
-  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|review)$ ]]; then
+  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|user-review|review)$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -880,6 +892,65 @@ run_implementation_phase() {
   return "$status"
 }
 
+run_user_review_phase() {
+  load_model_config "user_review"
+
+  local latest_plan step prompt_out
+  if [[ -n "$RESUME_STEP" ]]; then
+    step="$RESUME_STEP"
+    latest_plan="$ROOT/ai/step_plans/step-$step.md"
+  else
+    latest_plan="$(get_preferred_step_plan)"
+    step="$(get_step_from_plan_path "$latest_plan")"
+  fi
+
+  if [[ ! -f "$latest_plan" ]]; then
+    echo "Step plan not found: $latest_plan" >&2
+    exit 1
+  fi
+
+  if [[ -z "$step" ]]; then
+    echo "Could not determine step from plan file: $latest_plan" >&2
+    exit 1
+  fi
+
+  prompt_out="$(resolve_prompt_output_path "user_review" "$step")"
+  local prompt_cmd=("$ROOT/ai/scripts/ai_user_review.sh" --step-plan "$latest_plan" --out "$prompt_out")
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    local dry_user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
+    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
+      dry_user_review_cmd+=("${MODEL_ARGS[@]}")
+    fi
+    if [[ "$MODEL_CMD" == "codex" ]]; then
+      dry_user_review_cmd+=("<contents of $prompt_out>")
+    else
+      dry_user_review_cmd+=("run $prompt_out")
+    fi
+    echo "dry-run prompt: $(repo_relpath "$prompt_out")"
+    echo "dry-run log: $(repo_relpath "$(resolve_log_path "user_review" "$step")")"
+    echo "$(shell_join "${prompt_cmd[@]}") && $(shell_join "${dry_user_review_cmd[@]}")"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$prompt_out")"
+  "${prompt_cmd[@]}"
+  local prompt_arg
+  prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$prompt_out")"
+  local user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
+  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
+    user_review_cmd+=("${MODEL_ARGS[@]}")
+  fi
+  user_review_cmd+=("$prompt_arg")
+  local status=0
+  if run_with_output_log "user_review" "$step" "${user_review_cmd[@]}"; then
+    status=0
+  else
+    status=$?
+  fi
+  return "$status"
+}
+
 run_review_phase() {
   load_model_config "review"
 
@@ -899,6 +970,12 @@ run_review_phase() {
 
   if [[ -z "$step" ]]; then
     echo "Could not determine step from plan file: $latest_plan" >&2
+    exit 1
+  fi
+
+  if [[ "$DRY_RUN" -eq 0 ]] && ! is_user_review_complete_for_step "$step"; then
+    echo "Cannot start review for step $step: user_review phase is incomplete." >&2
+    echo "Run: ai/scripts/orchestrator.sh --phase user_review -- --step $step" >&2
     exit 1
   fi
 
@@ -987,6 +1064,9 @@ run_phase() {
       ;;
     implementation)
       run_implementation_phase
+      ;;
+    user_review)
+      run_user_review_phase
       ;;
     review)
       run_review_phase
@@ -1237,6 +1317,54 @@ evaluate_implementation_phase() {
   phase_eval_set "implementation" "invalid" "partial implementation markers ($impl_checked/$impl_total checked)"
 }
 
+user_review_branch_exists_for_step() {
+  local step="$1"
+  local branch="step-$step-user-review"
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 1
+  fi
+  git -C "$ROOT" show-ref --verify --quiet "refs/heads/$branch"
+}
+
+is_user_review_complete_for_step() {
+  local step="$1"
+  local review_file="$ROOT/ai/step_review_results/review_result-$step.md"
+
+  if [[ -f "$review_file" ]]; then
+    return 0
+  fi
+
+  if user_review_branch_exists_for_step "$step"; then
+    return 0
+  fi
+
+  return 1
+}
+
+evaluate_user_review_phase() {
+  local step="$1"
+  local counts="$2"
+  local impl_total impl_checked
+
+  IFS='|' read -r _ _ _ _ impl_total impl_checked <<<"$counts"
+
+  if [[ "$impl_total" -eq 0 ]]; then
+    phase_eval_set "user_review" "invalid" "no implementation bullets found for step"
+    return 0
+  fi
+
+  if [[ "$impl_checked" -ne "$impl_total" ]]; then
+    phase_eval_set "user_review" "incomplete" "implementation phase is not complete ($impl_checked/$impl_total checked)"
+    return 0
+  fi
+
+  if is_user_review_complete_for_step "$step"; then
+    phase_eval_set "user_review" "complete" "user_review marker detected (step branch or review artifact present)"
+  else
+    phase_eval_set "user_review" "incomplete" "missing user_review marker (expected branch step-$step-user-review)"
+  fi
+}
+
 evaluate_review_phase() {
   local step="$1"
   local review_file="$ROOT/ai/step_review_results/review_result-$step.md"
@@ -1310,6 +1438,7 @@ evaluate_resume_phase_states() {
   evaluate_design_phase "$step"
   evaluate_planning_phase "$step" "$counts"
   evaluate_implementation_phase "$step" "$counts"
+  evaluate_user_review_phase "$step" "$counts"
   evaluate_review_phase "$step"
   evaluate_post_review_phase "$step" "$counts"
 }
@@ -1361,7 +1490,7 @@ print_resume_dry_run_report() {
 
   if [[ "$RESUME_ALL_DONE" -eq 1 ]]; then
     echo "Selected start phase: none (all phases complete)"
-    echo "Skipped phases: design, planning, implementation, review, post_review"
+    echo "Skipped phases: design, planning, implementation, user_review, review, post_review"
     echo "Executed phases: (none)"
     return 0
   fi

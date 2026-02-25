@@ -504,16 +504,16 @@ fi
 
 emit() {
   printf 'Implementation phase for Step %s\n' "$STEP"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 3-5, Verification gates, Definition of Done, Prompt governance) as authoritative process rules.\n'
-  printf 'First rule (execution order, required): within the implementation phase, execute step plan `## Plan (ordered)` end-to-end as one implementation batch for the current step. Use unchecked implementation bullets in `ai/implementation_plan.md` only as tracking boundaries (up to but excluding `Review step implementation.`), and enter Section 5 only after Sections 4 and 4.1 are complete.\n'
+  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 3-4.1, Verification gates, Definition of Done, Prompt governance) as authoritative process rules for this phase.\n'
+  printf 'First rule (execution order, required): within the implementation phase, execute step plan `## Plan (ordered)` end-to-end as one implementation batch for the current step. Use unchecked implementation bullets in `ai/implementation_plan.md` only as tracking boundaries (up to but excluding `Review step implementation.`).\n'
   printf 'Run AI_DEVELOPMENT_PROCESS Section 4 verification gate after implementation is complete for this step (single mandatory end-of-step gate).\n'
-  printf 'Before Section 5, ensure step-plan `## Target Bullets` and current-step non-review implementation bullets represent the same scope; if not, resolve alignment first.\n'
-  printf 'Before Section 5, execute AI_DEVELOPMENT_PROCESS Section 4.1 (Tracking closure): mark non-review implementation bullets `[x]` only for implemented and verified work; if any remain `[ ]`, return to Sections 3-4.\n'
+  printf 'Before handoff to Section 5, ensure step-plan `## Target Bullets` and current-step non-review implementation bullets represent the same scope; if not, resolve alignment first.\n'
+  printf 'Before handoff to Section 5, execute AI_DEVELOPMENT_PROCESS Section 4.1 (Tracking closure): mark non-review implementation bullets `[x]` only for implemented and verified work; if any remain `[ ]`, return to Sections 3-4.\n'
   printf 'Before any implementation bullet `[ ]` -> `[x]`, apply the proof gate in ai/AI_DEVELOPMENT_PROCESS.md Section 4.1 and keep bullets `[ ]` when proof is missing.\n'
-  printf 'Use step plan `## Target Bullets` only as the Section 5 user-review checklist.\n'
-  printf 'Before the first Section 5 feedback request, emit the brief three-part human-review explanation mode defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5.\n'
-  printf 'After implementation + verification gate, follow AI_DEVELOPMENT_PROCESS ### 5) User review until user confirms completion - no more comments about implementation from user side.\n'
-  printf 'When user confirms completion of implementation phase, end your final response with this exact last line: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
+  printf 'After Section 4 verification + Section 4.1 tracking closure, emit an "Evidence Reasoning Summary" before handoff as a compact bullet list per implemented bullet with `PROVEN`/`NOT_PROVEN`; for `PROVEN` include code refs (path + key symbol), reachability from concrete entrypoints first, and test evidence/mapping; no guesses - missing evidence means `NOT_PROVEN` and keep `[ ]`.\n'
+  printf 'Use step plan `## Target Bullets` only as the next-phase user-review checklist.\n'
+  printf 'Before ending this phase, emit the concise three-point `Review Brief` defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5: what changed/how, how to start review (entrypoints/order), and what to check first (top risks), using concrete references when available and no guessing.\n'
+  printf 'When implementation handoff is complete, end your final response with this exact last line: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Use step plan + feature design as primary execution context.\n'
   printf 'Feature design artifact: %s\n' "$DESIGN_FILE"
   printf 'Step plan artifact: %s\n' "$STEP_PLAN"
@@ -569,7 +569,7 @@ emit() {
   printf '== Step plan decisions (`## Decisions Needed`) ==\n'
   printf '%s\n\n' "$STEP_PLAN_DECISIONS_NEEDED_SECTION"
   printf '== User review checklist only (`## Target Bullets`) ==\n'
-  printf 'Use this checklist in Section 5; do not use it as the primary execution list.\n'
+  printf 'Use this checklist in the dedicated User Review phase; do not use it as the primary execution list.\n'
   printf '%s\n\n' "$STEP_PLAN_TARGET_BULLETS_SECTION"
   printf '== ai/step_designs/step-%s-design.md ==\n' "$STEP"
   printf 'Read directly from repo (authoritative design artifact).\n'
@@ -601,7 +601,7 @@ emit() {
   printf 'Pointer-only by default: rely on design-extracted UR shortlist above.\n'
   printf 'Path: ai/user_review.md\n\n'
   printf '== ai/AI_DEVELOPMENT_PROCESS.md ==\n'
-  printf 'Read directly from repo; apply Sections 3-5 for this phase.\n'
+  printf 'Read directly from repo; apply Sections 3-4.1 for this phase and stop at Section 5 handoff.\n'
   printf 'Path: ai/AI_DEVELOPMENT_PROCESS.md\n'
   if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
     printf '\n\n== AGENTS.md ==\n'

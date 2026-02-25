@@ -110,7 +110,7 @@ get_current_branch_name() {
 
 get_step_from_branch_name() {
   local branch="$1"
-  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|review)$ ]]; then
+  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|user-review|review)$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi

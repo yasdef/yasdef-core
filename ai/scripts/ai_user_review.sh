@@ -2,47 +2,44 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PROJECT="$(basename "$ROOT")"
 PLAN="$ROOT/ai/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
 REQUIREMENTS="$ROOT/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
+USER_REVIEW="$ROOT/ai/user_review.md"
 
 STEP=""
 OUT=""
 STEP_PLAN=""
 DESIGN_FILE=""
-INCLUDE_AGENTS=1
-RESET_REVIEW_BRANCH=0
+INCLUDE_AGENTS=0
+RESET_USER_REVIEW_BRANCH=0
 DESIGN_UR_HEADING=""
 DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--no-include-agents] [--reset-review-branch]
+Usage: ai/scripts/ai_user_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents] [--reset-user-review-branch]
 
 Defaults:
   - If --step-plan is omitted, uses the latest ai/step_plans/step-*.md.
   - If --step is omitted, derives it from --step-plan filename.
   - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required).
-  - ai/decisions.md is pointer-only by default; rely on design-extracted ADR shortlist.
-  - AGENTS.md is included by default; use --no-include-agents to omit.
-  - Always creates/switches to branch step-<step>-review from step-<step>-user-review when available, otherwise step-<step>-implementation.
-  - --reset-review-branch: force-reset step-<step>-review to the selected source branch before switching (useful when review branch already exists and diverged).
+  - If --out is omitted, writes to ai/prompts/user_review_prompts/<project>-step-<step>.user-review.prompt.txt.
+  - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
+  - Always creates/switches to branch step-<step>-user-review from step-<step>-implementation.
+  - --reset-user-review-branch: force-reset step-<step>-user-review to step-<step>-implementation before switching.
+  - Hard gate (before prompt/model): all step bullets except "Review step implementation" must be marked [x].
 EOF
 }
 
-ensure_review_branch() {
-  local implementation_branch user_review_branch source_branch target
+ensure_user_review_branch() {
+  local implementation_branch target
   implementation_branch="step-$STEP-implementation"
-  user_review_branch="step-$STEP-user-review"
-  source_branch="$implementation_branch"
-  target="step-$STEP-review"
-
-  if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$user_review_branch"; then
-    source_branch="$user_review_branch"
-  fi
+  target="step-$STEP-user-review"
 
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "Not a git repository: $ROOT" >&2
@@ -55,45 +52,41 @@ ensure_review_branch() {
     return 0
   fi
 
-  if [[ "$current" != "$source_branch" ]]; then
+  if [[ "$current" != "$implementation_branch" ]]; then
     if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null || true)" ]]; then
-      echo "Review branch must be created from $source_branch to carry step changes." >&2
+      echo "User review branch must be created from $implementation_branch to carry implementation changes." >&2
       echo "Current branch has uncommitted changes: ${current:-<detached>}." >&2
-      echo "Switch to $source_branch and rerun ai/scripts/ai_review.sh." >&2
+      echo "Switch to $implementation_branch and rerun ai/scripts/ai_user_review.sh." >&2
       exit 1
     fi
-    if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$source_branch"; then
-      if ! git -C "$ROOT" checkout "$source_branch" >/dev/null; then
-        echo "Failed to switch to source branch: $source_branch" >&2
+    if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$implementation_branch"; then
+      if ! git -C "$ROOT" checkout "$implementation_branch" >/dev/null; then
+        echo "Failed to switch to implementation branch: $implementation_branch" >&2
         exit 1
       fi
-      current="$source_branch"
-      echo "Switched to source branch: $source_branch" >&2
+      current="$implementation_branch"
+      echo "Switched to implementation branch: $implementation_branch" >&2
     else
-      echo "Source branch not found: $source_branch" >&2
-      if [[ "$source_branch" == "$user_review_branch" ]]; then
-        echo "Run ai/scripts/ai_user_review.sh for step $STEP first." >&2
-      else
-        echo "Run ai/scripts/ai_implementation.sh for step $STEP first." >&2
-      fi
+      echo "Implementation branch not found: $implementation_branch" >&2
+      echo "Run ai/scripts/ai_implementation.sh for step $STEP first." >&2
       exit 1
     fi
   fi
 
   if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$target"; then
-    if [[ "$RESET_REVIEW_BRANCH" -eq 1 ]]; then
-      if ! git -C "$ROOT" checkout -B "$target" "$source_branch" >/dev/null; then
-        echo "Failed to reset and switch to review branch: $target from $source_branch" >&2
+    if [[ "$RESET_USER_REVIEW_BRANCH" -eq 1 ]]; then
+      if ! git -C "$ROOT" checkout -B "$target" "$implementation_branch" >/dev/null; then
+        echo "Failed to reset and switch to user review branch: $target from $implementation_branch" >&2
         exit 1
       fi
-      echo "Reset and switched to review branch: $target (from $source_branch)." >&2
+      echo "Reset and switched to user review branch: $target (from $implementation_branch)." >&2
       return 0
     fi
     if ! git -C "$ROOT" checkout "$target" >/dev/null; then
       echo "Failed to switch to existing branch: $target" >&2
-      echo "Existing review branch may have diverged from $source_branch, and uncommitted changes cannot be carried safely." >&2
-      echo "If you want to realign review to implementation, rerun this command:" >&2
-      echo "  ai/scripts/ai_review.sh --step $STEP --reset-review-branch" >&2
+      echo "Existing user review branch may have diverged from $implementation_branch, and uncommitted changes cannot be carried safely." >&2
+      echo "If you want to realign user review to implementation, rerun this command:" >&2
+      echo "  ai/scripts/ai_user_review.sh --step $STEP --reset-user-review-branch" >&2
       exit 1
     fi
     echo "Switched to existing branch: $target" >&2
@@ -102,7 +95,7 @@ ensure_review_branch() {
       echo "Failed to create and switch to branch: $target" >&2
       exit 1
     fi
-    echo "Created and switched to branch: $target (from $source_branch with step changes)." >&2
+    echo "Created and switched to branch: $target (from $implementation_branch with implementation changes)." >&2
   fi
 }
 
@@ -212,20 +205,6 @@ get_step_title() {
   ' "$PLAN"
 }
 
-get_step_first_unchecked() {
-  local step="$1"
-  awk -v step="$step" '
-    BEGIN { step_re = step; gsub(/\./, "\\.", step_re) }
-    $0 ~ "^### Step "step_re" " { in_step=1; next }
-    in_step && $0 ~ "^### Step " { exit }
-    in_step && $0 ~ /^- \[ \]/ {
-      sub(/^- \[ \] /, "", $0)
-      print
-      exit
-    }
-  ' "$PLAN"
-}
-
 get_step_section() {
   local step="$1"
   awk -v step="$step" '
@@ -260,11 +239,16 @@ get_open_questions_section() {
 get_markdown_section_body() {
   local file="$1"
   local heading="$2"
-  awk '
+  awk -v heading="$heading" '
     $0 == heading { in_section=1; next }
     in_section && /^## / { exit }
     in_section { print }
   ' "$file"
+}
+
+get_step_plan_section() {
+  local heading="$1"
+  get_markdown_section_body "$STEP_PLAN" "$heading"
 }
 
 get_design_ur_heading() {
@@ -291,20 +275,6 @@ get_design_adr_heading() {
     return 0
   fi
   return 1
-}
-
-get_target_bullets_from_design() {
-  local file="$1"
-  awk '
-    /^## Target Bullets/ { in_section=1; next }
-    in_section && /^## / { exit }
-    in_section && /^- / {
-      line = $0
-      sub(/^- /, "", line)
-      sub(/^\[[ xX]\][[:space:]]*/, "", line)
-      print "- " line
-    }
-  ' "$file"
 }
 
 extract_requirement_section() {
@@ -345,34 +315,95 @@ get_requirements_section() {
   printf '%s' "$output"
 }
 
-extract_process_section() {
-  local heading="$1"
-  awk -v heading="$heading" '
-    $0 == heading { in_section=1 }
-    in_section && /^## / { exit }
-    in_section && /^### [0-9]+\)/ && $0 != heading { exit }
-    in_section { print }
+extract_process_user_review_section() {
+  awk '
+    /^### 5\) User review \(required before moving to the next step\)/ { in_scope=1 }
+    in_scope && /^### [0-9]+\)/ && $0 !~ /^### 5\) / { exit }
+    in_scope { print }
   ' "$PROCESS"
 }
 
-get_git_status() {
-  git -C "$ROOT" status --short 2>/dev/null
+list_unchecked_non_review_bullets() {
+  local step="$1"
+  awk -v target="$step" '
+    BEGIN { in_step=0 }
+    /^### Step / {
+      line=$0
+      sub(/^### Step /, "", line)
+      split(line, parts, " ")
+      in_step=(parts[1] == target)
+      next
+    }
+    in_step && /^### Step / { in_step=0 }
+    in_step && /^- \[[ xX]\]/ {
+      raw = $0
+      checked = (raw ~ /^- \[[xX]\]/)
+      text = raw
+      sub(/^- \[[ xX]\][[:space:]]*/, "", text)
+
+      gate_text = tolower(text)
+      while (gate_text ~ /^\[[^]]+\][[:space:]]*/) {
+        sub(/^\[[^]]+\][[:space:]]*/, "", gate_text)
+      }
+
+      if (gate_text ~ /^review step implementation([[:space:]\.]|$)/) {
+        next
+      }
+
+      if (!checked) {
+        print "- " text
+      }
+    }
+  ' "$PLAN"
 }
 
-get_git_diff_name_status() {
-  git -C "$ROOT" diff --name-status 2>/dev/null
+count_non_review_bullets() {
+  local step="$1"
+  awk -v target="$step" '
+    BEGIN { in_step=0; c=0 }
+    /^### Step / {
+      line=$0
+      sub(/^### Step /, "", line)
+      split(line, parts, " ")
+      in_step=(parts[1] == target)
+      next
+    }
+    in_step && /^### Step / { in_step=0 }
+    in_step && /^- \[[ xX]\]/ {
+      text = $0
+      sub(/^- \[[ xX]\][[:space:]]*/, "", text)
+      gate_text = tolower(text)
+      while (gate_text ~ /^\[[^]]+\][[:space:]]*/) {
+        sub(/^\[[^]]+\][[:space:]]*/, "", gate_text)
+      }
+      if (gate_text ~ /^review step implementation([[:space:]\.]|$)/) {
+        next
+      }
+      c++
+    }
+    END { print c+0 }
+  ' "$PLAN"
 }
 
-get_git_diff_stat() {
-  git -C "$ROOT" diff --stat 2>/dev/null
-}
+ensure_user_review_entry_gate() {
+  local step="$1"
+  local total unchecked
 
-get_git_current_branch() {
-  git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null
-}
+  total="$(count_non_review_bullets "$step")"
+  unchecked="$(list_unchecked_non_review_bullets "$step")"
 
-get_git_last_commit() {
-  git -C "$ROOT" log -1 --oneline 2>/dev/null
+  if [[ "$total" -eq 0 ]]; then
+    echo "User review precheck failed for step $step: no non-review bullets found in ai/implementation_plan.md." >&2
+    exit 1
+  fi
+
+  if [[ -n "$unchecked" ]]; then
+    echo "User review precheck failed for step $step." >&2
+    echo "All step bullets except 'Review step implementation' must be [x] before starting user review." >&2
+    echo "Unchecked non-review bullets:" >&2
+    printf '%s\n' "$unchecked" >&2
+    exit 1
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -405,8 +436,8 @@ while [[ $# -gt 0 ]]; do
       INCLUDE_AGENTS=0
       shift
       ;;
-    --reset-review-branch)
-      RESET_REVIEW_BRANCH=1
+    --reset-user-review-branch)
+      RESET_USER_REVIEW_BRANCH=1
       shift
       ;;
     -h|--help)
@@ -449,17 +480,13 @@ if [[ ! -f "$DESIGN_FILE" ]]; then
   exit 1
 fi
 
-ensure_review_branch
+ensure_user_review_entry_gate "$STEP"
+ensure_user_review_branch
 
 STEP_TITLE="$(get_step_title "$STEP")"
 if [[ -z "$STEP_TITLE" ]]; then
   echo "Step $STEP not found in ai/implementation_plan.md." >&2
   exit 1
-fi
-
-BULLET="$(get_step_first_unchecked "$STEP")"
-if [[ -z "$BULLET" ]]; then
-  BULLET="Review step implementation."
 fi
 
 STEP_SECTION="$(get_step_section "$STEP")"
@@ -481,150 +508,93 @@ if [[ -z "$OPEN_QUESTIONS_SECTION" ]]; then
 fi
 
 REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
-POST_STEP_AUDIT_SECTION="$(extract_process_section "### 6) Post-step audit (required before moving to the next step)")"
+USER_REVIEW_PROCESS_SECTION="$(extract_process_user_review_section)"
 
-if [[ -z "$POST_STEP_AUDIT_SECTION" ]]; then
-  echo "Could not extract post-step audit section from $PROCESS." >&2
+if [[ -z "$USER_REVIEW_PROCESS_SECTION" ]]; then
+  echo "Could not extract user review section from $PROCESS." >&2
   exit 1
 fi
 
-BRANCH_NAME="$(get_git_current_branch)"
-GIT_STATUS="$(get_git_status)"
-GIT_DIFF_NAME_STATUS="$(get_git_diff_name_status)"
-GIT_DIFF_STAT="$(get_git_diff_stat)"
-GIT_LAST_COMMIT="$(get_git_last_commit)"
-
-DESIGN_TARGET_BULLETS="$(get_target_bullets_from_design "$DESIGN_FILE")"
-if [[ -z "$DESIGN_TARGET_BULLETS" ]]; then
-  DESIGN_TARGET_BULLETS="- (missing in design artifact)"
+STEP_PLAN_TARGET_BULLETS_SECTION="$(get_step_plan_section "## Target Bullets")"
+if [[ -z "$STEP_PLAN_TARGET_BULLETS_SECTION" ]]; then
+  STEP_PLAN_TARGET_BULLETS_SECTION="- (missing in step plan)"
 fi
+
+STEP_PLAN_ORDERED_PLAN_SECTION="$(get_step_plan_section "## Plan (ordered)")"
+if [[ -z "$STEP_PLAN_ORDERED_PLAN_SECTION" ]]; then
+  STEP_PLAN_ORDERED_PLAN_SECTION="- (missing in step plan)"
+fi
+
 DESIGN_PROPOSAL_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Proposal / Design Details")"
 if [[ -z "$DESIGN_PROPOSAL_SECTION" ]]; then
   DESIGN_PROPOSAL_SECTION="- (missing in design artifact)"
 fi
+
 DESIGN_RISKS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Risks and Mitigations")"
 if [[ -z "$DESIGN_RISKS_SECTION" ]]; then
   DESIGN_RISKS_SECTION="- (missing in design artifact)"
 fi
-DESIGN_AGENTS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints")"
-if [[ -z "$DESIGN_AGENTS_SECTION" ]]; then
-  DESIGN_AGENTS_SECTION="- (missing in design artifact)"
-fi
+
 if DESIGN_UR_HEADING="$(get_design_ur_heading "$DESIGN_FILE")"; then
   DESIGN_UR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_UR_HEADING")"
 else
-  DESIGN_UR_HEADING="## Applicable UR Shortlist"
   DESIGN_UR_SECTION="- (missing in design artifact)"
 fi
 if [[ -z "$DESIGN_UR_SECTION" ]]; then
   DESIGN_UR_SECTION="- (missing in design artifact)"
 fi
+
 if DESIGN_ADR_HEADING="$(get_design_adr_heading "$DESIGN_FILE")"; then
   DESIGN_ADR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_ADR_HEADING")"
 else
-  DESIGN_ADR_HEADING="## Applicable ADR Shortlist (from ai/decisions.md)"
   DESIGN_ADR_SECTION="- (missing in design artifact)"
 fi
 if [[ -z "$DESIGN_ADR_SECTION" ]]; then
   DESIGN_ADR_SECTION="- (missing in design artifact)"
 fi
-DESIGN_DECISIONS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Things to Decide (for final planning discussion)")"
-if [[ -z "$DESIGN_DECISIONS_SECTION" ]]; then
-  DESIGN_DECISIONS_SECTION="- None."
-fi
 
 emit() {
-  printf 'Review phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 6.1 + 6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
-  printf 'Execution pattern: run Section 6.1 as the main audit flow; for each finding, execute Section 6.2, then return to Section 6.1 and continue until all findings are dispositioned.\n'
-  printf 'Use step plan + feature design as primary execution context.\n'
-  printf 'Step plan artifact: %s\n' "$STEP_PLAN"
-  printf 'Feature design artifact: %s\n' "$DESIGN_FILE"
-  printf 'Use these artifacts together with the context pack below.\n'
-  printf 'Commit gate (required): before the completion line, run `git status --short`; if not clean, commit all review-branch changes (`git add -A && git commit -m "Step %s review completion"`), then verify `git status --short` is empty.\n' "$STEP"
-  printf 'Extended completion-line gate: output the review completion line only after the commit gate is satisfied (clean working tree).\n'
-  printf 'When review phase is fully complete, end your final response with this exact last line: "Review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
+  printf 'User review phase for Step %s\n' "$STEP"
+  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
+  printf 'Entry gate already verified by script: every non-review step bullet in ai/implementation_plan.md is [x].\n'
+  printf 'Do not start post-step audit/review in this phase.\n'
+  printf 'When user review is fully complete, end your final response with this exact last line: "User review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'
-  printf '== repo snapshot ==\n'
-  if [[ -n "$BRANCH_NAME" ]]; then
-    printf 'Branch: %s\n' "$BRANCH_NAME"
-  else
-    printf 'Branch: (unavailable)\n'
-  fi
-  if [[ -n "$GIT_LAST_COMMIT" ]]; then
-    printf 'Last commit: %s\n' "$GIT_LAST_COMMIT"
-  else
-    printf 'Last commit: (unavailable)\n'
-  fi
-  if [[ -n "$GIT_STATUS" ]]; then
-    printf 'Working tree (status --short):\n%s\n' "$GIT_STATUS"
-  else
-    printf 'Working tree (status --short): clean or unavailable\n'
-  fi
-  if [[ -n "$GIT_DIFF_NAME_STATUS" ]]; then
-    printf 'Uncommitted files (diff --name-status):\n%s\n' "$GIT_DIFF_NAME_STATUS"
-  else
-    printf 'Uncommitted files (diff --name-status): none or unavailable\n'
-  fi
-  if [[ -n "$GIT_DIFF_STAT" ]]; then
-    printf 'Uncommitted diff stat:\n%s\n' "$GIT_DIFF_STAT"
-  else
-    printf 'Uncommitted diff stat: none or unavailable\n'
-  fi
-  printf '\n'
   printf '== ai/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
   printf '== %s ==\n' "$STEP_PLAN"
-  cat "$STEP_PLAN"
-  printf '\n\n'
-  printf '== ai/step_designs/step-%s-design.md ==\n' "$STEP"
-  printf 'Read directly from repo (authoritative design artifact).\n'
-  printf 'Path: ai/step_designs/step-%s-design.md\n\n' "$STEP"
-  printf '== Design-extracted target bullets ==\n'
-  printf '%s\n\n' "$DESIGN_TARGET_BULLETS"
-  printf '== Design-extracted proposal/design details ==\n'
-  printf '%s\n\n' "$DESIGN_PROPOSAL_SECTION"
-  printf '== Design-extracted risks and mitigations ==\n'
-  printf '%s\n\n' "$DESIGN_RISKS_SECTION"
-  printf '== Design-extracted AGENTS constraints ==\n'
-  printf '%s\n\n' "$DESIGN_AGENTS_SECTION"
-  printf '== Design-extracted UR shortlist ==\n'
-  printf '%s\n\n' "$DESIGN_UR_SECTION"
-  printf '== Design-extracted ADR shortlist ==\n'
-  printf '%s\n\n' "$DESIGN_ADR_SECTION"
-  printf '== Design decisions to confirm ==\n'
-  printf '%s\n\n' "$DESIGN_DECISIONS_SECTION"
-  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Section 6.1 + 6.2) ==\n'
-  printf '%s\n\n' "$POST_STEP_AUDIT_SECTION"
-  if [[ -f "$ROOT/ai/templates/review_result_TEMPLATE.md" ]]; then
-    printf '== ai/templates/review_result_TEMPLATE.md ==\n'
-    cat "$ROOT/ai/templates/review_result_TEMPLATE.md"
-    printf '\n\n'
-  fi
-  if [[ -f "$ROOT/ai/golden_examples/review_result_GOLDEN_EXAMPLE.md" ]]; then
-    printf '== ai/golden_examples/review_result_GOLDEN_EXAMPLE.md ==\n'
-    cat "$ROOT/ai/golden_examples/review_result_GOLDEN_EXAMPLE.md"
-    printf '\n\n'
-  fi
+  printf '%s\n\n' "$STEP_PLAN_ORDERED_PLAN_SECTION"
+  printf '== User review checklist (`## Target Bullets`) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_TARGET_BULLETS_SECTION"
+  printf '== ai/step_designs/step-%s-design.md (key excerpts) ==\n' "$STEP"
+  printf 'Proposal / Design Details:\n%s\n\n' "$DESIGN_PROPOSAL_SECTION"
+  printf 'Risks and Mitigations:\n%s\n\n' "$DESIGN_RISKS_SECTION"
+  printf 'Applicable UR shortlist:\n%s\n\n' "$DESIGN_UR_SECTION"
+  printf 'Applicable ADR shortlist:\n%s\n\n' "$DESIGN_ADR_SECTION"
+  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Section 5) ==\n'
+  printf '%s\n\n' "$USER_REVIEW_PROCESS_SECTION"
   printf '== reqirements_ears.md (linked requirements) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
   printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$OPEN_QUESTIONS_SECTION"
-  printf '== ai/decisions.md ==\n'
-  printf 'Pointer-only by default; rely on design-extracted ADR shortlist above.\n'
-  printf 'Path: ai/decisions.md\n'
+  printf '== ai/user_review.md ==\n'
+  printf 'Path: ai/user_review.md\n\n'
   if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
-    printf '\n\n== AGENTS.md ==\n'
+    printf '== AGENTS.md ==\n'
     cat "$AGENTS"
+  else
+    printf '== AGENTS.md ==\n'
+    printf 'Pointer-only by default.\n'
+    printf 'Path: AGENTS.md\n'
   fi
 }
 
-if [[ -n "$OUT" ]]; then
-  mkdir -p "$(dirname "$OUT")"
-  emit >"$OUT"
-else
-  emit
+if [[ -z "$OUT" ]]; then
+  OUT="$ROOT/ai/prompts/user_review_prompts/${PROJECT}-step-$STEP.user-review.prompt.txt"
 fi
+
+mkdir -p "$(dirname "$OUT")"
+emit >"$OUT"
