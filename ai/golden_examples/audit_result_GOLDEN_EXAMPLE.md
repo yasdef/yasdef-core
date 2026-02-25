@@ -1,4 +1,4 @@
-# Review result (golden example)
+# ai_audit result (golden example)
 
 ## Summary
 - Step: `1.6d`

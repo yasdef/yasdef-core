@@ -30,7 +30,7 @@ Defaults:
   - If uncommitted review changes exist, commits them first as a review-completion guard.
   - Then writes post-review history and commits remaining uncommitted changes on the current branch.
   - Keeps one consolidated history record per step with:
-    - Aggregated token usage + per-phase subsection (design/planning/implementation/review).
+    - Aggregated token usage + per-phase subsection (design/planning/implementation/user_review/ai_audit).
     - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
     - New classes added (new Java type files under src/main/java only; excludes ai/docs/scripts), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
 EOF
@@ -110,7 +110,7 @@ get_current_branch_name() {
 
 get_step_from_branch_name() {
   local branch="$1"
-  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|review)$ ]]; then
+  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|user-review|review)$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -308,9 +308,16 @@ EOF
 
 extract_token_usage_from_log() {
   local phase="$1"
+  local phase_token
+  local step_token
+  phase_token="$(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+  step_token="$(printf '%s' "$STEP_NUM" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
   local candidates=(
     "$ROOT/ai/logs/${PROJECT}-${phase}-latest-log"
+    "$ROOT/ai/logs/${PROJECT}-${phase_token}-latest-log"
     "$ROOT/ai/logs/${PROJECT}-${phase}-${STEP_NUM}-log"
+    "$ROOT/ai/logs/${PROJECT}-${phase_token}-${STEP_NUM}-log"
+    "$ROOT/ai/logs/${PROJECT}-${phase_token}-${step_token}-log"
   )
   local log_path line
 
@@ -518,7 +525,8 @@ append_consolidated_entry() {
   local design_usage="$6"
   local planning_usage="$7"
   local implementation_usage="$8"
-  local review_usage="$9"
+  local user_review_usage="$9"
+  local ai_audit_usage="${10}"
   local ts
   ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
@@ -529,7 +537,7 @@ append_consolidated_entry() {
   local reasoning_sum=0
 
   local usage
-  for usage in "$design_usage" "$planning_usage" "$implementation_usage" "$review_usage"; do
+  for usage in "$design_usage" "$planning_usage" "$implementation_usage" "$user_review_usage" "$ai_audit_usage"; do
     [[ -z "$usage" ]] && continue
     total_sum=$((total_sum + $(extract_usage_value "$usage" total)))
     input_sum=$((input_sum + $(extract_usage_value "$usage" input)))
@@ -569,8 +577,11 @@ append_consolidated_entry() {
     if [[ -n "$implementation_usage" ]]; then
       printf -- '  - Phase: implementation - %s\n' "$implementation_usage"
     fi
-    if [[ -n "$review_usage" ]]; then
-      printf -- '  - Phase: review - %s\n' "$review_usage"
+    if [[ -n "$user_review_usage" ]]; then
+      printf -- '  - Phase: user_review - %s\n' "$user_review_usage"
+    fi
+    if [[ -n "$ai_audit_usage" ]]; then
+      printf -- '  - Phase: ai_audit - %s\n' "$ai_audit_usage"
     fi
     printf -- '- New lines of code added: %s\n' "$loc_added"
     printf -- '- New classes added: %s\n' "$classes_added"
@@ -714,7 +725,9 @@ CLASSES_ADDED="$(count_new_java_types_added)"
 DESIGN_USAGE="$(extract_token_usage_from_log design)"
 PLANNING_USAGE="$(extract_token_usage_from_log planning)"
 IMPLEMENTATION_USAGE="$(extract_token_usage_from_log implementation)"
-REVIEW_USAGE="$(extract_token_usage_from_log review)"
+USER_REVIEW_USAGE="$(extract_token_usage_from_log user_review)"
+AI_AUDIT_USAGE="$(extract_token_usage_from_log ai_audit)"
+LEGACY_REVIEW_USAGE="$(extract_token_usage_from_log review)"
 
 if [[ -z "$DESIGN_USAGE" ]]; then
   DESIGN_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" design)"
@@ -725,8 +738,24 @@ fi
 if [[ -z "$IMPLEMENTATION_USAGE" ]]; then
   IMPLEMENTATION_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" implementation)"
 fi
-if [[ -z "$REVIEW_USAGE" ]]; then
-  REVIEW_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" review)"
+if [[ -z "$USER_REVIEW_USAGE" ]]; then
+  USER_REVIEW_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" user_review)"
+fi
+if [[ -z "$AI_AUDIT_USAGE" ]]; then
+  AI_AUDIT_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" ai_audit)"
+fi
+if [[ -z "$AI_AUDIT_USAGE" ]]; then
+  # Backward compatibility for existing history records from pre-rename runs.
+  AI_AUDIT_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" review)"
+fi
+if [[ -z "$USER_REVIEW_USAGE" && -z "$AI_AUDIT_USAGE" ]]; then
+  # Legacy runs may have only a single review phase without user_review/ai_audit split.
+  if [[ -z "$LEGACY_REVIEW_USAGE" ]]; then
+    LEGACY_REVIEW_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" review)"
+  fi
+  if [[ -n "$LEGACY_REVIEW_USAGE" ]]; then
+    AI_AUDIT_USAGE="$LEGACY_REVIEW_USAGE"
+  fi
 fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -753,7 +782,8 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf 'design usage: %s\n' "${DESIGN_USAGE:-<none>}"
   printf 'planning usage: %s\n' "${PLANNING_USAGE:-<none>}"
   printf 'implementation usage: %s\n' "${IMPLEMENTATION_USAGE:-<none>}"
-  printf 'review usage: %s\n' "${REVIEW_USAGE:-<none>}"
+  printf 'user_review usage: %s\n' "${USER_REVIEW_USAGE:-<none>}"
+  printf 'ai_audit usage: %s\n' "${AI_AUDIT_USAGE:-<none>}"
   printf 'new lines of code added: %s\n' "$LOC_ADDED"
   printf 'new classes added: %s\n' "$CLASSES_ADDED"
   printf 'history out: %s\n' "$HISTORY_OUT"
@@ -773,7 +803,8 @@ append_consolidated_entry \
   "$DESIGN_USAGE" \
   "$PLANNING_USAGE" \
   "$IMPLEMENTATION_USAGE" \
-  "$REVIEW_USAGE"
+  "$USER_REVIEW_USAGE" \
+  "$AI_AUDIT_USAGE"
 commit_uncommitted_changes "$STEP_NUM" "$STEP_TITLE"
 
 printf 'Post-review history updated for step %s.\n' "$STEP_NUM"

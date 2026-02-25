@@ -1,4 +1,4 @@
-# Step review result template
+# Step ai_audit result template
 
 File: `ai/step_review_results/review_result-<current_step>.md`
 
