@@ -51,7 +51,7 @@ EOF
 #!/usr/bin/env bash
 echo "user_review"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_review.sh" <<'EOF'
+  cat >"$repo_dir/ai/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "review"
 EOF
@@ -60,7 +60,7 @@ EOF
 echo "post_review"
 EOF
   chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_review.sh" \
+    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_audit.sh" \
     "$repo_dir/ai/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
@@ -68,7 +68,7 @@ design | echo | mock-model
 planning | echo | mock-model
 implementation | echo | mock-model
 user_review | echo | mock-model
-review | echo | mock-model
+ai_audit | echo | mock-model
 EOF
 
   (
@@ -148,7 +148,7 @@ test_resume_starts_at_planning() {
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "Selected start phase: planning"
-  assert_contains "$out" "Executed phases: planning implementation user_review review post_review"
+  assert_contains "$out" "Executed phases: planning implementation user_review ai_audit post_review"
 }
 
 test_partial_markers_rerun_implementation() {
@@ -175,10 +175,10 @@ test_resume_starts_at_user_review() {
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "user_review: incomplete (missing user_review marker (expected branch step-1.1-user-review))"
   assert_contains "$out" "Selected start phase: user_review"
-  assert_contains "$out" "Executed phases: user_review review post_review"
+  assert_contains "$out" "Executed phases: user_review ai_audit post_review"
 }
 
-test_resume_starts_at_review_after_user_review_complete() {
+test_resume_starts_at_ai_audit_after_user_review_complete() {
   local repo_dir="$TMP_ROOT/repo-review-after-user-review"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
@@ -188,12 +188,12 @@ test_resume_starts_at_review_after_user_review_complete() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "review: incomplete (missing ai/step_review_results/review_result-1.1.md)"
-  assert_contains "$out" "Selected start phase: review"
-  assert_contains "$out" "Executed phases: review post_review"
+  assert_contains "$out" "ai_audit: incomplete (missing ai/step_review_results/review_result-1.1.md)"
+  assert_contains "$out" "Selected start phase: ai_audit"
+  assert_contains "$out" "Executed phases: ai_audit post_review"
 }
 
-test_resume_starts_at_review_with_prefixed_gates() {
+test_resume_starts_at_ai_audit_with_prefixed_gates() {
   local repo_dir="$TMP_ROOT/repo-review-prefixed-gates"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
@@ -203,9 +203,9 @@ test_resume_starts_at_review_with_prefixed_gates() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "review: incomplete (missing ai/step_review_results/review_result-1.1.md)"
-  assert_contains "$out" "Selected start phase: review"
-  assert_contains "$out" "Executed phases: review post_review"
+  assert_contains "$out" "ai_audit: incomplete (missing ai/step_review_results/review_result-1.1.md)"
+  assert_contains "$out" "Selected start phase: ai_audit"
+  assert_contains "$out" "Executed phases: ai_audit post_review"
 }
 
 test_cli_validation() {
@@ -217,11 +217,29 @@ test_cli_validation() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --phase review --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --phase ai_audit --dry-run 2>&1)"
   status=$?
   set -e
   assert_not_equal "$status" "0"
   assert_contains "$out" "--resume cannot be combined with explicit --phase"
+}
+
+test_review_phase_is_rejected() {
+  local repo_dir="$TMP_ROOT/repo-review-rejected"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+  create_user_review_branch_marker "$repo_dir" "1.1"
+
+  local status=0
+  local out
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase review --dry-run -- --step 1.1 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "Unsupported phase: review"
 }
 
 test_missing_step_error() {
@@ -260,7 +278,7 @@ test_dry_run_is_deterministic() {
   fi
 }
 
-test_resume_does_not_require_evidence_before_review() {
+test_resume_does_not_require_evidence_before_ai_audit() {
   local repo_dir="$TMP_ROOT/repo-no-evidence-required"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
@@ -271,16 +289,17 @@ test_resume_does_not_require_evidence_before_review() {
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "implementation: complete (all implementation bullets are [x])"
-  assert_contains "$out" "Selected start phase: review"
-  assert_contains "$out" "Executed phases: review post_review"
+  assert_contains "$out" "Selected start phase: ai_audit"
+  assert_contains "$out" "Executed phases: ai_audit post_review"
 }
 
 test_resume_starts_at_planning
 test_partial_markers_rerun_implementation
 test_resume_starts_at_user_review
-test_resume_starts_at_review_after_user_review_complete
-test_resume_starts_at_review_with_prefixed_gates
-test_resume_does_not_require_evidence_before_review
+test_resume_starts_at_ai_audit_after_user_review_complete
+test_resume_starts_at_ai_audit_with_prefixed_gates
+test_resume_does_not_require_evidence_before_ai_audit
+test_review_phase_is_rejected
 test_cli_validation
 test_missing_step_error
 test_dry_run_is_deterministic

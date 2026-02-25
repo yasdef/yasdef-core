@@ -513,6 +513,7 @@ emit() {
   printf 'After Section 4 verification + Section 4.1 tracking closure, emit an "Evidence Reasoning Summary" before handoff as a compact bullet list per implemented bullet with `PROVEN`/`NOT_PROVEN`; for `PROVEN` include code refs (path + key symbol), reachability from concrete entrypoints first, and test evidence/mapping; no guesses - missing evidence means `NOT_PROVEN` and keep `[ ]`.\n'
   printf 'Use step plan `## Target Bullets` only as the next-phase user-review checklist.\n'
   printf 'Before ending this phase, emit the concise three-point `Review Brief` defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5: what changed/how, how to start review (entrypoints/order), and what to check first (top risks), using concrete references when available and no guessing.\n'
+  printf 'Do not start Section 5 review exchange in this phase. Stop after Review Brief so orchestrator can enter the dedicated User Review phase.\n'
   printf 'When implementation handoff is complete, end your final response with this exact last line: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Use step plan + feature design as primary execution context.\n'
   printf 'Feature design artifact: %s\n' "$DESIGN_FILE"

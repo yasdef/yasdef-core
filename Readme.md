@@ -22,7 +22,7 @@ This approach can be expressed in a few sentences:
 1. Copy-paste the `ai/` folder to the root of your project.
 
 2. Make the bash scripts in `ai/scripts` executable:
-  `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_user_review.sh ai/scripts/ai_review.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh`
+  `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_user_review.sh ai/scripts/ai_audit.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh`
 
 3. You need to provide `implementation_plan.md` in certain format, it should be in root of your project
 
@@ -57,12 +57,12 @@ This approach can be expressed in a few sentences:
 
 - **Worker:** Workers are the actual code implementers. They take the implementation plan as input and split it into reasonable steps. Each step is implemented following a strict AI-dev process. The main goal is to guarantee high code quality while reducing manual coding burden for the operator. This shifts the human operator's role from coding to making complex technical decisions and ensuring architectural quality.
 
-- **AI-dev process:** The AI_DEVELOPMENT_PROCESS.md is a set of rules for Workers and a strict sequence of gates that involve the human operator in some loops. The process flow is: design -> plan -> implementation -> user_review -> post-step audit/review (AI) -> post-review (non-AI). We do not share ai-context between model-driven phases. We run phase-scripts to create a stable, comprehensive prompt from the process artifacts and pass it to the chosen model.
+- **AI-dev process:** The AI_DEVELOPMENT_PROCESS.md is a set of rules for Workers and a strict sequence of gates that involve the human operator in some loops. The process flow is: design -> plan -> implementation -> user_review -> ai_audit (post-step audit/review, AI) -> post-review (non-AI). We do not share ai-context between model-driven phases. We run phase-scripts to create a stable, comprehensive prompt from the process artifacts and pass it to the chosen model.
 
 - **Phase-script behavior:** A phase-script managed by orchestrator, creates prompt, then model (via pipe orchestrator -> cli) consumes the script's result as a prompt. Specifically, orchestrator runs a coding agent (cli) with parameters like model, reasoning effort, and a request to run a script. Script-driven prompt generation make input prompt stable and guaranty it fils up context with correct set of system files. 
 
 - **Orchestration:** Since each phase starts as a terminal command, we can orchestrate the whole process from top-level script `ai/scripts/orchestrator.sh`.
-  - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> review -> post_review`) and starts at the first unfinished phase.
+  - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
   - Safety rule: `--resume` cannot be combined with explicit `--phase`.
   - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`ai/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
@@ -76,7 +76,7 @@ This approach can be expressed in a few sentences:
   - `AI_DEVELOPMENT_PROCESS.md` defines the generic workflow (phases, gates, artifacts, per-step loop). It is project-agnostic and never includes project-specific details.
   - `AGENTS.md` defines project-specific constraints: build commands, test runners, API specs, validation rules, branch strategy, tool paths, idempotency expectations. It never discusses the AI-dev process itself.
   - Both files are required; they are kept independent so that workflow improvements do not leak into project configuration, and vice versa.
-- **Phase isolation**: Each model-driven phase (design, planning, implementation, user review, post-step audit/review) is executed in a separate AI-agent session with a distinct prompt. Context is never shared between phases (e.g., planning artifacts are frozen when implementation starts). Post-review is a non-AI phase. This ensures each phase uses the most suitable model and reasoning effort.
+- **Phase isolation**: Each model-driven phase (design, planning, implementation, user review, ai_audit/post-step audit) is executed in a separate AI-agent session with a distinct prompt. Context is never shared between phases (e.g., planning artifacts are frozen when implementation starts). Post-review is a non-AI phase. This ensures each phase uses the most suitable model and reasoning effort.
 - **Determinism over speed**: Every decision, blocker, and new finding is recorded in durable artifacts (`decisions.md`, `blocker_log.md`, `open_questions.md`, `step_review_results/`). This enables reproducibility and allows the project to continue without AI assistance at any point. Since technical decisions records in structured format to further retro with team or/and with AI
 - **Human in the loop**: Complex technical decisions and architectural choices are not made by the Worker. Workers must explicitly ask the user for decisions before proceeding; user feedback during the dedicated user review phase is incorporated as generalizable rules in `user_review.md` to improve future iterations. 
 
@@ -162,7 +162,7 @@ V-0.0.3 (current)
 2. known problems/to-do's:
 - only codex cli supported
 - you need to manually ctrl-c from codex session in the end of each model-driven phase
-- review step creates relatively small improvement/tech-debt steps (5-8 SP) which is not efficient from token management perspective
+- ai_audit step creates relatively small improvement/tech-debt steps (5-8 SP) which is not efficient from token management perspective
 - incorrect SP countion on post_review
 
 3. main plans
@@ -178,6 +178,7 @@ V-0.0.4
 - CRP-031 — Review Brief Output (improved), more human-friendly and product oriented description)
 - CRP-032 — Evidence Reasoning Summary in Model Output (improved) - model povide evidence that implementation is done to user (stdout)
 - CRP-030 — Extract User Review as a Distinct Phase (Context Optimization)
+- CRP-033 — Rename Review Phase to `ai_audit` (Consistent Phase Naming)
 
 ### security_improvement_proposals
 

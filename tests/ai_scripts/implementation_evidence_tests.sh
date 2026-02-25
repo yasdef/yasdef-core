@@ -133,7 +133,7 @@ EOF
 #!/usr/bin/env bash
 echo "user_review"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_review.sh" <<'EOF'
+  cat >"$repo_dir/ai/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "review"
 EOF
@@ -142,7 +142,7 @@ EOF
 echo "post_review"
 EOF
   chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_review.sh" \
+    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_audit.sh" \
     "$repo_dir/ai/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
@@ -150,7 +150,7 @@ design | echo | mock-model
 planning | echo | mock-model
 implementation | echo | mock-model
 user_review | echo | mock-model
-review | echo | mock-model
+ai_audit | echo | mock-model
 EOF
 
   cat >"$repo_dir/ai/implementation_plan.md" <<'EOF'
@@ -247,30 +247,30 @@ test_review_brief_golden_example_exists() {
   assert_contains "$content" "Check first:"
 }
 
-test_orchestrator_does_not_block_review_without_evidence() {
+test_orchestrator_does_not_block_ai_audit_without_evidence() {
   local repo_dir="$TMP_ROOT/repo-orch-review-no-evidence-gate"
   setup_orchestrator_repo "$repo_dir"
 
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase review -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase ai_audit -- --step 1.1 2>&1)"
   status=$?
   set -e
 
   if [[ "$status" -ne 0 ]]; then
-    echo "Assertion failed: review should not fail when implementation evidence file is absent" >&2
+    echo "Assertion failed: ai_audit should not fail when implementation evidence file is absent" >&2
     echo "$out" >&2
     exit 1
   fi
   if [[ "$out" == *"Implementation evidence missing for step"* ]]; then
-    echo "Assertion failed: review output must not require implementation evidence file" >&2
+    echo "Assertion failed: ai_audit output must not require implementation evidence file" >&2
     echo "$out" >&2
     exit 1
   fi
 }
 
-test_orchestrator_blocks_review_when_user_review_incomplete() {
+test_orchestrator_blocks_ai_audit_when_user_review_incomplete() {
   local repo_dir="$TMP_ROOT/repo-orch-review-blocked-no-user-review"
   setup_orchestrator_repo "$repo_dir"
 
@@ -282,22 +282,22 @@ test_orchestrator_blocks_review_when_user_review_incomplete() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase review -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase ai_audit -- --step 1.1 2>&1)"
   status=$?
   set -e
 
   if [[ "$status" -eq 0 ]]; then
-    echo "Assertion failed: review should fail when user_review is incomplete" >&2
+    echo "Assertion failed: ai_audit should fail when user_review is incomplete" >&2
     exit 1
   fi
-  assert_contains "$out" "Cannot start review for step 1.1: user_review phase is incomplete."
+  assert_contains "$out" "Cannot start ai_audit for step 1.1: user_review phase is incomplete."
 }
 
 test_ai_implementation_prompt_uses_concise_evidence_gate
 test_process_doc_defines_evidence_reasoning_summary_gate
 test_process_doc_defines_review_brief_mode
 test_review_brief_golden_example_exists
-test_orchestrator_does_not_block_review_without_evidence
-test_orchestrator_blocks_review_when_user_review_incomplete
+test_orchestrator_does_not_block_ai_audit_without_evidence
+test_orchestrator_blocks_ai_audit_when_user_review_incomplete
 
 echo "All implementation evidence tests passed."

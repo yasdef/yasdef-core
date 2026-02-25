@@ -20,7 +20,7 @@ DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--no-include-agents] [--reset-review-branch]
+Usage: ai/scripts/ai_audit.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--no-include-agents] [--reset-review-branch]
 
 Defaults:
   - If --step-plan is omitted, uses the latest ai/step_plans/step-*.md.
@@ -59,7 +59,7 @@ ensure_review_branch() {
     if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null || true)" ]]; then
       echo "Review branch must be created from $source_branch to carry step changes." >&2
       echo "Current branch has uncommitted changes: ${current:-<detached>}." >&2
-      echo "Switch to $source_branch and rerun ai/scripts/ai_review.sh." >&2
+      echo "Switch to $source_branch and rerun ai/scripts/ai_audit.sh." >&2
       exit 1
     fi
     if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$source_branch"; then
@@ -93,7 +93,7 @@ ensure_review_branch() {
       echo "Failed to switch to existing branch: $target" >&2
       echo "Existing review branch may have diverged from $source_branch, and uncommitted changes cannot be carried safely." >&2
       echo "If you want to realign review to implementation, rerun this command:" >&2
-      echo "  ai/scripts/ai_review.sh --step $STEP --reset-review-branch" >&2
+      echo "  ai/scripts/ai_audit.sh --step $STEP --reset-review-branch" >&2
       exit 1
     fi
     echo "Switched to existing branch: $target" >&2
@@ -481,7 +481,7 @@ if [[ -z "$OPEN_QUESTIONS_SECTION" ]]; then
 fi
 
 REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
-POST_STEP_AUDIT_SECTION="$(extract_process_section "### 6) Post-step audit (required before moving to the next step)")"
+POST_STEP_AUDIT_SECTION="$(extract_process_section "### 6) Post-step ai_audit/review (required before moving to the next step)")"
 
 if [[ -z "$POST_STEP_AUDIT_SECTION" ]]; then
   echo "Could not extract post-step audit section from $PROCESS." >&2
@@ -534,7 +534,7 @@ if [[ -z "$DESIGN_DECISIONS_SECTION" ]]; then
 fi
 
 emit() {
-  printf 'Review phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
+  printf 'ai_audit phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 6.1 + 6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
   printf 'Execution pattern: run Section 6.1 as the main audit flow; for each finding, execute Section 6.2, then return to Section 6.1 and continue until all findings are dispositioned.\n'
   printf 'Use step plan + feature design as primary execution context.\n'
@@ -542,8 +542,8 @@ emit() {
   printf 'Feature design artifact: %s\n' "$DESIGN_FILE"
   printf 'Use these artifacts together with the context pack below.\n'
   printf 'Commit gate (required): before the completion line, run `git status --short`; if not clean, commit all review-branch changes (`git add -A && git commit -m "Step %s review completion"`), then verify `git status --short` is empty.\n' "$STEP"
-  printf 'Extended completion-line gate: output the review completion line only after the commit gate is satisfied (clean working tree).\n'
-  printf 'When review phase is fully complete, end your final response with this exact last line: "Review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
+  printf 'Extended completion-line gate: output the ai_audit completion line only after the commit gate is satisfied (clean working tree).\n'
+  printf 'When ai_audit phase is fully complete, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'
   printf '== repo snapshot ==\n'
@@ -597,14 +597,14 @@ emit() {
   printf '%s\n\n' "$DESIGN_DECISIONS_SECTION"
   printf '== ai/AI_DEVELOPMENT_PROCESS.md (Section 6.1 + 6.2) ==\n'
   printf '%s\n\n' "$POST_STEP_AUDIT_SECTION"
-  if [[ -f "$ROOT/ai/templates/review_result_TEMPLATE.md" ]]; then
-    printf '== ai/templates/review_result_TEMPLATE.md ==\n'
-    cat "$ROOT/ai/templates/review_result_TEMPLATE.md"
+  if [[ -f "$ROOT/ai/templates/audit_result_TEMPLATE.md" ]]; then
+    printf '== ai/templates/audit_result_TEMPLATE.md ==\n'
+    cat "$ROOT/ai/templates/audit_result_TEMPLATE.md"
     printf '\n\n'
   fi
-  if [[ -f "$ROOT/ai/golden_examples/review_result_GOLDEN_EXAMPLE.md" ]]; then
-    printf '== ai/golden_examples/review_result_GOLDEN_EXAMPLE.md ==\n'
-    cat "$ROOT/ai/golden_examples/review_result_GOLDEN_EXAMPLE.md"
+  if [[ -f "$ROOT/ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md" ]]; then
+    printf '== ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md ==\n'
+    cat "$ROOT/ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md"
     printf '\n\n'
   fi
   printf '== reqirements_ears.md (linked requirements) ==\n'

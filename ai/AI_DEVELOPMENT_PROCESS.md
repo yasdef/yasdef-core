@@ -11,7 +11,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 
 ## Git safety (local workflow)
 - Never commit directly on `main`/`master`. All commits happen on a local topic branch.
-- Branch setup is handled by scripts: `ai/scripts/ai_design.sh` and `ai/scripts/ai_plan.sh` use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, and `ai/scripts/ai_review.sh` creates/switches `step-<step>-review` from `step-<step>-implementation` so uncommitted implementation changes are carried into review.
+- Branch setup is handled by scripts: `ai/scripts/ai_design.sh` and `ai/scripts/ai_plan.sh` use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, and `ai/scripts/ai_audit.sh` (used by phase key `ai_audit`) creates/switches `step-<step>-review` from `step-<step>-implementation` so uncommitted implementation changes are carried into review.
 - Local workflow: create a local branch before starting a step implementation phase, commit only after tests pass and the user approves, do not push. Any merge to `main`/`master` is a separate explicit follow-up action, not part of step completion.
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
@@ -172,9 +172,9 @@ Entry precondition:
 7. Repeat steps 4-6 until the user explicitly confirms the review is complete (e.g., "done", "no more comments").
 8. Only after the user confirms completion, run one final verification test command for the step (prefer the repo’s full verification gate from `AGENTS.md`) and report the result.
 9. If the final verification passes, propose the next step: Post-step audit/review (Section 6).
-- Do not run Section 6 in the implementation phase; Section 6 is executed in the review phase.
+- Do not run Section 6 in the implementation phase; Section 6 is executed in the `ai_audit` phase.
 
-### 6) Post-step audit/review (required before moving to the next step)
+### 6) Post-step ai_audit/review (required before moving to the next step)
 
 #### 6.1) Audit review and findings
 - Entry precondition for this phase: Section 5 (User review) is already complete. Do not ask the user to reconfirm Section 5 during post-step audit.
@@ -196,11 +196,11 @@ Entry precondition:
 - If the "Review step implementation" bullet is complete but missing actuals, do not report this as a user-facing finding/issue. Instead, append a best-effort estimated `Actuals: ...` entry immediately in this phase and continue the audit.
 - Close the "Review step implementation" bullet once the post-step audit write-up is complete and every finding has an explicit disposition recorded (**Accepted** or **Rejected**) and any accepted items are captured as follow-up work (typically as a new step/bullet in `ai/implementation_plan.md`, or as an item in `ai/open_questions.md`/`ai/blocker_log.md` if still unclear).
 - **Commit gate**: only when there are **no accepted unresolved findings** and the user confirms completion, commit all step changes on the current step/review branch and propose the commit commands. If any accepted follow-up work remains, do **not** propose commit commands in this phase. Do not merge to `main`/`master` in this phase.
-- Completion-line gate (review phase): output the exact review completion line (`Review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after post-step audit write-up is complete and every finding has an explicit disposition (**Accepted** or **Rejected**) with accepted items captured as follow-up work.
+- Completion-line gate (ai_audit phase): output the exact ai_audit completion line (`ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after post-step audit write-up is complete and every finding has an explicit disposition (**Accepted** or **Rejected**) with accepted items captured as follow-up work.
 
 #### 6.2) Per-finding issue disposition workflow
 - Run this subsection separately for each finding identified in Section 6.1.
-1. Create or update `ai/step_review_results/review_result-<current_step>.md` using `ai/templates/review_result_TEMPLATE.md` and follow the formatting from `ai/golden_examples/review_result_GOLDEN_EXAMPLE.md`.
+1. Create or update `ai/step_review_results/review_result-<current_step>.md` using `ai/templates/audit_result_TEMPLATE.md` and follow the formatting from `ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md`.
 2. Ask the user to accept/reject the current issue (confirm severity and whether it should be addressed now).
 3. Based on the user’s decision:
    - If rejected: mark it as rejected/closed in `review_result-<current_step>.md` (brief rationale).

@@ -69,7 +69,7 @@ EOF
 #!/usr/bin/env bash
 echo "implementation"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_review.sh" <<'EOF'
+  cat >"$repo_dir/ai/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "review"
 EOF
@@ -83,7 +83,7 @@ touch "$repo_dir/model-ran.flag"
 echo "model-ran"
 EOF
   chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_review.sh" \
+    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_audit.sh" \
     "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/fake_model.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
@@ -91,7 +91,7 @@ design | ai/scripts/fake_model.sh | mock-model
 planning | ai/scripts/fake_model.sh | mock-model
 implementation | ai/scripts/fake_model.sh | mock-model
 user_review | ai/scripts/fake_model.sh | mock-model
-review | ai/scripts/fake_model.sh | mock-model
+ai_audit | ai/scripts/fake_model.sh | mock-model
 EOF
 
   local impl_box=" "

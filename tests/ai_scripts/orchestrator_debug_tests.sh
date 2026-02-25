@@ -69,7 +69,7 @@ EOF
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-user-review}"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_review.sh" <<'EOF'
+  cat >"$repo_dir/ai/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-review}"
 EOF
@@ -83,7 +83,7 @@ echo "MODEL_MARKER=${MODEL_MARKER:-default-model}"
 echo "Token usage: input=1 output=1 total=2"
 EOF
   chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_review.sh" \
+    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_audit.sh" \
     "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/fake_model.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
@@ -91,7 +91,7 @@ design | ai/scripts/fake_model.sh | mock-model
 planning | ai/scripts/fake_model.sh | mock-model
 implementation | ai/scripts/fake_model.sh | mock-model
 user_review | ai/scripts/fake_model.sh | mock-model
-review | ai/scripts/fake_model.sh | mock-model
+ai_audit | ai/scripts/fake_model.sh | mock-model
 EOF
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
@@ -188,19 +188,37 @@ run_user_review_dry_run_reports_prompt_and_log_paths() {
   assert_contains "$out" "$latest_prompt"
 }
 
+run_ai_audit_dry_run_reports_prompt_and_log_paths() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-latest"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+
+  local out
+  out="$(
+    cd "$repo_dir" &&
+    PROMPT_MARKER=audit MODEL_MARKER=audit ai/scripts/orchestrator.sh --dry-run --phase ai_audit
+  )"
+
+  local latest_prompt="$repo_dir/ai/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
+  assert_contains "$out" "dry-run prompt: ai/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
+  assert_contains "$out" "dry-run log: ai/logs/repo-ai-audit-latest-ai-audit-latest-log"
+  assert_contains "$out" "$latest_prompt"
+}
+
 run_source_includes_user_review_interactive_confirmation() {
   local repo_dir="$TMP_ROOT/repo-confirmation-check"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   local out
-  out="$(grep -n "planning|implementation|user_review|review" "$repo_dir/ai/scripts/orchestrator.sh" || true)"
-  assert_contains "$out" "planning|implementation|user_review|review"
+  out="$(grep -n "planning|implementation|user_review|ai_audit" "$repo_dir/ai/scripts/orchestrator.sh" || true)"
+  assert_contains "$out" "planning|implementation|user_review|ai_audit"
 }
 
 run_non_debug_design_writes_latest_only
 run_debug_design_writes_step_specific
 run_latest_overwrite_and_legacy_preserved
 run_user_review_dry_run_reports_prompt_and_log_paths
+run_ai_audit_dry_run_reports_prompt_and_log_paths
 run_source_includes_user_review_interactive_confirmation
 
 echo "All orchestrator debug tests passed."
