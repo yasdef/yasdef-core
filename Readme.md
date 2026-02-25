@@ -150,7 +150,7 @@ V-0.0.2
 - new design step
 - phase scripts improved significantly
 
-V-0.0.3 (current)
+V-0.0.3
 
 1. whats added
 - CRP-023 — Evidence-Based Bullet Completion Gate (model check if implementation plan bulets are realy implemented with strict prove of implementation gate)
@@ -158,6 +158,14 @@ V-0.0.3 (current)
 - CRP-026 — Strict Numbered Decision Prompts in Planning (on planing model always asked with 1 and 2 to simplify user answer)
 - CRP-028 — Orchestrator Resume Mode per Step (run orchestrator with --resume <step> flag to proceed current step from last finished phase)
 - CRP-011 — Human Review Explanation Mode ai helps user to perform codereview
+
+V-0.0.4 (current)
+
+1. whats added
+- CRP-030 — Extract User Review as a Distinct Phase (Context Optimization)
+- CRP-031 — Review Brief Output (improved), more human-friendly and product oriented description)
+- CRP-032 — Evidence Reasoning Summary in Model Output (improved) - model povide evidence that implementation is done to user (stdout)
+- CRP-033 — Rename Review Phase to `ai_audit` (Consistent Phase Naming)
 
 2. known problems/to-do's:
 - only codex cli supported
@@ -171,14 +179,6 @@ V-0.0.3 (current)
 - investigate "skills" usage
 - coordinator service
 - test how good this framework for frontend/mobile development, not only enterprise backend
-
-V-0.0.4
-
-1. whats added
-- CRP-031 — Review Brief Output (improved), more human-friendly and product oriented description)
-- CRP-032 — Evidence Reasoning Summary in Model Output (improved) - model povide evidence that implementation is done to user (stdout)
-- CRP-030 — Extract User Review as a Distinct Phase (Context Optimization)
-- CRP-033 — Rename Review Phase to `ai_audit` (Consistent Phase Naming)
 
 ### security_improvement_proposals
 
