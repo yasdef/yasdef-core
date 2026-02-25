@@ -308,9 +308,16 @@ EOF
 
 extract_token_usage_from_log() {
   local phase="$1"
+  local phase_token
+  local step_token
+  phase_token="$(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+  step_token="$(printf '%s' "$STEP_NUM" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
   local candidates=(
     "$ROOT/ai/logs/${PROJECT}-${phase}-latest-log"
+    "$ROOT/ai/logs/${PROJECT}-${phase_token}-latest-log"
     "$ROOT/ai/logs/${PROJECT}-${phase}-${STEP_NUM}-log"
+    "$ROOT/ai/logs/${PROJECT}-${phase_token}-${STEP_NUM}-log"
+    "$ROOT/ai/logs/${PROJECT}-${phase_token}-${step_token}-log"
   )
   local log_path line
 
@@ -720,6 +727,7 @@ PLANNING_USAGE="$(extract_token_usage_from_log planning)"
 IMPLEMENTATION_USAGE="$(extract_token_usage_from_log implementation)"
 USER_REVIEW_USAGE="$(extract_token_usage_from_log user_review)"
 AI_AUDIT_USAGE="$(extract_token_usage_from_log ai_audit)"
+LEGACY_REVIEW_USAGE="$(extract_token_usage_from_log review)"
 
 if [[ -z "$DESIGN_USAGE" ]]; then
   DESIGN_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" design)"
@@ -739,6 +747,15 @@ fi
 if [[ -z "$AI_AUDIT_USAGE" ]]; then
   # Backward compatibility for existing history records from pre-rename runs.
   AI_AUDIT_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" review)"
+fi
+if [[ -z "$USER_REVIEW_USAGE" && -z "$AI_AUDIT_USAGE" ]]; then
+  # Legacy runs may have only a single review phase without user_review/ai_audit split.
+  if [[ -z "$LEGACY_REVIEW_USAGE" ]]; then
+    LEGACY_REVIEW_USAGE="$(extract_phase_usage_from_history "$STEP_NUM" review)"
+  fi
+  if [[ -n "$LEGACY_REVIEW_USAGE" ]]; then
+    AI_AUDIT_USAGE="$LEGACY_REVIEW_USAGE"
+  fi
 fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
