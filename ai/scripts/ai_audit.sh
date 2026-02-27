@@ -237,6 +237,32 @@ get_step_section() {
   ' "$PLAN"
 }
 
+get_step_target_bullets() {
+  local step="$1"
+  awk -v step="$step" '
+    BEGIN { step_re = step; gsub(/\./, "\\.", step_re) }
+    $0 ~ "^### Step "step_re" " { in_step=1; next }
+    in_step && $0 ~ "^### Step " { exit }
+    in_step && $0 ~ /^- \[[ xX]\][[:space:]]+/ {
+      line = $0
+      sub(/^- \[[ xX]\][[:space:]]+/, "", line)
+      gate = tolower(line)
+      while (gate ~ /^\[[^]]+\][[:space:]]*/) {
+        sub(/^\[[^]]+\][[:space:]]*/, "", gate)
+      }
+      if (gate ~ /^plan and discuss the step([[:space:]\.]|$)/) next
+      if (gate ~ /^review step implementation([[:space:]\.]|$)/) next
+      print "- " line
+      count++
+    }
+    END {
+      if (count == 0) {
+        print "- (no non-review implementation bullets found in ai/implementation_plan.md step section)"
+      }
+    }
+  ' "$PLAN"
+}
+
 get_blocker_log_section() {
   local step="$1"
   awk -v step="$step" '
@@ -467,6 +493,10 @@ if [[ -z "$STEP_SECTION" ]]; then
   echo "Step $STEP section not found in ai/implementation_plan.md." >&2
   exit 1
 fi
+TARGET_PROOF_BULLETS="$(get_step_target_bullets "$STEP")"
+if [[ -z "$TARGET_PROOF_BULLETS" ]]; then
+  TARGET_PROOF_BULLETS="- (no non-review implementation bullets found in ai/implementation_plan.md step section)"
+fi
 
 BLOCKER_LOG_SECTION="$(get_blocker_log_section "$STEP")"
 if [[ -z "$BLOCKER_LOG_SECTION" ]]; then
@@ -535,7 +565,8 @@ fi
 
 emit() {
   printf 'ai_audit phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 6.1 + 6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
+  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
+  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `ai/implementation_plan.md` target bullets, then continue Sections 6.1-6.2.\n'
   printf 'Execution pattern: run Section 6.1 as the main audit flow; for each finding, execute Section 6.2, then return to Section 6.1 and continue until all findings are dispositioned.\n'
   printf 'Use step plan + feature design as primary execution context.\n'
   printf 'Step plan artifact: %s\n' "$STEP_PLAN"
@@ -575,6 +606,8 @@ emit() {
   printf '\n'
   printf '== ai/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
+  printf '== ai_audit entry proof-check target bullets (from ai/implementation_plan.md) ==\n'
+  printf '%s\n\n' "$TARGET_PROOF_BULLETS"
   printf '== %s ==\n' "$STEP_PLAN"
   cat "$STEP_PLAN"
   printf '\n\n'
@@ -595,7 +628,7 @@ emit() {
   printf '%s\n\n' "$DESIGN_ADR_SECTION"
   printf '== Design decisions to confirm ==\n'
   printf '%s\n\n' "$DESIGN_DECISIONS_SECTION"
-  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Section 6.1 + 6.2) ==\n'
+  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.2) ==\n'
   printf '%s\n\n' "$POST_STEP_AUDIT_SECTION"
   if [[ -f "$ROOT/ai/templates/audit_result_TEMPLATE.md" ]]; then
     printf '== ai/templates/audit_result_TEMPLATE.md ==\n'

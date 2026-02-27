@@ -523,14 +523,13 @@ fi
 
 emit() {
   printf 'Implementation phase for Step %s\n' "$STEP"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 3-4.1, Verification gates, Definition of Done, Prompt governance) as authoritative process rules for this phase.\n'
-  printf 'First rule (execution order, required): within the implementation phase, execute step plan `## Plan (ordered)` end-to-end as one implementation batch for the current step. Use unchecked implementation bullets in `ai/implementation_plan.md` only as tracking boundaries (up to but excluding `Review step implementation.`).\n'
-  printf 'Run AI_DEVELOPMENT_PROCESS Section 4 verification gate after implementation is complete for this step (single mandatory end-of-step gate).\n'
-  printf 'Before handoff to Section 5, ensure step-plan `## Target Bullets` and current-step non-review implementation bullets represent the same scope; if not, resolve alignment first.\n'
-  printf 'Before handoff to Section 5, execute AI_DEVELOPMENT_PROCESS Section 4.1 (Tracking closure): mark non-review implementation bullets `[x]` only for implemented and verified work; if any remain `[ ]`, return to Sections 3-4.\n'
-  printf 'Before any implementation bullet `[ ]` -> `[x]`, apply the proof gate in ai/AI_DEVELOPMENT_PROCESS.md Section 4.1 and keep bullets `[ ]` when proof is missing.\n'
-  printf 'After Section 4 verification + Section 4.1 tracking closure, emit an "Evidence Reasoning Summary" before handoff as a compact bullet list per implemented bullet with `PROVEN`/`NOT_PROVEN`; for `PROVEN` include code refs (path + key symbol), reachability from concrete entrypoints first, and test evidence/mapping; no guesses - missing evidence means `NOT_PROVEN` and keep `[ ]`.\n'
-  printf 'Use step plan `## Target Bullets` only as the next-phase user-review checklist.\n'
+  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 3-4, Verification gates, Definition of Done, Prompt governance) as authoritative process rules for this phase.\n'
+  printf 'First rule (execution state, required): use step plan `## Plan (ordered)` as the only implementation-phase execution checklist.\n'
+  printf 'Execution strategy is adaptive: implement in the most coherent order/batching needed, but update ordered-bullet checkbox state per ordered item and mark `[x]` only when that specific ordered bullet is proven complete.\n'
+  printf 'Targeted verification may run during implementation when needed (focused tests/lint/typecheck), but it does not replace the full step gate.\n'
+  printf 'Run the full end-of-step verification gate from AGENTS.md exactly once after all ordered bullets are `[x]` and before Section 5.\n'
+  printf 'Implementation progress and completion reporting in this phase must reference only `## Plan (ordered)` bullets.\n'
+  printf 'Do not use `ai/implementation_plan.md` target bullets as implementation-phase gating or completion state; explicit target-bullet proof-check is performed first in ai_audit.\n'
   printf 'Before ending this phase, emit the concise three-point `Review Brief` defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5: what changed/how, how to start review (entrypoints/order), and what to check first (top risks), using concrete references when available and no guessing.\n'
   printf 'Do not start Section 5 review exchange in this phase. Stop after Review Brief so orchestrator can enter the dedicated User Review phase.\n'
   printf 'When implementation handoff is complete, end your final response with this exact last line: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
@@ -569,9 +568,6 @@ emit() {
     printf 'Working tree: clean or unavailable\n'
   fi
   printf '\n'
-  printf '== ai/implementation_plan.md (tracking summary) ==\n'
-  printf 'Step: %s - %s\n' "$STEP" "$STEP_TITLE"
-  printf 'Path: ai/implementation_plan.md\n\n'
   printf '== ai/step_plans/step-%s.md (execution + review excerpts) ==\n' "$STEP"
   printf 'Path: ai/step_plans/step-%s.md\n\n' "$STEP"
   printf '== ## Design Anchor (scope source of truth) ==\n'
@@ -590,14 +586,9 @@ emit() {
   printf '%s\n\n' "$STEP_PLAN_DECISIONS_NEEDED_SECTION"
   printf '== Step plan UR shortlist (`## Applicable UR Shortlist`) ==\n'
   printf '%s\n\n' "$STEP_PLAN_UR_SHORTLIST_SECTION"
-  printf '== User review checklist only (`## Target Bullets`) ==\n'
-  printf 'Use this checklist in the dedicated User Review phase; do not use it as the primary execution list.\n'
-  printf '%s\n\n' "$STEP_PLAN_TARGET_BULLETS_SECTION"
   printf '== ai/step_designs/step-%s-design.md ==\n' "$STEP"
   printf 'Read directly from repo (authoritative design artifact).\n'
   printf 'Path: ai/step_designs/step-%s-design.md\n\n' "$STEP"
-  printf '== Design-extracted target bullets ==\n'
-  printf '%s\n\n' "$DESIGN_TARGET_BULLETS"
   printf '== Design-extracted proposal/design details ==\n'
   printf '%s\n\n' "$DESIGN_PROPOSAL_SECTION"
   printf '== Design-extracted risks and mitigations ==\n'
@@ -626,7 +617,7 @@ emit() {
   printf 'Pointer-only by default: shortlist context above uses step-plan first, design fallback only when needed.\n'
   printf 'Path: ai/user_review.md\n\n'
   printf '== ai/AI_DEVELOPMENT_PROCESS.md ==\n'
-  printf 'Read directly from repo; apply Sections 3-4.1 for this phase and stop at Section 5 handoff.\n'
+  printf 'Read directly from repo; apply Sections 3-4 for this phase and stop at Section 5 handoff.\n'
   printf 'Path: ai/AI_DEVELOPMENT_PROCESS.md\n'
   if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
     printf '\n\n== AGENTS.md ==\n'
