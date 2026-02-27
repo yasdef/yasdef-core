@@ -18,6 +18,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed: expected output to not contain: $needle" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 assert_not_equal() {
   local a="$1"
   local b="$2"
@@ -186,6 +197,31 @@ test_resume_starts_at_planning() {
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "Selected start phase: planning"
   assert_contains "$out" "Executed phases: planning implementation user_review ai_audit post_review"
+}
+
+test_resume_starts_at_planning_when_step_plan_missing() {
+  local repo_dir="$TMP_ROOT/repo-planning-missing-step-plan"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+## Goal
+test
+## In Scope
+test
+## Out of Scope
+test
+EOF
+  write_impl_plan "$repo_dir" 0 0 0 0
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_not_contains "$out" "Resume blocked: missing ai/step_plans/step-1.1.md; create the step plan before using --resume."
+  assert_contains "$out" "Step plan not found:"
 }
 
 test_partial_markers_rerun_implementation() {
@@ -371,6 +407,7 @@ test_resume_blocks_when_ordered_plan_has_no_checklist_items() {
 }
 
 test_resume_starts_at_planning
+test_resume_starts_at_planning_when_step_plan_missing
 test_partial_markers_rerun_implementation
 test_resume_starts_at_user_review
 test_resume_starts_at_ai_audit_after_user_review_complete

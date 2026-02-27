@@ -1577,10 +1577,7 @@ evaluate_resume_phase_states() {
   evaluate_ai_audit_phase "$step"
   evaluate_post_review_phase "$step" "$counts"
 
-  if [[ "$ordered_state" == "missing_step_plan" ]]; then
-    RESUME_BLOCKED=1
-    RESUME_BLOCK_REASON="missing ai/step_plans/step-$step.md; create the step plan before using --resume."
-  elif [[ "$ordered_state" == "missing_section" ]]; then
+  if [[ "$ordered_state" == "missing_section" ]]; then
     RESUME_BLOCKED=1
     RESUME_BLOCK_REASON="step plan is missing required section '## Plan (ordered)'; add it before using --resume."
   elif [[ "$ordered_state" == "no_checklist_items" ]]; then

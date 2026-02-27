@@ -628,7 +628,7 @@ emit() {
   printf 'Strict workflow: execute Section 2 in two mandatory sub-phases: 2.1) Planning draft and decision capture, then 2.2) Plan quality gates and closure.\n'
   printf 'Do not start 2.2 before finishing 2.1 outputs (draft plan sections, prerequisites, assumptions, risks, tests/docs, and `Decisions Needed` entries).\n'
   printf 'In 2.2, enforce all planning quality gates: open-questions gate, things-to-decide gate, and decision-confirmation gate.\n'
-  printf 'Decision prompts (if required): ask only for unclear/blocking choices and use exactly two options (`1.` recommended, `2.` alternative); accept numeric reply `1` or `2`.\n'
+  printf 'Decision prompts (required for unresolved design decisions): for each unresolved item in design `## Things to Decide`, ask exactly two options (`1.` recommended, `2.` alternative) and accept numeric reply `1` or `2`.\n'
   printf 'Do not mark planning complete while any gate is unresolved; continue planning discussion and update artifacts until all gates pass.\n'
   printf 'Use the feature design artifact as the primary input and convert it into an execution-focused step plan.\n'
   printf 'Execution scope must come from design target bullets (excluding planning/review bullets).\n'

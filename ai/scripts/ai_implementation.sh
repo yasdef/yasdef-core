@@ -525,7 +525,7 @@ emit() {
   printf 'Implementation phase for Step %s\n' "$STEP"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 3-4, Verification gates, Definition of Done, Prompt governance) as authoritative process rules for this phase.\n'
   printf 'First rule (execution state, required): use step plan `## Plan (ordered)` as the only implementation-phase execution checklist.\n'
-  printf 'Execution strategy is adaptive: implement in the most coherent order/batching needed, but update ordered-bullet checkbox state per ordered item and mark `[x]` only when that specific ordered bullet is proven complete.\n'
+  printf 'Execution strategy is adaptive: implement in the most coherent order/batching needed, but update ordered-bullet checkbox state per ordered item and mark `[x]` only when that specific ordered bullet is implemented and verified.\n'
   printf 'Targeted verification may run during implementation when needed (focused tests/lint/typecheck), but it does not replace the full step gate.\n'
   printf 'Run the full end-of-step verification gate from AGENTS.md exactly once after all ordered bullets are `[x]` and before Section 5.\n'
   printf 'Implementation progress and completion reporting in this phase must reference only `## Plan (ordered)` bullets.\n'
