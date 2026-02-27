@@ -49,6 +49,7 @@ assert_branch_equals() {
 setup_repo() {
   local repo_dir="$1"
   local impl_checked="$2"
+  local ordered_mode="$3"
 
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
     "$repo_dir/ai/step_plans"
@@ -107,12 +108,32 @@ Est. step total: 5 SP
 - [ ] Review step implementation (SP=1)
 EOF
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  local ordered_block=""
+  case "$ordered_mode" in
+    checked)
+      ordered_block='- [x] 1. Implement part A.'
+      ;;
+    unchecked)
+      ordered_block='- [ ] 1. Implement part A.'
+      ;;
+    plain)
+      ordered_block='- 1. Implement part A.'
+      ;;
+    missing)
+      ordered_block=''
+      ;;
+    *)
+      echo "Unknown ordered_mode: $ordered_mode" >&2
+      exit 1
+      ;;
+  esac
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<EOF
 # Step Plan: 1.1 - Demo
 ## Target Bullets
 - Implement part A
 ## Plan (ordered)
-- 1. Implement part A.
+$ordered_block
 EOF
 
   cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
@@ -159,9 +180,9 @@ EOF
   )
 }
 
-test_user_review_fails_fast_before_model() {
-  local repo_dir="$TMP_ROOT/repo-fail-fast"
-  setup_repo "$repo_dir" 0
+test_user_review_fails_fast_when_ordered_plan_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-fail-fast-ordered-unchecked"
+  setup_repo "$repo_dir" 1 unchecked
 
   local status=0
   local out=""
@@ -171,17 +192,39 @@ test_user_review_fails_fast_before_model() {
   set -e
 
   if [[ "$status" -eq 0 ]]; then
-    echo "Assertion failed: user_review phase must fail when non-review bullets are unchecked" >&2
+    echo "Assertion failed: user_review phase must fail when ordered-plan items are unchecked" >&2
     echo "$out" >&2
     exit 1
   fi
   assert_contains "$out" "User review precheck failed for step 1.1."
+  assert_contains "$out" "Unchecked ordered-plan items (normalized):"
+  assert_contains "$out" "- [ ] 1. Implement part A."
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
-test_user_review_runs_model_after_gate_passes() {
-  local repo_dir="$TMP_ROOT/repo-pass"
-  setup_repo "$repo_dir" 1
+test_user_review_normalizes_plain_ordered_bullets_to_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-normalize-plain-ordered"
+  setup_repo "$repo_dir" 1 plain
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: plain ordered-plan bullets must be treated as unchecked and block user_review" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Unchecked ordered-plan items (normalized):"
+  assert_contains "$out" "- [ ] 1. Implement part A."
+  assert_file_not_exists "$repo_dir/model-ran.flag"
+}
+
+test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-pass-ordered-checked"
+  setup_repo "$repo_dir" 0 checked
 
   (
     cd "$repo_dir"
@@ -194,7 +237,7 @@ test_user_review_runs_model_after_gate_passes() {
 
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
   local repo_dir="$TMP_ROOT/repo-unsafe-state"
-  setup_repo "$repo_dir" 1
+  setup_repo "$repo_dir" 1 checked
 
   (
     cd "$repo_dir"
@@ -217,8 +260,9 @@ test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
-test_user_review_fails_fast_before_model
-test_user_review_runs_model_after_gate_passes
+test_user_review_fails_fast_when_ordered_plan_unchecked
+test_user_review_normalizes_plain_ordered_bullets_to_unchecked
+test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state
 
 echo "All user review phase tests passed."
