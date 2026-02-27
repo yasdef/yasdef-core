@@ -7,6 +7,14 @@ File: `ai/step_review_results/review_result-<current_step>.md`
 - Scope: `<what was reviewed>`
 - Branch / commit: `<branch name and/or last commit>`
 
+## Entry Proof Check (Section 6.0)
+- Target bullet: `<copied from ai/implementation_plan.md>` — **PROVEN** | **NOT_PROVEN**
+  - Code refs: `<path + key symbol>`
+  - Reachability: `<entrypoint-first flow>`
+  - Test evidence: `<new/updated test or credible existing coverage mapping>`
+- Repeat for each in-scope target bullet.
+- If any bullet is **NOT_PROVEN**, record it and stop deeper audit analysis until disposition guidance is provided.
+
 ## Critical
 - (none)
 
