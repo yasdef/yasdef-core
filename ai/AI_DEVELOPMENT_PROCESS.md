@@ -71,7 +71,9 @@ Before step planning:
 - Scope contract lives in the feature design artifact: `## Goal`, `## In Scope`, and `## Out of Scope`. Do not restate those sections in the step plan; instead add a pointer to the design and focus the plan on execution.
 - The plan must include an "Implementation Notes" or "Constraints" section that explicitly references `AGENTS.md` and `ai/AI_DEVELOPMENT_PROCESS.md`.
 - The plan must include an "Architecture / Helper Flow" section describing helper/service design and call flow when applicable.
-- The plan must include an "Applicable UR Shortlist" section with only likely-relevant rules from `ai/user_review.md` (IDs + one-line rationale). If none apply, explicitly write `None applicable`.
+- The plan must include an "Applicable UR Shortlist" section.
+- Accepted shortlist content is strict: either exact `- None.` (use this when there are no UR rules yet, or none apply), or a curated list where each bullet includes a `UR-xxxx` ID with optional one-line rationale.
+- Prioritize shortlist signal quality: when using UR IDs, recommended shortlist size is 3-8 items; enforced maximum is 8.
 - The plan must include design-derived constraints and decisions needed for execution:
   - Include relevant constraints extracted from design's `Applicable AGENTS.md Constraints` and `Applicable User Review Rules`.
   - Include non-negotiable invariants derived from the design's ADR shortlist and the step plan context.
@@ -93,6 +95,7 @@ Before step planning:
 - Decision prompt format (when the decision-confirmation gate triggers): use exactly two options in numbered format. Option `1.` must be the recommended/default choice with short rationale; option `2.` must be the alternative with short trade-off rationale.
 - Decision prompt scope gate: ask decision prompts only for unclear/blocking planning choices. If artifacts/rules already define a clear path, do not ask a decision prompt.
 - Decision prompt actionability gate: keep the two options mutually exclusive and actionable, and explicitly allow the user to reply with only `1` or `2`.
+- UR-shortlist quality gate: do not close planning if `## Applicable UR Shortlist` is missing, uses non-canonical content, or includes more than 8 UR IDs.
 - If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
 - Only when the plan is accepted, open questions are resolved/closed, and all design "Things to Decide" items have explicit outcomes, immediately mark the "Plan and discuss the step" bullet as done and add Step sections to `ai/blocker_log.md` and `ai/open_questions.md` (even if "none"), then commit the planning artifacts.
 - Completion-line gate: output the exact planning completion line (`Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after verifying in `ai/implementation_plan.md` that this step's "Plan and discuss the step." bullet is marked `[x]` (and included in the planning commit when changed).
