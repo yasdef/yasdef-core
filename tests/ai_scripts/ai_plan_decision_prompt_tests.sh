@@ -52,6 +52,9 @@ EOF
 ## Target Bullets
 - Implement the feature endpoint.
 
+## Things to Decide (for final planning discussion)
+- Select adapter strategy: keep adapter A default or switch to adapter B.
+
 ## Applicable AGENTS.md Constraints
 - Follow AGENTS.md constraints relevant to this step.
 
@@ -112,10 +115,14 @@ test_decision_prompt_contract_and_numeric_reply() {
   out="$(run_plan "$repo_dir")"
 
   assert_contains "$out" 'Decision prompts (required for unresolved design decisions): for each unresolved item in design `## Things to Decide`, ask exactly two options (`1.` recommended, `2.` alternative) and accept numeric reply `1` or `2`.'
+  assert_contains "$out" 'If design `## Things to Decide` is missing or weak, derive concrete plan-critical decisions from design trade-offs/risks/prerequisites and ask two-option prompts when the choice impacts implementation path.'
+  assert_contains "$out" 'If no plan-critical trade-off remains, explicitly state why no additional decision prompt is needed before closing planning.'
   assert_not_contains "$out" 'Decision prompts (if required): ask only for unclear/blocking choices'
   assert_not_contains "$out" "1. <recommended/default option> (Recommended)"
   assert_not_contains "$out" "2. <alternative option>"
   assert_contains "$out" "Open questions currently present for this step: YES."
+  assert_contains "$out" "== Design-extracted things to decide =="
+  assert_contains "$out" "- Select adapter strategy: keep adapter A default or switch to adapter B."
 }
 
 test_clear_path_signal_is_unchanged() {
@@ -127,6 +134,7 @@ test_clear_path_signal_is_unchanged() {
 
   assert_contains "$out" "Open questions currently present for this step: NO."
   assert_contains "$out" 'Decision prompts (required for unresolved design decisions): for each unresolved item in design `## Things to Decide`, ask exactly two options (`1.` recommended, `2.` alternative) and accept numeric reply `1` or `2`.'
+  assert_contains "$out" "== Design-extracted things to decide =="
 }
 
 test_decision_prompt_contract_and_numeric_reply

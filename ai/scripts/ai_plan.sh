@@ -215,6 +215,19 @@ get_design_ur_heading() {
   return 1
 }
 
+get_design_things_to_decide_heading() {
+  local file="$1"
+  if grep -Fq "## Things to Decide (for final planning discussion)" "$file"; then
+    printf '## Things to Decide (for final planning discussion)'
+    return 0
+  fi
+  if grep -Fq "## Things to Decide" "$file"; then
+    printf '## Things to Decide'
+    return 0
+  fi
+  return 1
+}
+
 open_questions_has_any() {
   local section="$1"
   printf '%s\n' "$section" | awk '
@@ -601,6 +614,14 @@ fi
 if [[ -z "$DESIGN_ADR_SECTION" ]]; then
   DESIGN_ADR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
 fi
+if DESIGN_THINGS_TO_DECIDE_HEADING="$(get_design_things_to_decide_heading "$DESIGN_FILE")"; then
+  DESIGN_THINGS_TO_DECIDE_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_THINGS_TO_DECIDE_HEADING")"
+else
+  DESIGN_THINGS_TO_DECIDE_SECTION="- (missing in design artifact; derive plan-critical decisions from design trade-offs/risks as needed)"
+fi
+if [[ -z "$DESIGN_THINGS_TO_DECIDE_SECTION" ]]; then
+  DESIGN_THINGS_TO_DECIDE_SECTION="- (empty in design artifact; derive plan-critical decisions from design trade-offs/risks as needed)"
+fi
 
 mkdir -p "$(dirname "$OUT")"
 if [[ ! -f "$OUT" ]]; then
@@ -629,6 +650,8 @@ emit() {
   printf 'Do not start 2.2 before finishing 2.1 outputs (draft plan sections, prerequisites, assumptions, risks, tests/docs, and `Decisions Needed` entries).\n'
   printf 'In 2.2, enforce all planning quality gates: open-questions gate, things-to-decide gate, and decision-confirmation gate.\n'
   printf 'Decision prompts (required for unresolved design decisions): for each unresolved item in design `## Things to Decide`, ask exactly two options (`1.` recommended, `2.` alternative) and accept numeric reply `1` or `2`.\n'
+  printf 'If design `## Things to Decide` is missing or weak, derive concrete plan-critical decisions from design trade-offs/risks/prerequisites and ask two-option prompts when the choice impacts implementation path.\n'
+  printf 'If no plan-critical trade-off remains, explicitly state why no additional decision prompt is needed before closing planning.\n'
   printf 'Do not mark planning complete while any gate is unresolved; continue planning discussion and update artifacts until all gates pass.\n'
   printf 'Use the feature design artifact as the primary input and convert it into an execution-focused step plan.\n'
   printf 'Execution scope must come from design target bullets (excluding planning/review bullets).\n'
@@ -659,6 +682,8 @@ emit() {
   printf '%s\n\n' "$DESIGN_UR_SECTION"
   printf '== Design-extracted ADR shortlist ==\n'
   printf '%s\n\n' "$DESIGN_ADR_SECTION"
+  printf '== Design-extracted things to decide ==\n'
+  printf '%s\n\n' "$DESIGN_THINGS_TO_DECIDE_SECTION"
   printf '== %s ==\n' "$out_label"
   cat "$OUT"
   printf '\n\n'

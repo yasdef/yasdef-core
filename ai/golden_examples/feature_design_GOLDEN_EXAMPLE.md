@@ -21,8 +21,12 @@ Designer model/session: gpt-5.3-codex, session=<fill>
 - Any API shape changes outside close command behavior.
 
 ## Things to Decide (for final planning discussion)
-- Should we strictly reuse ADR-0001 response strategy for this endpoint, or allow an endpoint-specific variant?
-- Should duplicate mismatch behavior remain HTTP 409 with the existing error code, or be narrowed with a more specific domain title?
+- Response strategy scope:
+  - Option 1 (recommended): strictly reuse ADR-0001 response strategy for this endpoint.
+  - Option 2: allow an endpoint-specific response variant for close-command duplicates.
+- Duplicate mismatch error contract:
+  - Option 1 (recommended): keep HTTP 409 with existing error code for consistency.
+  - Option 2: keep HTTP 409 but introduce a narrower domain title/code for mismatch.
 
 ## Trade-offs
 - Keep response minimal for stable replay; clients use query endpoint for current state.

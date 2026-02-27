@@ -212,14 +212,14 @@ test_ai_implementation_prompt_uses_concise_evidence_gate() {
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
   assert_contains "$prompt" 'First rule (execution state, required): use step plan `## Plan (ordered)` as the only implementation-phase execution checklist.'
-  assert_contains "$prompt" 'Execution strategy is adaptive: implement in the most coherent order/batching needed, but update ordered-bullet checkbox state per ordered item and mark `[x]` only when that specific ordered bullet is proven complete.'
+  assert_contains "$prompt" 'Execution strategy is adaptive: implement in the most coherent order/batching needed, but update ordered-bullet checkbox state per ordered item and mark `[x]` only when that specific ordered bullet is implemented and verified.'
   assert_contains "$prompt" 'Targeted verification may run during implementation when needed (focused tests/lint/typecheck), but it does not replace the full step gate.'
   assert_contains "$prompt" 'Run the full end-of-step verification gate from AGENTS.md exactly once after all ordered bullets are `[x]` and before Section 5.'
   assert_contains "$prompt" 'Implementation progress and completion reporting in this phase must reference only `## Plan (ordered)` bullets.'
   assert_contains "$prompt" 'Do not use `ai/implementation_plan.md` target bullets as implementation-phase gating or completion state; explicit target-bullet proof-check is performed first in ai_audit.'
   assert_not_contains "$prompt" 'emit an "Evidence Reasoning Summary" before handoff'
-  assert_contains "$prompt" 'Before ending this phase, emit the concise three-point `Review Brief` defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5: what changed/how, how to start review (entrypoints/order), and what to check first (top risks), using concrete references when available and no guessing.'
-  assert_contains "$prompt" 'Do not start Section 5 review exchange in this phase. Stop after Review Brief so orchestrator can enter the dedicated User Review phase.'
+  assert_not_contains "$prompt" 'Before ending this phase, emit the concise three-point `Review Brief` defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5: what changed/how, how to start review (entrypoints/order), and what to check first (top risks), using concrete references when available and no guessing.'
+  assert_not_contains "$prompt" 'Do not start Section 5 review exchange in this phase. Stop after Review Brief so orchestrator can enter the dedicated User Review phase.'
   if [[ "$prompt" == *"Implementation evidence artifact (required):"* ]]; then
     echo "Assertion failed: prompt must not require dedicated implementation evidence artifact" >&2
     exit 1
