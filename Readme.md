@@ -159,13 +159,22 @@ V-0.0.3
 - CRP-028 — Orchestrator Resume Mode per Step (run orchestrator with --resume <step> flag to proceed current step from last finished phase)
 - CRP-011 — Human Review Explanation Mode ai helps user to perform codereview
 
-V-0.0.4 (current)
+V-0.0.4
 
 1. whats added
 - CRP-030 — Extract User Review as a Distinct Phase (Context Optimization)
 - CRP-031 — Review Brief Output (improved), more human-friendly and product oriented description)
 - CRP-032 — Evidence Reasoning Summary in Model Output (improved) - model povide evidence that implementation is done to user (stdout)
 - CRP-033 — Rename Review Phase to `ai_audit` (Consistent Phase Naming)
+
+V-0.0.5 (current)
+
+1. whats added
+- CRP-034 — Move `implementation_plan.md` Bullet-Closure Gate to `ai_audit` (now we check implementation plan bullets on ai audit phase, implementation phase works only with internal ordered plan)
+- CRP-035 — User Review Gate Uses Step Plan Ordered Checkboxes (we use now internal implementation ordered plan on user_review)
+- CRP-036 — Orchestrator Resume Based on Ordered Plan State
+- CRP-039 — Planning Gate: Step Plan Must Declare Applicable UR Shortlist (improve how ai works with previous user review items)
+
 
 2. known problems/to-do's:
 - only codex cli supported
