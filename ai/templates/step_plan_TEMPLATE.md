@@ -10,7 +10,7 @@ Notes:
 - If a planning-time decision prompt is needed to resolve unclear/blocking choices, ask exactly two numbered options (`1.` recommended/default, `2.` alternative), each with short rationale. User should be able to reply with only `1` or `2`.
 - `## Applicable UR Shortlist` accepts only two canonical forms: exact `- None.` or bullets that include `UR-xxxx` IDs (optional rationale). When using UR IDs, prioritize to 3-8 items (max 8).
 - Implementation contract: `## Plan (ordered)` is the primary execution checklist for implementation phase.
-- Review contract: `## Target Bullets` is the Section 5 user-review checklist to confirm scope completion.
+- Scope contract detail: `## Target Bullets` captures step scope intent and helps trace planned outcomes; it is not the implementation/user_review phase-state gate.
 
 ---
 
