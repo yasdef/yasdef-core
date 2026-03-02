@@ -52,6 +52,8 @@ Before step planning:
 - Include only relevant constraints from `AGENTS.md` and relevant insights from `ai/user_review.md` (do not dump all rules).
 - Shortlist only relevant accepted ADRs from `ai/decisions.md` and capture them in the design artifact (do not dump all ADRs).
 - In this phase, do not finalize durable decisions and do not update `ai/decisions.md`; capture candidate decisions under "Things to Decide" in the design artifact for final planning discussion.
+- Design decision quality gate: make "Things to Decide" entries concrete and action-driving (decision-shaped, not generic questions), with mutually exclusive options and explicit trade-offs so planning can present clear `1`/`2` choices.
+- Design decision depth gate: for non-trivial scope, capture at least 1-3 plan-critical "Things to Decide" items. If there are truly no plan-critical choices, explicitly record `- None.` with short rationale.
 - Track unresolved questions/unknowns in `ai/open_questions.md` when they need explicit follow-up in planning.
 - Design is a hard gate: planning must not run without `ai/step_designs/step-<step>-design.md`.
 - Implementation prompts must use this design artifact plus the step plan as primary context inputs.
@@ -82,6 +84,7 @@ Before step planning:
 - Identify prerequisites (schema, endpoints, validators, error codes, auth assumptions).
 - If prerequisites are missing, add them as new bullets to the current step (mark as technical debt if discovered late).
 - Identify decisions that must be made (including all design "Things to Decide" items); ask questions and record the outcome in `ai/decisions.md` when durable.
+- If design "Things to Decide" entries are vague, normalize them into concrete decision prompts before closure (clear options, impact/risk trade-off, and what changes in implementation depending on choice).
 - If any decision is required to proceed, explicitly ask the user before implementing.
 - Resolve every item listed in design `## Things to Decide (for final planning discussion)` (or `## Things to Decide`) during planning. In the step plan `## Decisions Needed`, record an explicit outcome per item: `Accepted`, `Deferred`, or `Blocked` (with rationale and where the follow-up is tracked).
 - Review `ai/open_questions.md` for the current step; add new questions there and remove answered ones.
@@ -95,6 +98,7 @@ Before step planning:
 - Decision prompt format (when decision-confirmation gate triggers): use exactly two options in numbered format. Option `1.` must be the recommended/default choice with short rationale; option `2.` must be the alternative with short trade-off rationale.
 - Decision prompt scope gate: do not auto-select unresolved design decisions in planning. Require explicit user choice unless the same decision was already explicitly provided by the user for the current step.
 - Decision prompt actionability gate: keep the two options mutually exclusive and actionable, and explicitly allow the user to reply with only `1` or `2`.
+- Decision-depth quality gate: if design unresolved decisions are empty but a plan-critical trade-off still exists in prerequisites/risks/tests/docs, ask one explicit two-option confirmation prompt before closing planning; if no plan-critical trade-offs remain, explicitly record that no additional decision prompt is required.
 - UR-shortlist quality gate: do not close planning if `## Applicable UR Shortlist` is missing, uses non-canonical content, or includes more than 8 UR IDs.
 - If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
 - Only when the plan is accepted, open questions are resolved/closed, and all design "Things to Decide" items have explicit outcomes, immediately mark the "Plan and discuss the step" bullet as done and add Step sections to `ai/blocker_log.md` and `ai/open_questions.md` (even if "none"), then commit the planning artifacts.

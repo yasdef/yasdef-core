@@ -6,6 +6,7 @@ Notes:
 - Keep it concise and decision-focused.
 - This artifact is for user review in the design phase.
 - Include only feature-relevant rules from `AGENTS.md` and `ai/user_review.md`.
+- For non-trivial scope, include 1-3 plan-critical items in `## Things to Decide (for final planning discussion)`; if none, write `- None.` with short rationale.
 
 ---
 
@@ -29,8 +30,9 @@ Designer model/session: <fill>
 - <out of scope>
 
 ## Things to Decide (for final planning discussion)
-- <decision point to refine with user>
-- <options/trade-offs to confirm in planning>
+- <decision point with two clear alternatives and trade-off impact>
+  - Option 1 (recommended): <default with rationale>
+  - Option 2: <alternative with trade-off rationale>
 
 ## Trade-offs
 - <trade-off>

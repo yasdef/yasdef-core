@@ -530,8 +530,6 @@ emit() {
   printf 'Run the full end-of-step verification gate from AGENTS.md exactly once after all ordered bullets are `[x]` and before Section 5.\n'
   printf 'Implementation progress and completion reporting in this phase must reference only `## Plan (ordered)` bullets.\n'
   printf 'Do not use `ai/implementation_plan.md` target bullets as implementation-phase gating or completion state; explicit target-bullet proof-check is performed first in ai_audit.\n'
-  printf 'Before ending this phase, emit the concise three-point `Review Brief` defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5: what changed/how, how to start review (entrypoints/order), and what to check first (top risks), using concrete references when available and no guessing.\n'
-  printf 'Do not start Section 5 review exchange in this phase. Stop after Review Brief so orchestrator can enter the dedicated User Review phase.\n'
   printf 'When implementation handoff is complete, end your final response with this exact last line: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Use step plan + feature design as primary execution context.\n'
   printf 'Feature design artifact: %s\n' "$DESIGN_FILE"
