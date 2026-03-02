@@ -111,7 +111,8 @@ test_decision_prompt_contract_and_numeric_reply() {
   local out
   out="$(run_plan "$repo_dir")"
 
-  assert_contains "$out" 'Decision prompts (if required): ask only for unclear/blocking choices and use exactly two options (`1.` recommended, `2.` alternative); accept numeric reply `1` or `2`.'
+  assert_contains "$out" 'Decision prompts (required for unresolved design decisions): for each unresolved item in design `## Things to Decide`, ask exactly two options (`1.` recommended, `2.` alternative) and accept numeric reply `1` or `2`.'
+  assert_not_contains "$out" 'Decision prompts (if required): ask only for unclear/blocking choices'
   assert_not_contains "$out" "1. <recommended/default option> (Recommended)"
   assert_not_contains "$out" "2. <alternative option>"
   assert_contains "$out" "Open questions currently present for this step: YES."
@@ -125,7 +126,7 @@ test_clear_path_signal_is_unchanged() {
   out="$(run_plan "$repo_dir")"
 
   assert_contains "$out" "Open questions currently present for this step: NO."
-  assert_contains "$out" 'Decision prompts (if required): ask only for unclear/blocking choices and use exactly two options (`1.` recommended, `2.` alternative); accept numeric reply `1` or `2`.'
+  assert_contains "$out" 'Decision prompts (required for unresolved design decisions): for each unresolved item in design `## Things to Decide`, ask exactly two options (`1.` recommended, `2.` alternative) and accept numeric reply `1` or `2`.'
 }
 
 test_decision_prompt_contract_and_numeric_reply

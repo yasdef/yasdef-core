@@ -91,9 +91,9 @@ Before step planning:
 #### 2.2) Plan quality gates and closure
 - Open-questions quality gate: do not consider the planning bullet complete while any open questions remain for the step. Ask questions one-by-one (at most one per assistant message), wait for the user's answer, then update the step plan and remove/close the answered question(s) in `ai/open_questions.md`.
 - Things-to-decide quality gate: do not consider the planning bullet complete while any design "Things to Decide" item lacks an explicit recorded outcome in the step plan. If unresolved, ask the user, then update the step plan and tracking artifacts.
-- Decision-confirmation quality gate: if a plan-critical choice has multiple viable options and no explicit prior user direction, ask the user and record the answer before closing planning.
-- Decision prompt format (when the decision-confirmation gate triggers): use exactly two options in numbered format. Option `1.` must be the recommended/default choice with short rationale; option `2.` must be the alternative with short trade-off rationale.
-- Decision prompt scope gate: ask decision prompts only for unclear/blocking planning choices. If artifacts/rules already define a clear path, do not ask a decision prompt.
+- Decision-confirmation quality gate: for each unresolved item from design `## Things to Decide`, ask the user for an explicit decision and record the answer before closing planning, even when a preferred/default option exists in design notes.
+- Decision prompt format (when decision-confirmation gate triggers): use exactly two options in numbered format. Option `1.` must be the recommended/default choice with short rationale; option `2.` must be the alternative with short trade-off rationale.
+- Decision prompt scope gate: do not auto-select unresolved design decisions in planning. Require explicit user choice unless the same decision was already explicitly provided by the user for the current step.
 - Decision prompt actionability gate: keep the two options mutually exclusive and actionable, and explicitly allow the user to reply with only `1` or `2`.
 - UR-shortlist quality gate: do not close planning if `## Applicable UR Shortlist` is missing, uses non-canonical content, or includes more than 8 UR IDs.
 - If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
