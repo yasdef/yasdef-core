@@ -93,6 +93,35 @@ create_user_review_branch_marker() {
 write_design_and_plan_artifacts() {
   local repo_dir="$1"
   local step="$2"
+  local ordered_mode="${3:-all_checked}"
+
+  local ordered_block=""
+  local include_ordered_section=1
+  case "$ordered_mode" in
+    all_checked)
+      ordered_block='- [x] 1. demo A
+- [x] 2. demo B'
+      ;;
+    partial)
+      ordered_block='- [x] 1. demo A
+- [ ] 2. demo B'
+      ;;
+    all_unchecked)
+      ordered_block='- [ ] 1. demo A
+- [ ] 2. demo B'
+      ;;
+    no_checklist_items)
+      ordered_block='No checklist bullets yet.'
+      ;;
+    missing_section)
+      include_ordered_section=0
+      ;;
+    *)
+      echo "Unknown ordered_mode: $ordered_mode" >&2
+      exit 1
+      ;;
+  esac
+
   cat >"$repo_dir/ai/step_designs/step-$step-design.md" <<'EOF'
 ## Goal
 test
@@ -101,13 +130,21 @@ test
 ## Out of Scope
 test
 EOF
-  cat >"$repo_dir/ai/step_plans/step-$step.md" <<'EOF'
+  if [[ "$include_ordered_section" -eq 1 ]]; then
+    cat >"$repo_dir/ai/step_plans/step-$step.md" <<EOF
 # Step Plan: 1.1 - Demo
 ## Target Bullets
 - demo
 ## Plan (ordered)
-- 1. demo
+$ordered_block
 EOF
+  else
+    cat >"$repo_dir/ai/step_plans/step-$step.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Target Bullets
+- demo
+EOF
+  fi
 }
 
 write_impl_plan() {
@@ -155,12 +192,12 @@ test_partial_markers_rerun_implementation() {
   local repo_dir="$TMP_ROOT/repo-implementation"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
-  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_design_and_plan_artifacts "$repo_dir" "1.1" "partial"
   write_impl_plan "$repo_dir" 1 1 0 0
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: invalid (partial implementation markers (1/2 checked))"
+  assert_contains "$out" "implementation: incomplete (ordered-plan checklist is not complete (1/2 checked))"
   assert_contains "$out" "Selected start phase: implementation"
 }
 
@@ -288,9 +325,49 @@ test_resume_does_not_require_evidence_before_ai_audit() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (all implementation bullets are [x])"
+  assert_contains "$out" "implementation: complete (all ordered-plan checklist items are [x] (2/2 checked))"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
+}
+
+test_resume_blocks_when_ordered_plan_section_missing() {
+  local repo_dir="$TMP_ROOT/repo-missing-ordered-section"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1" "missing_section"
+  write_impl_plan "$repo_dir" 1 1 1 0
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "implementation: invalid (step plan missing required section: Plan (ordered))"
+  assert_contains "$out" "Selected start phase: none (resume blocked by invalid phase state)"
+  assert_contains "$out" "Block reason: step plan is missing required section '## Plan (ordered)'"
+  assert_contains "$out" "Resume blocked: step plan is missing required section '## Plan (ordered)'"
+}
+
+test_resume_blocks_when_ordered_plan_has_no_checklist_items() {
+  local repo_dir="$TMP_ROOT/repo-no-ordered-checklist-items"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1" "no_checklist_items"
+  write_impl_plan "$repo_dir" 1 1 1 0
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "implementation: invalid (no checklist items found under step plan section 'Plan (ordered)')"
+  assert_contains "$out" "Selected start phase: none (resume blocked by invalid phase state)"
+  assert_contains "$out" "Block reason: step plan '## Plan (ordered)' has no checklist-parsable items"
+  assert_contains "$out" "Resume blocked: step plan '## Plan (ordered)' has no checklist-parsable items"
 }
 
 test_resume_starts_at_planning
@@ -299,6 +376,8 @@ test_resume_starts_at_user_review
 test_resume_starts_at_ai_audit_after_user_review_complete
 test_resume_starts_at_ai_audit_with_prefixed_gates
 test_resume_does_not_require_evidence_before_ai_audit
+test_resume_blocks_when_ordered_plan_section_missing
+test_resume_blocks_when_ordered_plan_has_no_checklist_items
 test_review_phase_is_rejected
 test_cli_validation
 test_missing_step_error

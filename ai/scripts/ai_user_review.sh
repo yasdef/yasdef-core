@@ -32,7 +32,7 @@ Defaults:
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-user-review from step-<step>-implementation.
   - --reset-user-review-branch: force-reset step-<step>-user-review to step-<step>-implementation before switching.
-  - Hard gate (before prompt/model): all step bullets except "Review step implementation" must be marked [x].
+  - Hard gate (before prompt/model): step plan `## Plan (ordered)` must exist and every ordered item must be marked [x].
 EOF
 }
 
@@ -323,84 +323,72 @@ extract_process_user_review_section() {
   ' "$PROCESS"
 }
 
-list_unchecked_non_review_bullets() {
-  local step="$1"
-  awk -v target="$step" '
-    BEGIN { in_step=0 }
-    /^### Step / {
-      line=$0
-      sub(/^### Step /, "", line)
-      split(line, parts, " ")
-      in_step=(parts[1] == target)
-      next
-    }
-    in_step && /^### Step / { in_step=0 }
-    in_step && /^- \[[ xX]\]/ {
-      raw = $0
-      checked = (raw ~ /^- \[[xX]\]/)
-      text = raw
-      sub(/^- \[[ xX]\][[:space:]]*/, "", text)
+normalize_ordered_plan_item() {
+  local line="$1"
 
-      gate_text = tolower(text)
-      while (gate_text ~ /^\[[^]]+\][[:space:]]*/) {
-        sub(/^\[[^]]+\][[:space:]]*/, "", gate_text)
-      }
+  if [[ "$line" =~ ^-[[:space:]]+\[[xX[:space:]]\][[:space:]]+ ]]; then
+    printf '%s\n' "$line"
+    return 0
+  fi
 
-      if (gate_text ~ /^review step implementation([[:space:]\.]|$)/) {
-        next
-      }
+  if [[ "$line" =~ ^-[[:space:]]+ ]]; then
+    local body
+    body="$(printf '%s' "$line" | sed -E 's/^-[[:space:]]+//')"
+    printf '%s\n' "- [ ] $body"
+    return 0
+  fi
 
-      if (!checked) {
-        print "- " text
-      }
-    }
-  ' "$PLAN"
+  return 1
 }
 
-count_non_review_bullets() {
-  local step="$1"
-  awk -v target="$step" '
-    BEGIN { in_step=0; c=0 }
-    /^### Step / {
-      line=$0
-      sub(/^### Step /, "", line)
-      split(line, parts, " ")
-      in_step=(parts[1] == target)
-      next
-    }
-    in_step && /^### Step / { in_step=0 }
-    in_step && /^- \[[ xX]\]/ {
-      text = $0
-      sub(/^- \[[ xX]\][[:space:]]*/, "", text)
-      gate_text = tolower(text)
-      while (gate_text ~ /^\[[^]]+\][[:space:]]*/) {
-        sub(/^\[[^]]+\][[:space:]]*/, "", gate_text)
-      }
-      if (gate_text ~ /^review step implementation([[:space:]\.]|$)/) {
-        next
-      }
-      c++
-    }
-    END { print c+0 }
-  ' "$PLAN"
+list_normalized_ordered_plan_items() {
+  local section="$1"
+  local line trimmed normalized
+
+  while IFS= read -r line; do
+    trimmed="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//')"
+    [[ -z "$trimmed" ]] && continue
+    if normalized="$(normalize_ordered_plan_item "$trimmed")"; then
+      printf '%s\n' "$normalized"
+    fi
+  done <<<"$section"
+}
+
+list_unchecked_ordered_plan_items() {
+  local items="$1"
+  local line
+  while IFS= read -r line; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    if [[ ! "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+ ]]; then
+      printf '%s\n' "$line"
+    fi
+  done <<<"$items"
 }
 
 ensure_user_review_entry_gate() {
   local step="$1"
-  local total unchecked
+  local ordered_section normalized_items unchecked
 
-  total="$(count_non_review_bullets "$step")"
-  unchecked="$(list_unchecked_non_review_bullets "$step")"
-
-  if [[ "$total" -eq 0 ]]; then
-    echo "User review precheck failed for step $step: no non-review bullets found in ai/implementation_plan.md." >&2
+  ordered_section="$(get_step_plan_section "## Plan (ordered)")"
+  if [[ -z "${ordered_section//[[:space:]]/}" ]]; then
+    echo "User review precheck failed for step $step." >&2
+    echo "Step plan gate requires section '## Plan (ordered)' in $STEP_PLAN." >&2
     exit 1
   fi
 
+  normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
+  if [[ -z "${normalized_items//[[:space:]]/}" ]]; then
+    echo "User review precheck failed for step $step." >&2
+    echo "No ordered plan checklist items were found under '## Plan (ordered)' in $STEP_PLAN." >&2
+    echo "Add ordered bullets and mark each item [x] before starting user review." >&2
+    exit 1
+  fi
+
+  unchecked="$(list_unchecked_ordered_plan_items "$normalized_items")"
   if [[ -n "$unchecked" ]]; then
     echo "User review precheck failed for step $step." >&2
-    echo "All step bullets except 'Review step implementation' must be [x] before starting user review." >&2
-    echo "Unchecked non-review bullets:" >&2
+    echo "All items in step plan '## Plan (ordered)' must be [x] before starting user review." >&2
+    echo "Unchecked ordered-plan items (normalized):" >&2
     printf '%s\n' "$unchecked" >&2
     exit 1
   fi
@@ -556,7 +544,7 @@ fi
 emit() {
   printf 'User review phase for Step %s\n' "$STEP"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
-  printf 'Entry gate already verified by script: every non-review step bullet in ai/implementation_plan.md is [x].\n'
+  printf 'Entry gate already verified by script: all items in step plan `## Plan (ordered)` are [x].\n'
   printf 'Do not start post-step audit/review in this phase.\n'
   printf 'When user review is fully complete, end your final response with this exact last line: "User review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'

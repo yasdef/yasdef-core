@@ -147,11 +147,11 @@ Before step planning:
   3 - For every `PROVEN` bullet, include: code references (file path + key symbol), reachability from a concrete entrypoint first (controller/handler/job/UI/CLI), then supporting service/persistence flow as needed, and test evidence (new/updated tests or explicit credible mapping to existing coverage).
   4 - No guesses: if any required evidence element is missing or uncertain, mark the bullet `NOT_PROVEN` and keep it unchecked (`[ ]`).
 - If any non-review implementation bullet remains incomplete or unverified, keep it `[ ]`, record blockers/open questions as needed, and return to Sections 3-4.
-- Enter Section 5 only when all non-review implementation bullets are marked `[x]`.
+- Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]`.
 
 ### 5) User review (required before moving to the next step)
 Entry precondition:
-- This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: all non-review implementation bullets in the current step are marked `[x]`, and Sections 4 + 4.1 are complete.
+- This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: the step plan exists, contains `## Plan (ordered)`, and all ordered checklist items are marked `[x]`; Sections 4 + 4.1 are complete.
 
 1. Before starting the user review loop, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.
 2. Before asking for review feedback, provide a concise `Review Brief` (plain language, product-level) covering exactly:

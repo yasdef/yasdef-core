@@ -49,6 +49,8 @@ RESUME_MODE=0
 EXPLICIT_PHASE_INPUT=0
 RESUME_START_PHASE=""
 RESUME_ALL_DONE=0
+RESUME_BLOCKED=0
+RESUME_BLOCK_REASON=""
 PHASE_EVAL_PHASES=()
 PHASE_EVAL_STATES=()
 PHASE_EVAL_DETAILS=()
@@ -1251,6 +1253,83 @@ phase_eval_step_bullet_counts() {
   ' "$IMPLEMENTATION_PLAN_FILE"
 }
 
+get_markdown_section_body() {
+  local file="$1"
+  local heading="$2"
+  awk -v heading="$heading" '
+    $0 == heading { in_section=1; next }
+    in_section && /^## / { exit }
+    in_section { print }
+  ' "$file"
+}
+
+normalize_ordered_plan_item() {
+  local line="$1"
+
+  if [[ "$line" =~ ^-[[:space:]]+\[[xX[:space:]]\][[:space:]]+ ]]; then
+    printf '%s\n' "$line"
+    return 0
+  fi
+
+  if [[ "$line" =~ ^-[[:space:]]+ ]]; then
+    local body
+    body="$(printf '%s' "$line" | sed -E 's/^-[[:space:]]+//')"
+    printf '%s\n' "- [ ] $body"
+    return 0
+  fi
+
+  return 1
+}
+
+list_normalized_ordered_plan_items() {
+  local section="$1"
+  local line trimmed normalized
+
+  while IFS= read -r line; do
+    trimmed="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//')"
+    [[ -z "$trimmed" ]] && continue
+    if normalized="$(normalize_ordered_plan_item "$trimmed")"; then
+      printf '%s\n' "$normalized"
+    fi
+  done <<<"$section"
+}
+
+phase_eval_ordered_plan_counts() {
+  local step="$1"
+  local step_plan="$ROOT/ai/step_plans/step-$step.md"
+  local ordered_section normalized_items
+  local total=0
+  local checked=0
+
+  if [[ ! -f "$step_plan" ]]; then
+    printf 'missing_step_plan|%d|%d|%d' "$total" "$checked" "$((total - checked))"
+    return 0
+  fi
+
+  ordered_section="$(get_markdown_section_body "$step_plan" "## Plan (ordered)")"
+  if [[ -z "${ordered_section//[[:space:]]/}" ]]; then
+    printf 'missing_section|%d|%d|%d' "$total" "$checked" "$((total - checked))"
+    return 0
+  fi
+
+  normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
+  if [[ -z "${normalized_items//[[:space:]]/}" ]]; then
+    printf 'no_checklist_items|%d|%d|%d' "$total" "$checked" "$((total - checked))"
+    return 0
+  fi
+
+  local line
+  while IFS= read -r line; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    total=$((total + 1))
+    if [[ "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+ ]]; then
+      checked=$((checked + 1))
+    fi
+  done <<<"$normalized_items"
+
+  printf 'ok|%d|%d|%d' "$total" "$checked" "$((total - checked))"
+}
+
 check_required_sections() {
   local file="$1"
   shift
@@ -1331,27 +1410,32 @@ evaluate_planning_phase() {
 
 evaluate_implementation_phase() {
   local step="$1"
-  local counts="$2"
-  local impl_total impl_checked
+  local ordered_counts="$2"
+  local ordered_state ordered_total ordered_checked ordered_unchecked
 
-  IFS='|' read -r _ _ _ _ impl_total impl_checked <<<"$counts"
+  IFS='|' read -r ordered_state ordered_total ordered_checked ordered_unchecked <<<"$ordered_counts"
 
-  if [[ "$impl_total" -eq 0 ]]; then
-    phase_eval_set "implementation" "invalid" "no implementation bullets found for step"
+  if [[ "$ordered_state" == "missing_step_plan" ]]; then
+    phase_eval_set "implementation" "invalid" "missing ai/step_plans/step-$step.md"
     return 0
   fi
 
-  if [[ "$impl_checked" -eq "$impl_total" ]]; then
-    phase_eval_set "implementation" "complete" "all implementation bullets are [x]"
+  if [[ "$ordered_state" == "missing_section" ]]; then
+    phase_eval_set "implementation" "invalid" "step plan missing required section: Plan (ordered)"
     return 0
   fi
 
-  if [[ "$impl_checked" -eq 0 ]]; then
-    phase_eval_set "implementation" "incomplete" "no implementation bullets are checked"
+  if [[ "$ordered_state" == "no_checklist_items" ]]; then
+    phase_eval_set "implementation" "invalid" "no checklist items found under step plan section 'Plan (ordered)'"
     return 0
   fi
 
-  phase_eval_set "implementation" "invalid" "partial implementation markers ($impl_checked/$impl_total checked)"
+  if [[ "$ordered_checked" -eq "$ordered_total" ]]; then
+    phase_eval_set "implementation" "complete" "all ordered-plan checklist items are [x] ($ordered_checked/$ordered_total checked)"
+    return 0
+  fi
+
+  phase_eval_set "implementation" "incomplete" "ordered-plan checklist is not complete ($ordered_checked/$ordered_total checked)"
 }
 
 user_review_branch_exists_for_step() {
@@ -1380,18 +1464,28 @@ is_user_review_complete_for_step() {
 
 evaluate_user_review_phase() {
   local step="$1"
-  local counts="$2"
-  local impl_total impl_checked
+  local ordered_counts="$2"
+  local ordered_state ordered_total ordered_checked ordered_unchecked
 
-  IFS='|' read -r _ _ _ _ impl_total impl_checked <<<"$counts"
+  IFS='|' read -r ordered_state ordered_total ordered_checked ordered_unchecked <<<"$ordered_counts"
 
-  if [[ "$impl_total" -eq 0 ]]; then
-    phase_eval_set "user_review" "invalid" "no implementation bullets found for step"
+  if [[ "$ordered_state" == "missing_step_plan" ]]; then
+    phase_eval_set "user_review" "invalid" "missing ai/step_plans/step-$step.md"
     return 0
   fi
 
-  if [[ "$impl_checked" -ne "$impl_total" ]]; then
-    phase_eval_set "user_review" "incomplete" "implementation phase is not complete ($impl_checked/$impl_total checked)"
+  if [[ "$ordered_state" == "missing_section" ]]; then
+    phase_eval_set "user_review" "invalid" "step plan missing required section: Plan (ordered)"
+    return 0
+  fi
+
+  if [[ "$ordered_state" == "no_checklist_items" ]]; then
+    phase_eval_set "user_review" "invalid" "no checklist items found under step plan section 'Plan (ordered)'"
+    return 0
+  fi
+
+  if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
+    phase_eval_set "user_review" "incomplete" "implementation phase is not complete based on ordered plan ($ordered_checked/$ordered_total checked)"
     return 0
   fi
 
@@ -1462,6 +1556,8 @@ evaluate_post_review_phase() {
 
 evaluate_resume_phase_states() {
   local step="$1"
+  RESUME_BLOCKED=0
+  RESUME_BLOCK_REASON=""
   PHASE_EVAL_PHASES=()
   PHASE_EVAL_STATES=()
   PHASE_EVAL_DETAILS=()
@@ -1470,14 +1566,27 @@ evaluate_resume_phase_states() {
     die "Required file not found: $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")"
   fi
 
-  local counts=""
+  local counts="" ordered_counts="" ordered_state=""
   counts="$(phase_eval_step_bullet_counts "$step")"
+  ordered_counts="$(phase_eval_ordered_plan_counts "$step")"
+  ordered_state="${ordered_counts%%|*}"
   evaluate_design_phase "$step"
   evaluate_planning_phase "$step" "$counts"
-  evaluate_implementation_phase "$step" "$counts"
-  evaluate_user_review_phase "$step" "$counts"
+  evaluate_implementation_phase "$step" "$ordered_counts"
+  evaluate_user_review_phase "$step" "$ordered_counts"
   evaluate_ai_audit_phase "$step"
   evaluate_post_review_phase "$step" "$counts"
+
+  if [[ "$ordered_state" == "missing_step_plan" ]]; then
+    RESUME_BLOCKED=1
+    RESUME_BLOCK_REASON="missing ai/step_plans/step-$step.md; create the step plan before using --resume."
+  elif [[ "$ordered_state" == "missing_section" ]]; then
+    RESUME_BLOCKED=1
+    RESUME_BLOCK_REASON="step plan is missing required section '## Plan (ordered)'; add it before using --resume."
+  elif [[ "$ordered_state" == "no_checklist_items" ]]; then
+    RESUME_BLOCKED=1
+    RESUME_BLOCK_REASON="step plan '## Plan (ordered)' has no checklist-parsable items; add ordered checklist items before using --resume."
+  fi
 }
 
 resolve_resume_start_phase() {
@@ -1524,6 +1633,14 @@ print_resume_dry_run_report() {
       "${PHASE_EVAL_DETAILS[$i]}"
     i=$((i + 1))
   done
+
+  if [[ "$RESUME_BLOCKED" -eq 1 ]]; then
+    echo "Selected start phase: none (resume blocked by invalid phase state)"
+    echo "Skipped phases: design, planning, implementation, user_review, ai_audit, post_review"
+    echo "Executed phases: (none)"
+    echo "Block reason: $RESUME_BLOCK_REASON"
+    return 0
+  fi
 
   if [[ "$RESUME_ALL_DONE" -eq 1 ]]; then
     echo "Selected start phase: none (all phases complete)"
@@ -1628,6 +1745,9 @@ if [[ "$RESUME_MODE" -eq 1 ]]; then
   build_resume_requested_phases
   if [[ "$DRY_RUN" -eq 1 ]]; then
     print_resume_dry_run_report "$RESUME_STEP"
+  fi
+  if [[ "$RESUME_BLOCKED" -eq 1 ]]; then
+    die "Resume blocked: $RESUME_BLOCK_REASON"
   fi
 fi
 
