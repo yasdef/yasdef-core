@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
+AI_AUDIT_SRC="$SOURCE_ROOT/ai/scripts/ai_audit.sh"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 
 TMP_ROOT="$(mktemp -d)"
@@ -210,10 +211,13 @@ test_ai_implementation_prompt_uses_concise_evidence_gate() {
 
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
-  assert_contains "$prompt" 'Before any implementation bullet `[ ]` -> `[x]`, apply the proof gate in ai/AI_DEVELOPMENT_PROCESS.md Section 4.1 and keep bullets `[ ]` when proof is missing.'
-  assert_contains "$prompt" 'emit an "Evidence Reasoning Summary" before handoff as a compact bullet list per implemented bullet with `PROVEN`/`NOT_PROVEN`'
-  assert_contains "$prompt" 'for `PROVEN` include code refs (path + key symbol), reachability from concrete entrypoints first, and test evidence/mapping'
-  assert_contains "$prompt" 'no guesses - missing evidence means `NOT_PROVEN` and keep `[ ]`.'
+  assert_contains "$prompt" 'First rule (execution state, required): use step plan `## Plan (ordered)` as the only implementation-phase execution checklist.'
+  assert_contains "$prompt" 'Execution strategy is adaptive: implement in the most coherent order/batching needed, but update ordered-bullet checkbox state per ordered item and mark `[x]` only when that specific ordered bullet is proven complete.'
+  assert_contains "$prompt" 'Targeted verification may run during implementation when needed (focused tests/lint/typecheck), but it does not replace the full step gate.'
+  assert_contains "$prompt" 'Run the full end-of-step verification gate from AGENTS.md exactly once after all ordered bullets are `[x]` and before Section 5.'
+  assert_contains "$prompt" 'Implementation progress and completion reporting in this phase must reference only `## Plan (ordered)` bullets.'
+  assert_contains "$prompt" 'Do not use `ai/implementation_plan.md` target bullets as implementation-phase gating or completion state; explicit target-bullet proof-check is performed first in ai_audit.'
+  assert_not_contains "$prompt" 'emit an "Evidence Reasoning Summary" before handoff'
   assert_contains "$prompt" 'Before ending this phase, emit the concise three-point `Review Brief` defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5: what changed/how, how to start review (entrypoints/order), and what to check first (top risks), using concrete references when available and no guessing.'
   assert_contains "$prompt" 'Do not start Section 5 review exchange in this phase. Stop after Review Brief so orchestrator can enter the dedicated User Review phase.'
   if [[ "$prompt" == *"Implementation evidence artifact (required):"* ]]; then
@@ -293,9 +297,113 @@ test_process_doc_defines_evidence_reasoning_summary_gate() {
   local process_doc="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
   local content
   content="$(cat "$process_doc")"
-  assert_contains "$content" "Evidence Reasoning Summary output (required): after Section 4 verification and Section 4.1 tracking closure"
-  assert_contains "$content" 'For every `PROVEN` bullet, include: code references (file path + key symbol), reachability from a concrete entrypoint first'
-  assert_contains "$content" 'No guesses: if any required evidence element is missing or uncertain, mark the bullet `NOT_PROVEN` and keep it unchecked (`[ ]`).'
+  assert_contains "$content" "#### 6.0) Entry proof-check against implementation_plan target bullets (required first gate)"
+  assert_contains "$content" "Evidence Reasoning Summary output (required at ai_audit entry):"
+  assert_contains "$content" 'For every `PROVEN` bullet, include code refs, reachability, and test evidence/mapping.'
+  assert_contains "$content" 'If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis.'
+}
+
+setup_ai_audit_prompt_repo() {
+  local repo_dir="$1"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs"
+
+  cp "$AI_AUDIT_SRC" "$repo_dir/ai/scripts/ai_audit.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_audit.sh"
+
+  cat >"$repo_dir/ai/implementation_plan.md" <<'EOF'
+### Step 1.1 Demo
+Est. step total: 5 SP
+- [x] Plan and discuss the step (SP=1)
+- [x] Implement part A (SP=2)
+- [x] Implement part B (SP=1)
+- [ ] Review step implementation (SP=1)
+EOF
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Target Bullets
+- Implement part A
+- Implement part B
+## Plan (ordered)
+- [x] 1. Implement part A.
+- [x] 2. Implement part B.
+EOF
+
+  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+## Target Bullets
+- Implement part A
+- Implement part B
+## Proposal / Design Details
+- demo
+## Risks and Mitigations
+- none
+## Applicable AGENTS.md Constraints
+- follow constraints
+## Applicable UR Shortlist
+- UR-1
+## Applicable ADR Shortlist
+- ADR-1
+## Things to Decide (for final planning discussion)
+- none
+EOF
+
+  cat >"$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md" <<'EOF'
+### 6) Post-step ai_audit/review (required before moving to the next step)
+#### 6.0) Entry proof-check against implementation_plan target bullets (required first gate)
+- gate
+#### 6.1) Audit review and findings
+- review
+#### 6.2) Per-finding issue disposition workflow
+- disposition
+EOF
+
+  cat >"$repo_dir/ai/blocker_log.md" <<'EOF'
+## Step 1.1 Demo
+- none
+EOF
+
+  cat >"$repo_dir/ai/open_questions.md" <<'EOF'
+## Step 1.1 Demo
+- none
+EOF
+
+  cat >"$repo_dir/reqirements_ears.md" <<'EOF'
+### Requirement 1 Demo
+- demo
+EOF
+
+  cat >"$repo_dir/AGENTS.md" <<'EOF'
+Constraints.
+EOF
+
+  (
+    cd "$repo_dir"
+    git init -q
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+    git add .
+    git commit -qm "seed"
+    git checkout -qb step-1.1-implementation
+    git checkout -qb step-1.1-user-review
+  )
+}
+
+test_ai_audit_prompt_requires_entry_proof_gate() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-prompt"
+  setup_ai_audit_prompt_repo "$repo_dir"
+
+  (
+    cd "$repo_dir"
+    ai/scripts/ai_audit.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/ai_audit_prompts/test.prompt.txt >/dev/null
+  )
+
+  local prompt
+  prompt="$(cat "$repo_dir/ai/prompts/ai_audit_prompts/test.prompt.txt")"
+  assert_contains "$prompt" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.'
+  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `ai/implementation_plan.md` target bullets, then continue Sections 6.1-6.2.'
+  assert_contains "$prompt" "== ai_audit entry proof-check target bullets (from ai/implementation_plan.md) =="
+  assert_contains "$prompt" "- Implement part A (SP=2)"
+  assert_contains "$prompt" "- Implement part B (SP=1)"
 }
 
 test_process_doc_defines_review_brief_mode() {
@@ -377,6 +485,7 @@ test_ai_implementation_prompt_falls_back_to_design_shortlist
 test_process_doc_defines_evidence_reasoning_summary_gate
 test_process_doc_defines_review_brief_mode
 test_review_brief_golden_example_exists
+test_ai_audit_prompt_requires_entry_proof_gate
 test_orchestrator_does_not_block_ai_audit_without_evidence
 test_orchestrator_blocks_ai_audit_when_user_review_incomplete
 

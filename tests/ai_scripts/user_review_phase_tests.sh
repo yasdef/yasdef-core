@@ -19,6 +19,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed: expected output to not contain: $needle" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 assert_file_exists() {
   local path="$1"
   if [[ ! -f "$path" ]]; then
@@ -260,9 +271,26 @@ test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
+test_user_review_prompt_uses_ordered_plan_state_only() {
+  local repo_dir="$TMP_ROOT/repo-user-review-prompt-ordered-only"
+  setup_repo "$repo_dir" 0 checked
+
+  (
+    cd "$repo_dir"
+    ai/scripts/ai_user_review.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/user_review_prompts/test.prompt.txt >/dev/null
+  )
+
+  local prompt
+  prompt="$(cat "$repo_dir/ai/prompts/user_review_prompts/test.prompt.txt")"
+  assert_contains "$prompt" 'User review phase-state source is step plan `## Plan (ordered)` only.'
+  assert_not_contains "$prompt" "== ai/implementation_plan.md"
+  assert_not_contains "$prompt" 'User review checklist (`## Target Bullets`)'
+}
+
 test_user_review_fails_fast_when_ordered_plan_unchecked
 test_user_review_normalizes_plain_ordered_bullets_to_unchecked
 test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state
+test_user_review_prompt_uses_ordered_plan_state_only
 
 echo "All user review phase tests passed."

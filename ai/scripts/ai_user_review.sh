@@ -251,6 +251,17 @@ get_step_plan_section() {
   get_markdown_section_body "$STEP_PLAN" "$heading"
 }
 
+get_step_plan_title() {
+  awk '
+    /^# / {
+      line = $0
+      sub(/^# /, "", line)
+      print line
+      exit
+    }
+  ' "$STEP_PLAN"
+}
+
 get_design_ur_heading() {
   local file="$1"
   if grep -Fq "## Applicable UR Shortlist" "$file"; then
@@ -471,16 +482,9 @@ fi
 ensure_user_review_entry_gate "$STEP"
 ensure_user_review_branch
 
-STEP_TITLE="$(get_step_title "$STEP")"
+STEP_TITLE="$(get_step_plan_title)"
 if [[ -z "$STEP_TITLE" ]]; then
-  echo "Step $STEP not found in ai/implementation_plan.md." >&2
-  exit 1
-fi
-
-STEP_SECTION="$(get_step_section "$STEP")"
-if [[ -z "$STEP_SECTION" ]]; then
-  echo "Step $STEP section not found in ai/implementation_plan.md." >&2
-  exit 1
+  STEP_TITLE="Step $STEP"
 fi
 
 BLOCKER_LOG_SECTION="$(get_blocker_log_section "$STEP")"
@@ -495,7 +499,6 @@ if [[ -z "$OPEN_QUESTIONS_SECTION" ]]; then
 - No open questions section found."
 fi
 
-REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
 USER_REVIEW_PROCESS_SECTION="$(extract_process_user_review_section)"
 
 if [[ -z "$USER_REVIEW_PROCESS_SECTION" ]]; then
@@ -545,16 +548,13 @@ emit() {
   printf 'User review phase for Step %s\n' "$STEP"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
   printf 'Entry gate already verified by script: all items in step plan `## Plan (ordered)` are [x].\n'
+  printf 'User review phase-state source is step plan `## Plan (ordered)` only.\n'
   printf 'Do not start post-step audit/review in this phase.\n'
   printf 'When user review is fully complete, end your final response with this exact last line: "User review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'
-  printf '== ai/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
-  printf '%s\n\n' "$STEP_SECTION"
-  printf '== %s ==\n' "$STEP_PLAN"
+  printf '== %s (%s) ==\n' "$STEP_PLAN" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_PLAN_ORDERED_PLAN_SECTION"
-  printf '== User review checklist (`## Target Bullets`) ==\n'
-  printf '%s\n\n' "$STEP_PLAN_TARGET_BULLETS_SECTION"
   printf '== ai/step_designs/step-%s-design.md (key excerpts) ==\n' "$STEP"
   printf 'Proposal / Design Details:\n%s\n\n' "$DESIGN_PROPOSAL_SECTION"
   printf 'Risks and Mitigations:\n%s\n\n' "$DESIGN_RISKS_SECTION"
@@ -562,8 +562,6 @@ emit() {
   printf 'Applicable ADR shortlist:\n%s\n\n' "$DESIGN_ADR_SECTION"
   printf '== ai/AI_DEVELOPMENT_PROCESS.md (Section 5) ==\n'
   printf '%s\n\n' "$USER_REVIEW_PROCESS_SECTION"
-  printf '== reqirements_ears.md (linked requirements) ==\n'
-  printf '%s\n\n' "$REQ_SECTION"
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
   printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"

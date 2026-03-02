@@ -17,7 +17,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 
 ## Artifacts and their roles
 - `reqirements_ears.md`: source of truth for behavioral requirements and acceptance criteria.
-- `ai/implementation_plan.md`: ordered step-tracking artifact; implementation executes the step plan `## Plan (ordered)` in batch, while bullet statuses/SP totals are tracked here.
+- `ai/implementation_plan.md`: step-level backlog and target-bullet contract artifact; Implementation/User Review do not use it as the execution state machine, and `ai_audit` starts with explicit target-bullet proof-check against it.
 - `ai/step_designs/`: feature design artifacts created before planning for user review.
 - `ai/templates/feature_design_TEMPLATE.md` and `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`: structure and example for feature design artifacts.
 - `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts.
@@ -100,58 +100,50 @@ Before step planning:
 - Only when the plan is accepted, open questions are resolved/closed, and all design "Things to Decide" items have explicit outcomes, immediately mark the "Plan and discuss the step" bullet as done and add Step sections to `ai/blocker_log.md` and `ai/open_questions.md` (even if "none"), then commit the planning artifacts.
 - Completion-line gate: output the exact planning completion line (`Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after verifying in `ai/implementation_plan.md` that this step's "Plan and discuss the step." bullet is marked `[x]` (and included in the planning commit when changed).
 
-### 3) Implement ordered plan (batch execution)
-#### 3.1) Batch implementation execution
+### 3) Implement ordered plan (adaptive batch execution)
+#### 3.1) Adaptive implementation execution
 - Do not pause after the first completed item to ask for generic permission to continue. Continue through the remaining work in the same step.
 - Exception: pause and ask the user only when blocked by a required user decision/input.
-- Treat the feature design as the scope contract (`## Goal`, `## In Scope`, `## Out of Scope`) and the step plan `## Plan (ordered)` as the execution contract. Implement the ordered plan end-to-end.
-- In implementation phase, use step plan `## Target Bullets` as a completion checklist for Section 5 (User review), not as the primary execution list.
+- Treat the feature design as the scope contract (`## Goal`, `## In Scope`, `## Out of Scope`) and the step plan `## Plan (ordered)` as the execution contract.
+- `## Plan (ordered)` is the only implementation-phase execution checklist/state machine.
+- Ordered bullets are checkbox lifecycle items (`[ ]` / `[x]`). If a bullet is plain text without checkbox syntax, treat it as unchecked until normalized/closed.
+- Implementation strategy is adaptive: batch work in the most coherent order when needed, but close checklist state per ordered bullet and mark `[x]` only when that specific bullet is proven complete.
 - Review the step plan, design artifact, and supporting artifacts before coding: linked requirements sections, `ai/decisions.md`, `ai/blocker_log.md`, and `ai/open_questions.md`.
 - If implementation must deviate from the step plan, update the step plan first, then continue implementation.
-- If step-plan `Target Bullets` diverge from design `Target Bullets`: do not decide unilaterally in implementation. Recommend rerunning planning to align artifacts first, then follow the user's instruction on whether to return to planning or proceed with explicit risk acceptance.
 - If design "Things to Decide" are still unresolved in the step plan during implementation: do not decide unilaterally in implementation. Recommend rerunning planning to resolve decisions first, then follow the user's instruction on whether to return to planning or proceed with explicit risk acceptance.
 - If a required project decision/blocker appears during implementation, stop and ask the user before proceeding.
-- Reuse existing code patterns and keep each change minimal, cohesive, readable, and directly traceable to step-plan work items.
+- Reuse existing code patterns and keep each change minimal, cohesive, readable, and directly traceable to ordered-plan work items.
 - Remove unnecessary boilerplate and avoid extra guard checks.
 - Add or update tests so the happy path is always covered and, when feasible, core reasonable non-happy-path cases are covered based on the step plan and linked requirements.
 - Record new blockers/unknowns in `ai/blocker_log.md` (using `ai/templates/blocker_log_TEMPLATE.md` and `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`), unresolved questions in `ai/open_questions.md`, and durable design choices in `ai/decisions.md` (using `ai/templates/decisions_TEMPLATE.md` and `ai/golden_examples/decisions_GOLDEN_EXAMPLE.md`).
 - Keep project-specific implementation constraints out of this section; enforce them from `AGENTS.md`.
 
-#### 3.2) Tracking alignment (required before Section 4)
-- Reconcile ordered-plan work with the current step's non-review implementation bullets in `ai/implementation_plan.md` (up to but excluding `Review step implementation.`).
-- Scope parity rule: these non-review implementation bullets and step-plan `## Target Bullets` represent the same implementation scope (excluding planning/review bullets). If they diverge, do not close implementation; resolve alignment before Section 5.
-- Do not change non-review implementation bullet text/order/SP in `ai/implementation_plan.md` during implementation; only status updates are allowed.
-- Pre-verification status gate: keep non-review implementation bullets unchecked `[ ]` until Section 4 verification succeeds.
+#### 3.2) Ordered checklist closure (required before Section 4)
+- Before changing any ordered bullet from `[ ]` to `[x]`, make sure that bullet is implemented and verified for the current change.
+- If implementation or verification is incomplete/uncertain, keep the bullet `[ ]`.
+- If blocked, record blockers/open questions and continue with remaining feasible work.
+- Do not use `ai/implementation_plan.md` target bullets as implementation-phase gating or completion state.
+- Detailed target-bullet proof-check (`PROVEN`/`NOT_PROVEN`) is performed in Section 6.0 (`ai_audit` entry).
 
 ### 4) Verification gates (required before Section 5)
-- **Tests**: run tests after implementing the full ordered plan for the current step. Prefer the repo’s full end-to-end verification gate from `AGENTS.md`. Early targeted tests are optional for high-risk changes, but do not replace the end-of-step verification gate.
-- **Requirements**: confirm affected `reqirements_ears.md` acceptance criteria are satisfied for all implemented target bullets.
+- **Tests (two-tier timing)**:
+  - Targeted verification may run during implementation as needed (focused tests/lint/typecheck).
+  - Full step verification gate from `AGENTS.md` runs once after all ordered bullets are `[x]` and before entering Section 5.
+- **Requirements**: confirm affected `reqirements_ears.md` acceptance criteria are satisfied for the implemented ordered-plan scope.
 - **Docs**:
   - If endpoints/inputs/outputs change: update the API specification and client collection as defined in `AGENTS.md`.
   - If a new design choice was made: record it in `ai/decisions.md` using `ai/templates/decisions_TEMPLATE.md` and `ai/golden_examples/decisions_GOLDEN_EXAMPLE.md`.
   - If a decision replaces a prior one: mark the older ADR as **Superseded** and link to the superseding ADR.
 
-#### 4.1) Tracking closure (required before Section 5)
-- Evidence-based completion gate: before changing any implementation bullet from `[ ]` to `[x]`, run an explicit self-check: "Did we implement this bullet?"
-- Allowed outcomes per bullet:
-  - `PROVEN`: concrete implementation evidence exists; marking `[x]` is allowed.
-  - `NOT_PROVEN`: implementation evidence is missing/incomplete; keep `[ ]`.
-- Required proof for `PROVEN`:
-  1 - Code implementation references exist: specific changed file path(s) plus relevant symbols (function/class/module/config key) that contain the core logic implementing the bullet — not comments, stubs, or placeholders.
-  2 - Behavioral reachability is shown: the implementation is wired into real execution flow (e.g., invoked by routes, jobs, UI actions, CLI commands, or event handlers), not unused or orphaned code.
-  3 - Test evidence exists: new or updated automated tests validate the bullet’s behavior, or there is an explicit, credible mapping to existing test coverage that exercises the same logic and assertions.
-- Evidence Reasoning Summary output (required): after Section 4 verification and Section 4.1 tracking closure, emit an `Evidence Reasoning Summary` in the implementation response before Section 5 review exchange.
-- Evidence Reasoning Summary format and content rules:
-  1 - Keep it compact and scannable (short bullet list; no long narrative).
-  2 - Include each implemented target bullet (or in-scope non-review implementation bullet) exactly once with status `PROVEN` or `NOT_PROVEN`.
-  3 - For every `PROVEN` bullet, include: code references (file path + key symbol), reachability from a concrete entrypoint first (controller/handler/job/UI/CLI), then supporting service/persistence flow as needed, and test evidence (new/updated tests or explicit credible mapping to existing coverage).
-  4 - No guesses: if any required evidence element is missing or uncertain, mark the bullet `NOT_PROVEN` and keep it unchecked (`[ ]`).
-- If any non-review implementation bullet remains incomplete or unverified, keep it `[ ]`, record blockers/open questions as needed, and return to Sections 3-4.
-- Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]`.
+#### 4.1) Implementation handoff constraints (required before Section 5)
+- Implementation reporting must map progress/evidence to ordered bullets in `## Plan (ordered)` only.
+- Do not run `ai/implementation_plan.md` target-bullet proof-check in implementation; that proof-check is the first gate in Section 6.
+- Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]` and the full step verification gate has passed.
 
 ### 5) User review (required before moving to the next step)
 Entry precondition:
-- This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: the step plan exists, contains `## Plan (ordered)`, and all ordered checklist items are marked `[x]`; Sections 4 + 4.1 are complete.
+- This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: the step plan exists, contains `## Plan (ordered)`, all ordered checklist items are marked `[x]`, and the Section 4 full verification gate has passed.
+- User review operates on ordered-plan completion state only; do not use `ai/implementation_plan.md` target bullets as user_review phase-state gating.
 
 1. Before starting the user review loop, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.
 2. Before asking for review feedback, provide a concise `Review Brief` (plain language, product-level) covering exactly:
@@ -164,7 +156,7 @@ Entry precondition:
    - Reference concrete changed entrypoints/files/components/tests when available.
    - Do not narrate artifact creation; focus on reviewer onboarding.
    - Do not guess review ordering/entrypoints. If specific entrypoints are unclear, use cautious non-speculative guidance.
-   - Keep Evidence Reasoning Summary separate; do not merge proof-gate entries into the Review Brief.
+   - Keep the ai_audit entry `Evidence Reasoning Summary` separate; do not merge proof-gate entries into the Review Brief.
    - Use `ai/golden_examples/review_brief_GOLDEN_EXAMPLE.md` as the tone/structure anchor.
 4. Ask the user for the next review item (a question or a change request). The user may provide feedback one-by-one; if they have multiple items, a short bullet list helps.
 5. When the user responds, do this in order:
@@ -178,6 +170,22 @@ Entry precondition:
 - Do not run Section 6 in the implementation phase; Section 6 is executed in the `ai_audit` phase.
 
 ### 6) Post-step ai_audit/review (required before moving to the next step)
+
+#### 6.0) Entry proof-check against implementation_plan target bullets (required first gate)
+- Before deeper audit analysis, run explicit bullet-by-bullet proof-check against current-step target bullets in `ai/implementation_plan.md` (non-review implementation bullets for the step).
+- Allowed outcomes per target bullet:
+  - `PROVEN`: concrete implementation evidence exists.
+  - `NOT_PROVEN`: implementation evidence is missing/incomplete/uncertain.
+- Required proof for `PROVEN`:
+  1 - Code implementation references exist: specific changed file path(s) and key symbols with core logic.
+  2 - Behavioral reachability is shown from concrete entrypoints first (controller/handler/job/UI/CLI), then supporting flow as needed.
+  3 - Test evidence exists: new/updated tests validate behavior, or there is explicit credible mapping to existing coverage.
+- Evidence Reasoning Summary output (required at ai_audit entry):
+  1 - Keep it compact and scannable.
+  2 - Include each in-scope target bullet exactly once with `PROVEN` or `NOT_PROVEN`.
+  3 - For every `PROVEN` bullet, include code refs, reachability, and test evidence/mapping.
+  4 - No guesses: missing/uncertain evidence requires `NOT_PROVEN`.
+- If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis. Continue 6.1/6.2 only after the entry proof-check passes.
 
 #### 6.1) Audit review and findings
 - Entry precondition for this phase: Section 5 (User review) is already complete. Do not ask the user to reconfirm Section 5 during post-step audit.
