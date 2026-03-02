@@ -32,7 +32,7 @@ Defaults:
   - ai/decisions.md is pointer-only by default; rely on design-extracted ADR shortlist.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - --no-include-agents is accepted for compatibility and keeps pointer-only behavior.
-  - ai/user_review.md is pointer-only by default (use design-extracted shortlist in prompt context).
+  - ai/user_review.md is pointer-only by default (use step-plan shortlist first, then design-shortlist fallback).
   - Always creates/switches to branch step-<step>-implementation.
   - Use --no-branch to skip git branch creation/switch (prompt generation only).
 EOF
@@ -501,6 +501,25 @@ STEP_PLAN_DECISIONS_NEEDED_SECTION="$(get_step_plan_section "## Decisions Needed
 if [[ -z "$STEP_PLAN_DECISIONS_NEEDED_SECTION" ]]; then
   STEP_PLAN_DECISIONS_NEEDED_SECTION="- (missing in step plan)"
 fi
+STEP_PLAN_UR_SHORTLIST_SECTION="$(get_step_plan_section "## Applicable UR Shortlist")"
+if [[ -z "$STEP_PLAN_UR_SHORTLIST_SECTION" ]]; then
+  STEP_PLAN_UR_SHORTLIST_SECTION="- (missing in step plan)"
+fi
+
+IMPLEMENTATION_UR_SOURCE="step-plan"
+IMPLEMENTATION_UR_SOURCE_LABEL="step-plan \`## Applicable UR Shortlist\`"
+IMPLEMENTATION_UR_SECTION="$STEP_PLAN_UR_SHORTLIST_SECTION"
+if [[ "$STEP_PLAN_UR_SHORTLIST_SECTION" == "- (missing in step plan)" ]]; then
+  if [[ "$DESIGN_UR_SECTION" != "- (missing in design artifact)" ]]; then
+    IMPLEMENTATION_UR_SOURCE="design-fallback"
+    IMPLEMENTATION_UR_SOURCE_LABEL="design fallback (\`$DESIGN_UR_HEADING\`) because step-plan shortlist is missing"
+    IMPLEMENTATION_UR_SECTION="$DESIGN_UR_SECTION"
+  else
+    IMPLEMENTATION_UR_SOURCE="missing"
+    IMPLEMENTATION_UR_SOURCE_LABEL="missing in both step plan and design artifact"
+    IMPLEMENTATION_UR_SECTION="- (missing in step plan and design artifact)"
+  fi
+fi
 
 emit() {
   printf 'Implementation phase for Step %s\n' "$STEP"
@@ -569,6 +588,8 @@ emit() {
   printf '%s\n\n' "$STEP_PLAN_RISKS_SECTION"
   printf '== Step plan decisions (`## Decisions Needed`) ==\n'
   printf '%s\n\n' "$STEP_PLAN_DECISIONS_NEEDED_SECTION"
+  printf '== Step plan UR shortlist (`## Applicable UR Shortlist`) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_UR_SHORTLIST_SECTION"
   printf '== User review checklist only (`## Target Bullets`) ==\n'
   printf 'Use this checklist in the dedicated User Review phase; do not use it as the primary execution list.\n'
   printf '%s\n\n' "$STEP_PLAN_TARGET_BULLETS_SECTION"
@@ -583,7 +604,10 @@ emit() {
   printf '%s\n\n' "$DESIGN_RISKS_SECTION"
   printf '== Design-extracted AGENTS constraints ==\n'
   printf '%s\n\n' "$DESIGN_AGENTS_SECTION"
-  printf '== Design-extracted UR shortlist ==\n'
+  printf '== Applicable UR shortlist for implementation (primary + fallback) ==\n'
+  printf 'Source: %s\n' "$IMPLEMENTATION_UR_SOURCE_LABEL"
+  printf '%s\n\n' "$IMPLEMENTATION_UR_SECTION"
+  printf '== Design-extracted UR shortlist (fallback reference) ==\n'
   printf '%s\n\n' "$DESIGN_UR_SECTION"
   printf '== Design-extracted ADR shortlist ==\n'
   printf '%s\n\n' "$DESIGN_ADR_SECTION"
@@ -599,7 +623,7 @@ emit() {
   printf 'Pointer-only by default: rely on design-extracted ADR shortlist above.\n'
   printf 'Path: ai/decisions.md\n\n'
   printf '== ai/user_review.md ==\n'
-  printf 'Pointer-only by default: rely on design-extracted UR shortlist above.\n'
+  printf 'Pointer-only by default: shortlist context above uses step-plan first, design fallback only when needed.\n'
   printf 'Path: ai/user_review.md\n\n'
   printf '== ai/AI_DEVELOPMENT_PROCESS.md ==\n'
   printf 'Read directly from repo; apply Sections 3-4.1 for this phase and stop at Section 5 handoff.\n'

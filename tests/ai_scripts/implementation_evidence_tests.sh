@@ -19,6 +19,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed: expected output to not contain: $needle" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 setup_impl_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" \
@@ -211,6 +222,73 @@ test_ai_implementation_prompt_uses_concise_evidence_gate() {
   fi
 }
 
+test_ai_implementation_prompt_uses_step_plan_shortlist_as_primary() {
+  local repo_dir="$TMP_ROOT/repo-ai-impl-step-plan-shortlist"
+  setup_impl_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Target Bullets
+- Implement part A
+- Implement part B
+## Design Anchor (scope source of truth)
+- ai/step_designs/step-1.1-design.md
+## Applicable UR Shortlist
+- UR-0999 - Step-plan shortlist should be primary.
+## Plan (ordered)
+- 1. Implement part A.
+- 2. Implement part B.
+## Implementation Notes / Constraints
+- Follow AGENTS.md.
+## Tests
+- Add/update tests.
+## Docs / Artifacts
+- Update docs.
+## Risks / Edge Cases
+- None.
+## Decisions Needed
+- None.
+EOF
+
+  (
+    cd "$repo_dir"
+    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+  )
+
+  local prompt impl_ur_block
+  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
+  impl_ur_block="$(printf '%s\n' "$prompt" | awk '
+    /^== Applicable UR shortlist for implementation \(primary \+ fallback\) ==$/ { in_section=1; next }
+    in_section && /^== / { exit }
+    in_section { print }
+  ')"
+
+  assert_contains "$impl_ur_block" 'Source: step-plan `## Applicable UR Shortlist`'
+  assert_contains "$impl_ur_block" "UR-0999 - Step-plan shortlist should be primary."
+  assert_not_contains "$impl_ur_block" "UR-1"
+}
+
+test_ai_implementation_prompt_falls_back_to_design_shortlist() {
+  local repo_dir="$TMP_ROOT/repo-ai-impl-design-fallback"
+  setup_impl_repo "$repo_dir"
+
+  (
+    cd "$repo_dir"
+    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+  )
+
+  local prompt impl_ur_block
+  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
+  impl_ur_block="$(printf '%s\n' "$prompt" | awk '
+    /^== Applicable UR shortlist for implementation \(primary \+ fallback\) ==$/ { in_section=1; next }
+    in_section && /^== / { exit }
+    in_section { print }
+  ')"
+
+  assert_contains "$impl_ur_block" 'Source: design fallback (`## Applicable UR Shortlist`) because step-plan shortlist is missing'
+  assert_contains "$impl_ur_block" "UR-1"
+}
+
 test_process_doc_defines_evidence_reasoning_summary_gate() {
   local process_doc="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
   local content
@@ -294,6 +372,8 @@ test_orchestrator_blocks_ai_audit_when_user_review_incomplete() {
 }
 
 test_ai_implementation_prompt_uses_concise_evidence_gate
+test_ai_implementation_prompt_uses_step_plan_shortlist_as_primary
+test_ai_implementation_prompt_falls_back_to_design_shortlist
 test_process_doc_defines_evidence_reasoning_summary_gate
 test_process_doc_defines_review_brief_mode
 test_review_brief_golden_example_exists

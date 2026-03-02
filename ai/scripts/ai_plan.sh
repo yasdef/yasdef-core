@@ -397,38 +397,65 @@ write_step_plan_from_template() {
   done <<<"$body" >"$OUT"
 }
 
-ensure_applicable_ur_shortlist_section() {
-  if grep -Fq "## Applicable UR Shortlist" "$OUT"; then
+fail_ur_shortlist_validation() {
+  local reason="$1"
+  echo "Planning gate failed for step plan: $reason" >&2
+  echo "Required section: ## Applicable UR Shortlist" >&2
+  echo "Accepted content:" >&2
+  echo "- exact: - None." >&2
+  echo "- or curated bullets containing UR-xxxx IDs (recommended 3-8, max 8)." >&2
+  exit 1
+}
+
+validate_applicable_ur_shortlist_section() {
+  if ! grep -Fq "## Applicable UR Shortlist" "$OUT"; then
+    fail_ur_shortlist_validation "missing section \`## Applicable UR Shortlist\`."
+  fi
+
+  local shortlist_section
+  shortlist_section="$(get_markdown_section_body "$OUT" "## Applicable UR Shortlist")"
+  if [[ -z "${shortlist_section//[[:space:]]/}" ]]; then
+    fail_ur_shortlist_validation "section is empty."
+  fi
+
+  local -a shortlist_lines=()
+  local line
+  while IFS= read -r line; do
+    if [[ -n "${line//[[:space:]]/}" ]]; then
+      shortlist_lines+=("$line")
+    fi
+  done <<<"$shortlist_section"
+
+  if [[ "${#shortlist_lines[@]}" -eq 0 ]]; then
+    fail_ur_shortlist_validation "section has no shortlist entries."
+  fi
+
+  if [[ "${#shortlist_lines[@]}" -eq 1 && "${shortlist_lines[0]}" == "- None." ]]; then
     return 0
   fi
 
-  local today
-  today="$(date +%Y-%m-%d)"
+  local ur_count=0
+  local matches match_count
+  for line in "${shortlist_lines[@]}"; do
+    if [[ "$line" == "- None." ]]; then
+      fail_ur_shortlist_validation "mixed shortlist content is not allowed; use only \`- None.\` or only UR-ID bullets."
+    fi
+    if [[ ! "$line" =~ ^-[[:space:]]+ ]]; then
+      fail_ur_shortlist_validation "non-bullet content found in shortlist: $line"
+    fi
 
-  local tmp_dir tmp
-  tmp_dir="$ROOT/ai/tmp"
-  mkdir -p "$tmp_dir"
-  tmp="$tmp_dir/${PROJECT}-step-${STEP}.ur-shortlist.$$.tmp"
+    matches="$(printf '%s\n' "$line" | grep -oE 'UR-[0-9]{4}' || true)"
+    if [[ -z "$matches" ]]; then
+      fail_ur_shortlist_validation "invalid shortlist entry (missing UR-xxxx): $line"
+    fi
 
-  awk -v today="$today" '
-    BEGIN { inserted = 0 }
-    /^## Plan \(ordered\)/ && inserted == 0 {
-      print "## Applicable UR Shortlist"
-      print "- None applicable for this step/bullet. (reviewed on " today ")"
-      print ""
-      inserted = 1
-    }
-    { print }
-    END {
-      if (inserted == 0) {
-        print ""
-        print "## Applicable UR Shortlist"
-        print "- None applicable for this step/bullet. (reviewed on " today ")"
-      }
-    }
-  ' "$OUT" >"$tmp"
+    match_count="$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+    ur_count=$((ur_count + match_count))
+  done
 
-  mv "$tmp" "$OUT"
+  if [[ "$ur_count" -gt 8 ]]; then
+    fail_ur_shortlist_validation "too many UR IDs ($ur_count). Prioritize to 8 or fewer IDs."
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -579,7 +606,7 @@ mkdir -p "$(dirname "$OUT")"
 if [[ ! -f "$OUT" ]]; then
   write_step_plan_from_template
 fi
-ensure_applicable_ur_shortlist_section
+validate_applicable_ur_shortlist_section
 
 emit() {
   local out_label

@@ -8,6 +8,7 @@ Notes:
 - Planning completion gate: do not consider planning finished while any open questions remain for the step; resolve/close them (and record durable decisions in `ai/decisions.md`) before finishing planning.
 - Planning completion gate: every item from design `## Things to Decide (for final planning discussion)` (or `## Things to Decide`) must have an explicit outcome in `## Decisions Needed` (`Accepted`, `Deferred`, or `Blocked`).
 - If a planning-time decision prompt is needed to resolve unclear/blocking choices, ask exactly two numbered options (`1.` recommended/default, `2.` alternative), each with short rationale. User should be able to reply with only `1` or `2`.
+- `## Applicable UR Shortlist` accepts only two canonical forms: exact `- None.` or bullets that include `UR-xxxx` IDs (optional rationale). When using UR IDs, prioritize to 3-8 items (max 8).
 - Implementation contract: `## Plan (ordered)` is the primary execution checklist for implementation phase.
 - Review contract: `## Target Bullets` is the Section 5 user-review checklist to confirm scope completion.
 
@@ -34,8 +35,7 @@ Execution model/session (intended): <fill>
 - <missing prerequisites or required decisions>
 
 ## Applicable UR Shortlist
-- <UR-xxxx — one-line rationale for relevance>
-- None applicable for this step. (use only when no UR rules apply)
+- None.
 
 ## Plan (ordered)
 - 1. <subtask, concrete outcome>
