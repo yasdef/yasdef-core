@@ -43,13 +43,22 @@ This approach can be expressed in a few sentences:
 7. OPTIONAL — allow your AI CLI to work with git (except merge to `main`/`master`) to avoid repeated permission prompts.
   `bash ai/scripts/orchestrator.sh --dry-run`
 
+8. OPTIONAL — bootstrap local Overmind coordination branch + registry scaffold.
+  `bash overmind/bootstrap_overmind.sh`
+  Use explicit remote when needed:
+  `bash overmind/bootstrap_overmind.sh --remote <remote-name>`
+
 
 ### Why we need yet another SDD framework?
 
-- I don't like choosing between an agile (fluid) and a strict approach when writing code with AI. I want both. I prefer to be agile at the product level because requirements can appear, change, or disappear unexpectedly. But when AI writes code for me, I want the process to be extremely strict and straightforward to get predictable, reproducible, and deterministic results (as far as that's possible with AI).
-- I don't like the idea that a developer works 5 minutes and spends the other 55 minutes doing something else—like playing videogames or doing yoga. I prefer an approach where we work as long as needed but deliver 10× more value per hour. Code quality, maintainability, and readability are not negotiable trade-offs. We should be able to drop all AI tools and continue the project by hand without problems at any time.
-- I don't like using dozens of different subagents just to map our AI-dev process to an organization chart. I prefer to avoid unnecessary complexity.
-- I agree that we can outsource many tasks to AI, but not thinking and decision making.
+	•	Current SDD frameworks are great (I strongly recommend you forget about vibecoding and try open-spec, spec-kit, or another SDD framework), but they are built with the purpose of growing a vibecoder into a conscious product manager. That’s not actually what enterprise developer teams need right now.
+	•	YASDEF is built for seamless adoption of AI in the usual SDLC — upgrading it to AISDLC. The goal is 10× productivity while keeping enterprise-level quality, familiar processes, and, most importantly, not shifting responsibility from the developer to AI. If that sounds boring — we’re probably on the right track.
+	•	We consider AI coding agents as another tool for engineers — maybe the best and most promising one in many years — but still… it’s a tool. And don’t forget: the bottleneck is never technology, it’s always people.
+	•	YASDEF has a distributed architecture for distributed teams: someone establishes plans, others write code, we have feedback loops, quality gates, and agile rituals… and we don’t really think we need to throw all of that away just because AI appeared.
+	•	YASDEF is about shifting developers from writing code to making architectural decisions and finding effective approaches. AI can write code. The engineer’s duty is to think, decide, and supervise.
+	•	We don’t really need to choose between an agile (fluid) and a strict approach when writing code with AI. We prefer to stay agile at the product level, because requirements can appear, change, or disappear unexpectedly. But when AI writes code, the process should be extremely strict and straightforward to get predictable, reproducible, and deterministic results (as much as that’s possible with AI).
+	•	We don’t like the idea that a developer works for 5 minutes and spends the rest of the time doing something else. YASDEF is about an approach where we work as long as needed but deliver 10× more value per unit of time. Code quality, maintainability, and readability are not negotiable trade-offs.
+	•	We can outsource many tasks to AI — but not thinking and decision-making.
 
 ### How this works (or will be)
 
