@@ -167,7 +167,7 @@ V-0.0.4
 - CRP-032 — Evidence Reasoning Summary in Model Output (improved) - model povide evidence that implementation is done to user (stdout)
 - CRP-033 — Rename Review Phase to `ai_audit` (Consistent Phase Naming)
 
-V-0.0.5 (current)
+V-0.0.5
 
 1. whats added
 - CRP-034 — Move `implementation_plan.md` Bullet-Closure Gate to `ai_audit` (now we check implementation plan bullets on ai audit phase, implementation phase works only with internal ordered plan)
@@ -175,6 +175,13 @@ V-0.0.5 (current)
 - CRP-036 — Orchestrator Resume Based on Ordered Plan State
 - CRP-039 — Planning Gate: Step Plan Must Declare Applicable UR Shortlist (improve how ai works with previous user review items)
 
+V-0.1.0 (current)
+- first wave (worker POC) features implemented
+- reduce token consumption about 25-30%
+- CRP-037 — Implementation Prompt Slimming (Rule De-dup)
+- CRP-038 — Deterministic Concise Implementation Prompt From Step Plan + Design
+- CRP-041 — UR Hygiene: Enforce Template Schema + De-dup on Update
+- CRP-042 — Optional Feature-Rich Design/Planning Mode
 
 2. known problems/to-do's:
 - only codex cli supported
@@ -187,7 +194,7 @@ V-0.0.5 (current)
 - change bash scripts to lightweight cli (wrapper above coding agent cli's), see yasdef-wrapper
 - investigate "skills" usage
 - coordinator service
-- test how good this framework for frontend/mobile development, not only enterprise backend
+- onboarding script
 
 ### security_improvement_proposals
 
