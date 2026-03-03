@@ -16,14 +16,13 @@ OUT=""
 STEP_PLAN=""
 DESIGN_FILE=""
 INCLUDE_AGENTS=0
-RESET_USER_REVIEW_BRANCH=0
 VALIDATE_USER_REVIEW_GATE=0
 DESIGN_UR_HEADING=""
 DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_user_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents] [--reset-user-review-branch]
+Usage: ai/scripts/ai_user_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents]
 
 Defaults:
   - If --step-plan is omitted, uses the latest ai/step_plans/step-*.md.
@@ -32,7 +31,6 @@ Defaults:
   - If --out is omitted, writes to ai/prompts/user_review_prompts/<project>-step-<step>.user-review.prompt.txt.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-user-review from step-<step>-implementation.
-  - --reset-user-review-branch: force-reset step-<step>-user-review to step-<step>-implementation before switching.
   - Hard gate (before prompt/model): step plan `## Plan (ordered)` must exist and every ordered item must be marked [x].
   - --validate-user-review-gate: run only the UR hygiene completion gate (when ai/user_review.md changed), then exit.
 EOF
@@ -76,19 +74,9 @@ ensure_user_review_branch() {
   fi
 
   if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$target"; then
-    if [[ "$RESET_USER_REVIEW_BRANCH" -eq 1 ]]; then
-      if ! git -C "$ROOT" checkout -B "$target" "$implementation_branch" >/dev/null; then
-        echo "Failed to reset and switch to user review branch: $target from $implementation_branch" >&2
-        exit 1
-      fi
-      echo "Reset and switched to user review branch: $target (from $implementation_branch)." >&2
-      return 0
-    fi
     if ! git -C "$ROOT" checkout "$target" >/dev/null; then
       echo "Failed to switch to existing branch: $target" >&2
       echo "Existing user review branch may have diverged from $implementation_branch, and uncommitted changes cannot be carried safely." >&2
-      echo "If you want to realign user review to implementation, rerun this command:" >&2
-      echo "  ai/scripts/ai_user_review.sh --step $STEP --reset-user-review-branch" >&2
       exit 1
     fi
     echo "Switched to existing branch: $target" >&2
@@ -428,7 +416,7 @@ run_user_review_hygiene_gate() {
   validator="$ROOT/ai/scripts/validate_user_review.sh"
 
   if ! is_user_review_modified; then
-    echo "User review hygiene gate: ai/user_review.md unchanged; skipping validation." >&2
+    echo "User review hygiene gate: PASS (ai/user_review.md unchanged in working tree/index for this phase)." >&2
     return 0
   fi
 
@@ -474,10 +462,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-include-agents)
       INCLUDE_AGENTS=0
-      shift
-      ;;
-    --reset-user-review-branch)
-      RESET_USER_REVIEW_BRANCH=1
       shift
       ;;
     --validate-user-review-gate)
