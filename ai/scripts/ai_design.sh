@@ -19,10 +19,11 @@ DESIGN_OUT=""
 INCLUDE_AGENTS=0
 BRANCH_NAME=""
 TARGET_BULLETS=""
+FEATURE_RICH_DESIGN_PLANNING=0
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_design.sh [--step 1.3] [--design-out file] [--branch-name name] [--include-agents]
+Usage: ai/scripts/ai_design.sh [--step 1.3] [--design-out file] [--branch-name name] [--include-agents] [--feature-rich-design-planning]
 
 Defaults:
   - If --step is omitted, uses the first unchecked bullet in ai/implementation_plan.md.
@@ -30,6 +31,7 @@ Defaults:
   - ai/decisions.md is pointer-only by default.
   - AGENTS.md is referenced by default (not inlined); use --include-agents to inline.
   - Creates/switches to branch step-<step>-plan unless --branch-name is provided.
+  - --feature-rich-design-planning adds an opt-in richer design guidance block (bounded optional hardening capture).
 
 Compatibility:
   - Accepts --out/--include-models/--no-include-models and ignores them, so orchestrator planning args can be reused.
@@ -339,6 +341,14 @@ while [[ $# -gt 0 ]]; do
     --include-models|--no-include-models)
       shift
       ;;
+    --feature-rich-design-planning)
+      FEATURE_RICH_DESIGN_PLANNING=1
+      shift
+      ;;
+    --no-feature-rich-design-planning)
+      FEATURE_RICH_DESIGN_PLANNING=0
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -422,6 +432,12 @@ emit() {
   printf 'Create/update feature design at: %s\n' "$DESIGN_OUT"
   printf 'This design artifact is mandatory input for planning and implementation phases.\n'
   printf 'Shortlist relevant accepted ADRs into design section "Applicable ADR Shortlist (from ai/decisions.md)".\n'
+  if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
+    printf 'Feature-rich design/planning mode: ENABLED (design-only add-on).\n'
+    printf 'Add a concise "Optional Hardening Opportunities" shortlist (max 5 bullets) from risks/trade-offs.\n'
+    printf 'Each optional bullet must state default decision intent (`Accepted` or `Deferred`) and why.\n'
+    printf 'Keep required scope boundaries unchanged unless an optional item is explicitly accepted.\n'
+  fi
   printf '\n'
   printf 'Context pack\n'
   printf '== ai/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"

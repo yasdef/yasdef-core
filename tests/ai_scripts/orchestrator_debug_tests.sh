@@ -45,6 +45,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed: expected output to not contain: $needle" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 setup_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
@@ -214,11 +225,60 @@ run_source_includes_user_review_interactive_confirmation() {
   assert_contains "$out" "planning|implementation|user_review|ai_audit"
 }
 
+run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
+  local repo_dir="$TMP_ROOT/repo-feature-rich-flag-scope"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+
+  local out_design
+  out_design="$(
+    cd "$repo_dir" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase design -- --step 1.1
+  )"
+  assert_contains "$out_design" "--feature-rich-design-planning"
+
+  local out_planning
+  out_planning="$(
+    cd "$repo_dir" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase planning -- --step 1.1
+  )"
+  assert_contains "$out_planning" "--feature-rich-design-planning"
+
+  local out_implementation
+  out_implementation="$(
+    cd "$repo_dir" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase implementation
+  )"
+  assert_not_contains "$out_implementation" "--feature-rich-design-planning"
+
+  local out_user_review
+  out_user_review="$(
+    cd "$repo_dir" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase user_review
+  )"
+  assert_not_contains "$out_user_review" "--feature-rich-design-planning"
+
+  local out_ai_audit
+  out_ai_audit="$(
+    cd "$repo_dir" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase ai_audit
+  )"
+  assert_not_contains "$out_ai_audit" "--feature-rich-design-planning"
+
+  local out_post_review
+  out_post_review="$(
+    cd "$repo_dir" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase post_review
+  )"
+  assert_not_contains "$out_post_review" "--feature-rich-design-planning"
+}
+
 run_non_debug_design_writes_latest_only
 run_debug_design_writes_step_specific
 run_latest_overwrite_and_legacy_preserved
 run_user_review_dry_run_reports_prompt_and_log_paths
 run_ai_audit_dry_run_reports_prompt_and_log_paths
 run_source_includes_user_review_interactive_confirmation
+run_feature_rich_flag_is_scoped_to_design_and_planning_only
 
 echo "All orchestrator debug tests passed."

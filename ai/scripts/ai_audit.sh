@@ -14,13 +14,12 @@ OUT=""
 STEP_PLAN=""
 DESIGN_FILE=""
 INCLUDE_AGENTS=1
-RESET_REVIEW_BRANCH=0
 DESIGN_UR_HEADING=""
 DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_audit.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--no-include-agents] [--reset-review-branch]
+Usage: ai/scripts/ai_audit.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--no-include-agents]
 
 Defaults:
   - If --step-plan is omitted, uses the latest ai/step_plans/step-*.md.
@@ -29,7 +28,6 @@ Defaults:
   - ai/decisions.md is pointer-only by default; rely on design-extracted ADR shortlist.
   - AGENTS.md is included by default; use --no-include-agents to omit.
   - Always creates/switches to branch step-<step>-review from step-<step>-user-review when available, otherwise step-<step>-implementation.
-  - --reset-review-branch: force-reset step-<step>-review to the selected source branch before switching (useful when review branch already exists and diverged).
 EOF
 }
 
@@ -81,19 +79,9 @@ ensure_review_branch() {
   fi
 
   if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$target"; then
-    if [[ "$RESET_REVIEW_BRANCH" -eq 1 ]]; then
-      if ! git -C "$ROOT" checkout -B "$target" "$source_branch" >/dev/null; then
-        echo "Failed to reset and switch to review branch: $target from $source_branch" >&2
-        exit 1
-      fi
-      echo "Reset and switched to review branch: $target (from $source_branch)." >&2
-      return 0
-    fi
     if ! git -C "$ROOT" checkout "$target" >/dev/null; then
       echo "Failed to switch to existing branch: $target" >&2
       echo "Existing review branch may have diverged from $source_branch, and uncommitted changes cannot be carried safely." >&2
-      echo "If you want to realign review to implementation, rerun this command:" >&2
-      echo "  ai/scripts/ai_audit.sh --step $STEP --reset-review-branch" >&2
       exit 1
     fi
     echo "Switched to existing branch: $target" >&2
@@ -429,10 +417,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-include-agents)
       INCLUDE_AGENTS=0
-      shift
-      ;;
-    --reset-review-branch)
-      RESET_REVIEW_BRANCH=1
       shift
       ;;
     -h|--help)
