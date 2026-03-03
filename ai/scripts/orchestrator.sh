@@ -926,6 +926,13 @@ run_implementation_phase() {
   else
     status=$?
   fi
+
+  if [[ "$status" -eq 0 ]]; then
+    if ! ensure_implementation_phase_completion_gate "$step"; then
+      status=1
+    fi
+  fi
+
   return "$status"
 }
 
@@ -985,6 +992,16 @@ run_user_review_phase() {
   else
     status=$?
   fi
+
+  if [[ "$status" -eq 0 ]]; then
+    local ur_gate_cmd=("$ROOT/ai/scripts/ai_user_review.sh" --step-plan "$latest_plan" --validate-user-review-gate)
+    local ur_gate_status=0
+    "${ur_gate_cmd[@]}" || ur_gate_status=$?
+    if [[ "$ur_gate_status" -ne 0 ]]; then
+      status="$ur_gate_status"
+    fi
+  fi
+
   return "$status"
 }
 
@@ -1071,6 +1088,15 @@ run_post_review_phase() {
   if [[ -z "$step" ]]; then
     echo "Could not determine step from plan file: $latest_plan" >&2
     exit 1
+  fi
+
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    local review_artifact="$ROOT/ai/step_review_results/review_result-$step.md"
+    if [[ ! -f "$review_artifact" ]]; then
+      echo "Cannot start post_review for step $step: ai_audit phase is incomplete." >&2
+      echo "Run: ai/scripts/orchestrator.sh --phase ai_audit -- --step $step" >&2
+      exit 1
+    fi
   fi
 
   local cmd=("$ROOT/ai/scripts/post_review.sh" --step "$step")
@@ -1292,6 +1318,61 @@ list_normalized_ordered_plan_items() {
       printf '%s\n' "$normalized"
     fi
   done <<<"$section"
+}
+
+list_unchecked_ordered_plan_items() {
+  local items="$1"
+  local line
+  while IFS= read -r line; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    if [[ ! "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+ ]]; then
+      printf '%s\n' "$line"
+    fi
+  done <<<"$items"
+}
+
+ensure_implementation_phase_completion_gate() {
+  local step="$1"
+  local ordered_counts ordered_state ordered_total ordered_checked
+  ordered_counts="$(phase_eval_ordered_plan_counts "$step")"
+  IFS='|' read -r ordered_state ordered_total ordered_checked _ <<<"$ordered_counts"
+
+  if [[ "$ordered_state" == "missing_step_plan" ]]; then
+    echo "Implementation exit gate failed for step $step." >&2
+    echo "Step plan not found: $ROOT/ai/step_plans/step-$step.md" >&2
+    return 1
+  fi
+
+  if [[ "$ordered_state" == "missing_section" ]]; then
+    echo "Implementation exit gate failed for step $step." >&2
+    echo "Step plan gate requires section '## Plan (ordered)' in ai/step_plans/step-$step.md." >&2
+    return 1
+  fi
+
+  if [[ "$ordered_state" == "no_checklist_items" ]]; then
+    echo "Implementation exit gate failed for step $step." >&2
+    echo "No ordered plan checklist items were found under '## Plan (ordered)' in ai/step_plans/step-$step.md." >&2
+    echo "Add ordered bullets as checklist items and mark them [x] only when each is proven complete." >&2
+    return 1
+  fi
+
+  if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
+    local step_plan ordered_section normalized_items unchecked
+    step_plan="$ROOT/ai/step_plans/step-$step.md"
+    ordered_section="$(get_markdown_section_body "$step_plan" "## Plan (ordered)")"
+    normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
+    unchecked="$(list_unchecked_ordered_plan_items "$normalized_items")"
+
+    echo "Implementation exit gate failed for step $step." >&2
+    echo "All items in step plan '## Plan (ordered)' must be [x] before finishing implementation phase." >&2
+    echo "Unchecked ordered-plan items (normalized):" >&2
+    if [[ -n "$unchecked" ]]; then
+      printf '%s\n' "$unchecked" >&2
+    fi
+    return 1
+  fi
+
+  return 0
 }
 
 phase_eval_ordered_plan_counts() {

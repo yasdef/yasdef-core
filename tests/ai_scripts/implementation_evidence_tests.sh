@@ -31,6 +31,25 @@ assert_not_contains() {
   fi
 }
 
+assert_line_before() {
+  local haystack="$1"
+  local first="$2"
+  local second="$3"
+  local first_line second_line
+
+  first_line="$(printf '%s\n' "$haystack" | grep -nF "$first" | head -n 1 | cut -d: -f1 || true)"
+  second_line="$(printf '%s\n' "$haystack" | grep -nF "$second" | head -n 1 | cut -d: -f1 || true)"
+
+  if [[ -z "$first_line" || -z "$second_line" ]]; then
+    echo "Assertion failed: missing line markers: '$first' or '$second'" >&2
+    exit 1
+  fi
+  if (( first_line >= second_line )); then
+    echo "Assertion failed: expected '$first' before '$second'" >&2
+    exit 1
+  fi
+}
+
 setup_impl_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" \
@@ -51,39 +70,58 @@ EOF
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Target Bullets
-- Implement part A
-- Implement part B
+- [ ] Implement part A [REQ-1] [NFR-2]
+- [ ] Implement part B [REQ-1]
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Applicable UR Shortlist
+- UR-0100 - Validate JWT auth boundary handling.
+- UR-0101 - Keep endpoint contract assertions stable.
 ## Plan (ordered)
-- 1. Implement part A.
-- 2. Implement part B.
+- [ ] 1. Implement part A [REQ-1] [NFR-2].
+- [x] 2. Implement part B [REQ-1].
 ## Implementation Notes / Constraints
 - Follow AGENTS.md.
+- Keep diffs minimal.
 ## Tests
 - Add/update tests.
 ## Docs / Artifacts
 - Update docs.
 ## Risks / Edge Cases
-- None.
+- Risk 1.
+- Risk 2.
 ## Decisions Needed
-- None.
+- Config strategy: Accepted (option 1).
+- Fallback strategy: Deferred.
 EOF
 
   cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
-## Target Bullets
-- Implement part A
-- Implement part B
+## Goal
+- Keep implementation prompt deterministic and concise.
+## In Scope
+- Deterministic prompt ordering.
+- UR-based anti-regression checklist.
+## Out of Scope
+- Runtime service behavior changes.
+## Non-goals
+- Add new orchestrator phases.
 ## Proposal / Design Details
-- demo
+- Extract mandatory sections from step plan and design.
+- Keep prompt generation deterministic.
 ## Risks and Mitigations
-- none
+- Over-slimming can remove needed context -> keep mandatory fields.
 ## Applicable AGENTS.md Constraints
 - follow constraints
+## Applicable User Review Rules
+- UR-0101 - Keep endpoint contract assertions stable.
+- UR-0102 - Validate requirement mapping in tests.
 ## Applicable UR Shortlist
-- UR-1
+- UR-9999 - Design fallback only.
 ## Applicable ADR Shortlist
 - ADR-1
+## References in Current Codebase
+- `ai/scripts/ai_implementation.sh` - prompt generation.
+- `tests/ai_scripts/implementation_evidence_tests.sh` - prompt assertions.
 ## Things to Decide (for final planning discussion)
 - none
 EOF
@@ -107,7 +145,11 @@ EOF
 EOF
   cat >"$repo_dir/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
-- demo
+- req 1 details
+### Requirement 2 Non-target
+- req 2 details
+### NFR 2 Demo NFR
+- nfr 2 details
 EOF
   cat >"$repo_dir/AGENTS.md" <<'EOF'
 Constraints.
@@ -200,7 +242,7 @@ EOF
   )
 }
 
-test_ai_implementation_prompt_uses_concise_evidence_gate() {
+test_ai_implementation_prompt_has_deterministic_structure() {
   local repo_dir="$TMP_ROOT/repo-ai-impl"
   setup_impl_repo "$repo_dir"
 
@@ -211,22 +253,30 @@ test_ai_implementation_prompt_uses_concise_evidence_gate() {
 
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
-  assert_contains "$prompt" 'First rule (execution state, required): use step plan `## Plan (ordered)` as the only implementation-phase execution checklist.'
-  assert_contains "$prompt" 'Execution strategy is adaptive: implement in the most coherent order/batching needed, but update ordered-bullet checkbox state per ordered item and mark `[x]` only when that specific ordered bullet is implemented and verified.'
-  assert_contains "$prompt" 'Targeted verification may run during implementation when needed (focused tests/lint/typecheck), but it does not replace the full step gate.'
-  assert_contains "$prompt" 'Run the full end-of-step verification gate from AGENTS.md exactly once after all ordered bullets are `[x]` and before Section 5.'
-  assert_contains "$prompt" 'Implementation progress and completion reporting in this phase must reference only `## Plan (ordered)` bullets.'
-  assert_contains "$prompt" 'Do not use `ai/implementation_plan.md` target bullets as implementation-phase gating or completion state; explicit target-bullet proof-check is performed first in ai_audit.'
-  assert_not_contains "$prompt" 'emit an "Evidence Reasoning Summary" before handoff'
-  assert_not_contains "$prompt" 'Before ending this phase, emit the concise three-point `Review Brief` defined in ai/AI_DEVELOPMENT_PROCESS.md Section 5: what changed/how, how to start review (entrypoints/order), and what to check first (top risks), using concrete references when available and no guessing.'
-  assert_not_contains "$prompt" 'Do not start Section 5 review exchange in this phase. Stop after Review Brief so orchestrator can enter the dedicated User Review phase.'
-  if [[ "$prompt" == *"Implementation evidence artifact (required):"* ]]; then
-    echo "Assertion failed: prompt must not require dedicated implementation evidence artifact" >&2
-    exit 1
-  fi
+  assert_contains "$prompt" "Phase contract (read first)"
+  assert_contains "$prompt" "Anti-regression checklist (max 8)"
+  assert_contains "$prompt" "Execution list (step plan \`## Plan (ordered)\`)"
+  assert_contains "$prompt" "Step-plan execution context"
+  assert_contains "$prompt" "Scope contract (design)"
+  assert_contains "$prompt" "Key design details (excerpt)"
+  assert_contains "$prompt" "Codebase entrypoints (design references)"
+  assert_contains "$prompt" "Linked requirements (reqirements_ears.md excerpts for step tags)"
+  assert_contains "$prompt" "- [ ] 1. Implement part A [REQ-1] [NFR-2]."
+  assert_contains "$prompt" "- [x] 2. Implement part B [REQ-1]."
+  assert_contains "$prompt" "## Applicable UR Shortlist"
+  assert_contains "$prompt" "UR-0100 - Validate JWT auth boundary handling."
+  assert_line_before "$prompt" "Phase contract (read first)" "Anti-regression checklist (max 8)"
+  assert_line_before "$prompt" "Anti-regression checklist (max 8)" "Execution list (step plan \`## Plan (ordered)\`)"
+  assert_line_before "$prompt" "Execution list (step plan \`## Plan (ordered)\`)" "Step-plan execution context"
+  assert_line_before "$prompt" "Step-plan execution context" "Scope contract (design)"
+  assert_line_before "$prompt" "Scope contract (design)" "Key design details (excerpt)"
+  assert_line_before "$prompt" "Key design details (excerpt)" "Codebase entrypoints (design references)"
+  assert_line_before "$prompt" "Codebase entrypoints (design references)" "Linked requirements (reqirements_ears.md excerpts for step tags)"
+  assert_not_contains "$prompt" "== estimation summary =="
+  assert_not_contains "$prompt" "== repo snapshot =="
 }
 
-test_ai_implementation_prompt_uses_step_plan_shortlist_as_primary() {
+test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
   local repo_dir="$TMP_ROOT/repo-ai-impl-step-plan-shortlist"
   setup_impl_repo "$repo_dir"
 
@@ -238,10 +288,238 @@ test_ai_implementation_prompt_uses_step_plan_shortlist_as_primary() {
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
 ## Applicable UR Shortlist
-- UR-0999 - Step-plan shortlist should be primary.
+- UR-0001 - Step-plan rule one.
+- UR-0002 - Step-plan rule two.
 ## Plan (ordered)
-- 1. Implement part A.
-- 2. Implement part B.
+- [ ] 1. Implement part A [REQ-1].
+- [ ] 2. Implement part B [REQ-1].
+## Implementation Notes / Constraints
+- Follow AGENTS.md.
+## Tests
+- Add/update tests.
+## Docs / Artifacts
+- Update docs.
+## Risks / Edge Cases
+- None.
+## Decisions Needed
+- None.
+EOF
+  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+## Goal
+- Goal.
+## In Scope
+- Scope.
+## Out of Scope
+- Out.
+## Non-goals
+- Non-goal.
+## Proposal / Design Details
+- details
+## Risks and Mitigations
+- risk
+## Applicable AGENTS.md Constraints
+- constraints
+## Applicable User Review Rules
+- UR-0002 - Duplicate in design should be deduped.
+- UR-0003 - Design-only rule should be retained.
+## Applicable ADR Shortlist
+- ADR-1
+## References in Current Codebase
+- `a` - a
+EOF
+
+  (
+    cd "$repo_dir"
+    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+  )
+
+  local prompt anti_block
+  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
+  anti_block="$(printf '%s\n' "$prompt" | awk '
+    /^Anti-regression checklist \(max 8\)$/ { in_section=1; next }
+    in_section && /^Execution list \(step plan `## Plan \(ordered\)`\)$/ { exit }
+    in_section { print }
+  ')"
+
+  assert_contains "$anti_block" "UR-0001 - Step-plan rule one."
+  assert_contains "$anti_block" "UR-0002 - Step-plan rule two."
+  assert_contains "$anti_block" "UR-0003 - Design-only rule should be retained."
+  local ur2_count
+  ur2_count="$(printf '%s\n' "$anti_block" | grep -c 'UR-0002' || true)"
+  if [[ "$ur2_count" -ne 1 ]]; then
+    echo "Assertion failed: expected UR-0002 exactly once in anti-regression checklist" >&2
+    echo "$anti_block" >&2
+    exit 1
+  fi
+  local anti_count
+  anti_count="$(printf '%s\n' "$anti_block" | grep -c '^- ' || true)"
+  if (( anti_count > 8 )); then
+    echo "Assertion failed: anti-regression checklist must be capped at 8 bullets" >&2
+    echo "$anti_block" >&2
+    exit 1
+  fi
+}
+
+test_ai_implementation_prompt_caps_and_requirement_filtering() {
+  local repo_dir="$TMP_ROOT/repo-ai-impl-caps"
+  setup_impl_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Target Bullets
+- [ ] Implement part A [REQ-1] [NFR-2]
+## Design Anchor (scope source of truth)
+- ai/step_designs/step-1.1-design.md
+## Applicable UR Shortlist
+- UR-0001 - one
+## Plan (ordered)
+- [ ] 1. Implement part A [REQ-1] [NFR-2].
+## Implementation Notes / Constraints
+- note-01
+- note-02
+- note-03
+- note-04
+- note-05
+- note-06
+- note-07
+- note-08
+- note-09
+- note-10
+- note-11
+- note-12
+- note-13-should-not-appear
+## Tests
+- test-1
+## Docs / Artifacts
+- docs
+## Risks / Edge Cases
+- risk-1
+- risk-2
+- risk-3
+- risk-4
+- risk-5
+- risk-6
+- risk-7
+- risk-8
+- risk-9-should-not-appear
+## Decisions Needed
+- Choice: Accepted.
+EOF
+
+  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+## Goal
+- goal-1
+- goal-2
+## In Scope
+- scope-1
+## Out of Scope
+- out-1
+## Non-goals
+- non-goal-1
+## Proposal / Design Details
+- proposal-01
+- proposal-02
+- proposal-03
+- proposal-04
+- proposal-05
+- proposal-06
+- proposal-07
+- proposal-08
+- proposal-09
+- proposal-10
+- proposal-11
+- proposal-12
+- proposal-13
+- proposal-14
+- proposal-15
+- proposal-16
+- proposal-17
+- proposal-18
+- proposal-19
+- proposal-20
+- proposal-21-should-not-appear
+## Risks and Mitigations
+- drisk-1
+- drisk-2
+- drisk-3
+- drisk-4
+- drisk-5
+- drisk-6
+- drisk-7
+- drisk-8
+- drisk-9
+- drisk-10
+- drisk-11-should-not-appear
+## Applicable AGENTS.md Constraints
+- constraint-1
+## Applicable User Review Rules
+- UR-0001 - one
+## Applicable ADR Shortlist
+- ADR-1
+## References in Current Codebase
+- `src/main/a` - a
+EOF
+
+  (
+    cd "$repo_dir"
+    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+  )
+
+  local prompt
+  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
+  assert_contains "$prompt" "note-12"
+  assert_not_contains "$prompt" "note-13-should-not-appear"
+  assert_contains "$prompt" "risk-8"
+  assert_not_contains "$prompt" "risk-9-should-not-appear"
+  assert_contains "$prompt" "proposal-20"
+  assert_not_contains "$prompt" "proposal-21-should-not-appear"
+  assert_contains "$prompt" "drisk-10"
+  assert_not_contains "$prompt" "drisk-11-should-not-appear"
+  assert_contains "$prompt" "### Requirement 1 Demo"
+  assert_contains "$prompt" "### NFR 2 Demo NFR"
+  assert_not_contains "$prompt" "### Requirement 2 Non-target"
+}
+
+test_ai_implementation_prompt_is_deterministic_and_compact() {
+  local repo_dir="$TMP_ROOT/repo-ai-impl-determinism"
+  setup_impl_repo "$repo_dir"
+
+  (
+    cd "$repo_dir"
+    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test-1.prompt.txt --no-branch
+    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test-2.prompt.txt --no-branch
+  )
+
+  if ! cmp -s "$repo_dir/ai/prompts/impl_prompts/test-1.prompt.txt" "$repo_dir/ai/prompts/impl_prompts/test-2.prompt.txt"; then
+    echo "Assertion failed: prompt output is not byte-deterministic for identical inputs" >&2
+    exit 1
+  fi
+
+  local prompt
+  local prompt_bytes
+  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test-1.prompt.txt")"
+  prompt_bytes="$(printf '%s' "$prompt" | wc -c | tr -d '[:space:]')"
+  if (( prompt_bytes > 7000 )); then
+    echo "Assertion failed: implementation prompt too large, expected <= 7000 bytes, got $prompt_bytes" >&2
+    exit 1
+  fi
+}
+
+test_ai_implementation_prompt_normalizes_plain_ordered_bullets() {
+  local repo_dir="$TMP_ROOT/repo-ai-impl-normalized-ordered"
+  setup_impl_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Target Bullets
+- [ ] Implement part A [REQ-1]
+## Design Anchor (scope source of truth)
+- ai/step_designs/step-1.1-design.md
+## Applicable UR Shortlist
+- None.
+## Plan (ordered)
+- 1. Implement part A [REQ-1].
+- 2. Implement part B [REQ-1].
 ## Implementation Notes / Constraints
 - Follow AGENTS.md.
 ## Tests
@@ -259,38 +537,57 @@ EOF
     ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
-  local prompt impl_ur_block
+  local prompt
   prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
-  impl_ur_block="$(printf '%s\n' "$prompt" | awk '
-    /^== Applicable UR shortlist for implementation \(primary \+ fallback\) ==$/ { in_section=1; next }
-    in_section && /^== / { exit }
-    in_section { print }
-  ')"
-
-  assert_contains "$impl_ur_block" 'Source: step-plan `## Applicable UR Shortlist`'
-  assert_contains "$impl_ur_block" "UR-0999 - Step-plan shortlist should be primary."
-  assert_not_contains "$impl_ur_block" "UR-1"
+  assert_contains "$prompt" "- [ ] 1. Implement part A [REQ-1]."
+  assert_contains "$prompt" "- [ ] 2. Implement part B [REQ-1]."
 }
 
-test_ai_implementation_prompt_falls_back_to_design_shortlist() {
-  local repo_dir="$TMP_ROOT/repo-ai-impl-design-fallback"
-  setup_impl_repo "$repo_dir"
+test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-orch-impl-gate-fail"
+  setup_orchestrator_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Target Bullets
+- demo
+## Plan (ordered)
+- [x] 1. demo A
+- [ ] 2. demo B
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: implementation phase should fail when ordered-plan checklist has unchecked items" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Implementation exit gate failed for step 1.1."
+  assert_contains "$out" "All items in step plan '## Plan (ordered)' must be [x] before finishing implementation phase."
+}
+
+test_orchestrator_implementation_gate_passes_when_all_ordered_items_checked() {
+  local repo_dir="$TMP_ROOT/repo-orch-impl-gate-pass"
+  setup_orchestrator_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Target Bullets
+- demo
+## Plan (ordered)
+- [x] 1. demo A
+- [x] 2. demo B
+EOF
 
   (
     cd "$repo_dir"
-    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+    ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 >/tmp/orch-impl-gate-pass.out 2>/tmp/orch-impl-gate-pass.err
   )
-
-  local prompt impl_ur_block
-  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
-  impl_ur_block="$(printf '%s\n' "$prompt" | awk '
-    /^== Applicable UR shortlist for implementation \(primary \+ fallback\) ==$/ { in_section=1; next }
-    in_section && /^== / { exit }
-    in_section { print }
-  ')"
-
-  assert_contains "$impl_ur_block" 'Source: design fallback (`## Applicable UR Shortlist`) because step-plan shortlist is missing'
-  assert_contains "$impl_ur_block" "UR-1"
 }
 
 test_process_doc_defines_evidence_reasoning_summary_gate() {
@@ -479,14 +776,37 @@ test_orchestrator_blocks_ai_audit_when_user_review_incomplete() {
   assert_contains "$out" "Cannot start ai_audit for step 1.1: user_review phase is incomplete."
 }
 
-test_ai_implementation_prompt_uses_concise_evidence_gate
-test_ai_implementation_prompt_uses_step_plan_shortlist_as_primary
-test_ai_implementation_prompt_falls_back_to_design_shortlist
+test_orchestrator_post_review_requires_ai_audit_artifact() {
+  local repo_dir="$TMP_ROOT/repo-orch-post-review-requires-audit"
+  setup_orchestrator_repo "$repo_dir"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase post_review -- --step 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: post_review should fail when ai_audit artifact is missing" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Cannot start post_review for step 1.1: ai_audit phase is incomplete."
+}
+
+test_ai_implementation_prompt_has_deterministic_structure
+test_ai_implementation_prompt_builds_deduped_anti_regression_checklist
+test_ai_implementation_prompt_caps_and_requirement_filtering
+test_ai_implementation_prompt_is_deterministic_and_compact
+test_ai_implementation_prompt_normalizes_plain_ordered_bullets
+test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked
+test_orchestrator_implementation_gate_passes_when_all_ordered_items_checked
 test_process_doc_defines_evidence_reasoning_summary_gate
 test_process_doc_defines_review_brief_mode
 test_review_brief_golden_example_exists
 test_ai_audit_prompt_requires_entry_proof_gate
 test_orchestrator_does_not_block_ai_audit_without_evidence
 test_orchestrator_blocks_ai_audit_when_user_review_incomplete
+test_orchestrator_post_review_requires_ai_audit_artifact
 
 echo "All implementation evidence tests passed."

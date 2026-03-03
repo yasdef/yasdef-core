@@ -17,6 +17,7 @@ STEP_PLAN=""
 DESIGN_FILE=""
 INCLUDE_AGENTS=0
 RESET_USER_REVIEW_BRANCH=0
+VALIDATE_USER_REVIEW_GATE=0
 DESIGN_UR_HEADING=""
 DESIGN_ADR_HEADING=""
 
@@ -33,6 +34,7 @@ Defaults:
   - Always creates/switches to branch step-<step>-user-review from step-<step>-implementation.
   - --reset-user-review-branch: force-reset step-<step>-user-review to step-<step>-implementation before switching.
   - Hard gate (before prompt/model): step plan `## Plan (ordered)` must exist and every ordered item must be marked [x].
+  - --validate-user-review-gate: run only the UR hygiene completion gate (when ai/user_review.md changed), then exit.
 EOF
 }
 
@@ -405,6 +407,45 @@ ensure_user_review_entry_gate() {
   fi
 }
 
+is_user_review_modified() {
+  local rel_user_review
+  rel_user_review="${USER_REVIEW#$ROOT/}"
+
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! git -C "$ROOT" diff --quiet -- "$rel_user_review"; then
+    return 0
+  fi
+  if ! git -C "$ROOT" diff --cached --quiet -- "$rel_user_review"; then
+    return 0
+  fi
+  return 1
+}
+
+run_user_review_hygiene_gate() {
+  local validator
+  validator="$ROOT/ai/scripts/validate_user_review.sh"
+
+  if ! is_user_review_modified; then
+    echo "User review hygiene gate: ai/user_review.md unchanged; skipping validation." >&2
+    return 0
+  fi
+
+  if [[ ! -x "$validator" ]]; then
+    echo "User review hygiene gate failed: validator script is missing or not executable: $validator" >&2
+    return 1
+  fi
+
+  if ! "$validator" --file "$USER_REVIEW" --changed-only; then
+    echo "User review hygiene validation failed. Fix ai/user_review.md before completing user_review phase." >&2
+    return 1
+  fi
+
+  echo "User review hygiene gate passed for ai/user_review.md." >&2
+  return 0
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --step)
@@ -437,6 +478,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --reset-user-review-branch)
       RESET_USER_REVIEW_BRANCH=1
+      shift
+      ;;
+    --validate-user-review-gate)
+      VALIDATE_USER_REVIEW_GATE=1
       shift
       ;;
     -h|--help)
@@ -481,6 +526,11 @@ fi
 
 ensure_user_review_entry_gate "$STEP"
 ensure_user_review_branch
+
+if [[ "$VALIDATE_USER_REVIEW_GATE" -eq 1 ]]; then
+  run_user_review_hygiene_gate
+  exit $?
+fi
 
 STEP_TITLE="$(get_step_plan_title)"
 if [[ -z "$STEP_TITLE" ]]; then
@@ -549,6 +599,7 @@ emit() {
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
   printf 'Entry gate already verified by script: all items in step plan `## Plan (ordered)` are [x].\n'
   printf 'User review phase-state source is step plan `## Plan (ordered)` only.\n'
+  printf 'If ai/user_review.md is modified in this phase, completion requires UR hygiene validation (template-complete fields and de-dup checks).\n'
   printf 'Do not start post-step audit/review in this phase.\n'
   printf 'When user review is fully complete, end your final response with this exact last line: "User review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'

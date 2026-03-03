@@ -11,7 +11,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 
 ## Git safety (local workflow)
 - Never commit directly on `main`/`master`. All commits happen on a local topic branch.
-- Branch setup is handled by scripts: `ai/scripts/ai_design.sh` and `ai/scripts/ai_plan.sh` use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, and `ai/scripts/ai_audit.sh` (used by phase key `ai_audit`) creates/switches `step-<step>-review` from `step-<step>-implementation` so uncommitted implementation changes are carried into review.
+- Branch setup is handled by scripts: `ai/scripts/ai_design.sh` and `ai/scripts/ai_plan.sh` use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, `ai/scripts/ai_user_review.sh` uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
 - Local workflow: create a local branch before starting a step implementation phase, commit only after tests pass and the user approves, do not push. Any merge to `main`/`master` is a separate explicit follow-up action, not part of step completion.
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
@@ -31,6 +31,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 ## Prompt governance (single source of rules)
 - Behavioral/process rules for AI execution must live in this file.
 - `ai/scripts/*.sh` prompts should stay minimal and phase-scoped: tell the model which phase it is in, where outputs go, and to follow the relevant sections of this file plus `AGENTS.md`.
+- For implementation phase prompts specifically: emit a short phase contract and avoid duplicating detailed process prose from this file; keep context focused on step-specific execution inputs (`## Plan (ordered)`, constraints, tests/risks, and linked requirement excerpts).
 - Do not duplicate detailed workflow rules across script prompts. If a rule changes, update this file and keep scripts as thin wrappers.
 
 ## Planning artifact governance
@@ -142,6 +143,7 @@ Before step planning:
 #### 4.1) Implementation handoff constraints (required before Section 5)
 - Implementation reporting must map progress/evidence to ordered bullets in `## Plan (ordered)` only.
 - Do not run `ai/implementation_plan.md` target-bullet proof-check in implementation; that proof-check is the first gate in Section 6.
+- Implementation phase completion is script-gated by orchestrator: before phase success, it validates that all ordered checklist items in `## Plan (ordered)` are `[x]`.
 - Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]` and the full step verification gate has passed.
 
 ### 5) User review (required before moving to the next step)
@@ -167,9 +169,14 @@ Entry precondition:
    1. Clarify ambiguous requests (ask questions if needed). If the user asked "why", answer the question first.
    2. Implement the requested changes (and any directly necessary test/doc updates). Do not implement changes that were not requested; propose them as suggestions and ask.
    3. Immediately update `ai/user_review.md` with any generalizable rule(s) derived from the user feedback and the implementation change (include references). If there are no generalizable rules, explicitly state that and do not change `ai/user_review.md`.
+      - UR-schema gate: new UR entries must be template-complete using `ai/templates/user_review_TEMPLATE.md` required fields: `Trigger`, `Rule`, `How to verify`, `Example(s)`, and `References`.
+      - Fallback gate: if feedback is useful but cannot populate the required UR fields with sufficient quality, do not create a UR entry; record a step-specific note in the active step plan instead.
+      - De-dup gate: if new feedback overlaps an existing UR rule, update the existing UR entry instead of adding a duplicate/new UR ID.
 6. Summarize what changed and ask for the next review round.
 7. Repeat steps 4-6 until the user explicitly confirms the review is complete (e.g., "done", "no more comments").
-8. Only after the user confirms completion, run one final verification test command for the step (prefer the repo’s full verification gate from `AGENTS.md`) and report the result.
+8. Only after the user confirms completion:
+   - Run UR hygiene validation for `ai/user_review.md` when that file was modified in the current review cycle; fail phase completion on missing required fields, duplicate IDs, or overlapping trigger/rule entries.
+   - Run one final verification test command for the step (prefer the repo’s full verification gate from `AGENTS.md`) and report the result.
 9. If the final verification passes, propose the next step: Post-step audit/review (Section 6).
 - Do not run Section 6 in the implementation phase; Section 6 is executed in the `ai_audit` phase.
 
