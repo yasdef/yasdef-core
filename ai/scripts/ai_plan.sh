@@ -18,10 +18,11 @@ OUT=""
 DESIGN_FILE=""
 INCLUDE_AGENTS=0
 BRANCH_NAME=""
+FEATURE_RICH_DESIGN_PLANNING=0
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_plan.sh [--step 1.3] [--out file] [--design file] [--include-agents] [--branch-name name]
+Usage: ai/scripts/ai_plan.sh [--step 1.3] [--out file] [--design file] [--include-agents] [--branch-name name] [--feature-rich-design-planning]
 
 Defaults:
   - If --step is omitted, uses the first unchecked bullet in ai/implementation_plan.md.
@@ -30,6 +31,7 @@ Defaults:
   - ai/decisions.md is pointer-only by default.
   - AGENTS.md is referenced by default (pointer-only); use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-plan unless --branch-name is provided.
+  - --feature-rich-design-planning enables opt-in richer planning guidance for optional hardening decisions.
 EOF
 }
 
@@ -501,6 +503,14 @@ while [[ $# -gt 0 ]]; do
       INCLUDE_AGENTS=0
       shift
       ;;
+    --feature-rich-design-planning)
+      FEATURE_RICH_DESIGN_PLANNING=1
+      shift
+      ;;
+    --no-feature-rich-design-planning)
+      FEATURE_RICH_DESIGN_PLANNING=0
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -656,6 +666,11 @@ emit() {
   printf 'Use the feature design artifact as the primary input and convert it into an execution-focused step plan.\n'
   printf 'Execution scope must come from design target bullets (excluding planning/review bullets).\n'
   printf 'Derive non-negotiable invariants from design-extracted ADR shortlist + AGENTS constraints.\n'
+  if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
+    printf 'Feature-rich design/planning mode: ENABLED (planning-only add-on).\n'
+    printf 'Derive up to 5 optional hardening candidates from design risks/trade-offs and record each in `## Decisions Needed` as `Accepted` or `Deferred` with rationale.\n'
+    printf 'If any optional item materially changes implementation path and remains unresolved, ask one explicit two-option prompt (`1.` recommended, `2.` alternative) before planning closure.\n'
+  fi
   printf 'When planning phase is fully complete, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Commit gate: when you commit planning artifacts, include both the step plan and the feature design artifact (do not commit only %s).\n' "$out_label"
   printf 'Minimum commit set (if changed): %s, %s\n' "$out_label" "$design_label"

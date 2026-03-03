@@ -40,6 +40,7 @@ cd "$ROOT"
 
 DRY_RUN=0
 DEBUG_MODE=0
+FEATURE_RICH_DESIGN_PLANNING=0
 REQUESTED_PHASES=()
 PLAN_ARGS=()
 RAN_AI_AUDIT=0
@@ -59,7 +60,7 @@ CANONICAL_PHASES=(design planning implementation user_review ai_audit post_revie
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|user_review|ai_audit|post_review] [--resume <step>] [--debug] [--dry-run] [--help] [-- <ai_plan.sh args>]
+Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|user_review|ai_audit|post_review] [--resume <step>] [--debug] [--feature-rich-design-planning] [--dry-run] [--help] [-- <ai_plan.sh args>]
 
 Default behavior:
   - Runs all phases in ai/setup/models.md, in order, then runs post_review.
@@ -72,6 +73,8 @@ Default behavior:
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
   - --resume is mutually exclusive with explicit --phase.
   - --debug enables per-step/per-phase artifact files for logs and prompts.
+  - --feature-rich-design-planning enables an opt-in richer contract for design/planning prompts only.
+  - --feature-rich-design-planning does not change implementation/user_review/ai_audit/post_review behavior.
   - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
   - When running interactively, asks for confirmation before planning/implementation/user_review/ai_audit.
   - Writes per-phase logs to ai/logs/<project>-<phase>-latest-log (or step-specific names with --debug).
@@ -87,6 +90,7 @@ Examples:
   ai/scripts/orchestrator.sh --phase post_review
   ai/scripts/orchestrator.sh --resume 1.3
   ai/scripts/orchestrator.sh --resume 1.3 --dry-run
+  ai/scripts/orchestrator.sh --feature-rich-design-planning --phase design -- --step 1.3
   ai/scripts/orchestrator.sh --debug --phase design -- --step 1.3
   ai/scripts/orchestrator.sh --dry-run
 EOF
@@ -537,6 +541,9 @@ run_planning_phase() {
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
     plan_cmd+=("${PLAN_ARGS[@]}")
   fi
+  if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
+    plan_cmd+=(--feature-rich-design-planning)
+  fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_planning_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -585,6 +592,9 @@ run_design_phase() {
   local design_cmd=("$ROOT/ai/scripts/ai_design.sh")
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
     design_cmd+=("${PLAN_ARGS[@]}")
+  fi
+  if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
+    design_cmd+=(--feature-rich-design-planning)
   fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -1785,6 +1795,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --debug)
       DEBUG_MODE=1
+      shift
+      ;;
+    --feature-rich-design-planning)
+      FEATURE_RICH_DESIGN_PLANNING=1
+      shift
+      ;;
+    --no-feature-rich-design-planning)
+      FEATURE_RICH_DESIGN_PLANNING=0
       shift
       ;;
     --help|-h)
