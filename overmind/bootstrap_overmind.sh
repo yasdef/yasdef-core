@@ -12,7 +12,7 @@ Usage: overmind/bootstrap_overmind.sh [--remote <name>] [--help]
 Bootstraps local Overmind coordination by:
   1) creating/checking out branch "overmind"
   2) creating worker_registry.yaml scaffold when missing
-  3) committing worker_registry.yaml when created
+  3) committing worker_registry.yaml changes when present
   4) pushing branch to remote with upstream tracking
 
 Options:
@@ -83,14 +83,20 @@ EOF
   REGISTRY_CREATED=1
 }
 
-commit_registry_if_created() {
-  if [[ "${REGISTRY_CREATED:-0}" -ne 1 ]]; then
-    echo "No new registry file was created; skipping commit."
+commit_registry_changes_if_present() {
+  git add -- "$REGISTRY_FILE"
+
+  if git diff --cached --quiet -- "$REGISTRY_FILE"; then
+    echo "No changes detected in $REGISTRY_FILE; skipping commit."
     return 0
   fi
 
-  git add -- "$REGISTRY_FILE"
-  if ! git commit -m "Bootstrap overmind worker registry" -- "$REGISTRY_FILE"; then
+  local commit_message="Update overmind worker registry"
+  if [[ "${REGISTRY_CREATED:-0}" -eq 1 ]]; then
+    commit_message="Bootstrap overmind worker registry"
+  fi
+
+  if ! git commit -m "$commit_message" -- "$REGISTRY_FILE"; then
     die "Failed to commit '$REGISTRY_FILE'. Check git user configuration and repository state, then retry."
   fi
 }
@@ -133,7 +139,7 @@ cd "$REPO_ROOT"
 ensure_remote_available "$REMOTE_NAME"
 ensure_overmind_branch
 scaffold_registry_if_missing "$REPO_ROOT/$REGISTRY_FILE"
-commit_registry_if_created
+commit_registry_changes_if_present
 push_branch_with_upstream "$REMOTE_NAME"
 
 echo "Overmind bootstrap complete."

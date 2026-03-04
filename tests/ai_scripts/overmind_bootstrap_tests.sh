@@ -158,6 +158,57 @@ EOF
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
 }
 
+test_bootstrap_success_commits_and_pushes_existing_registry_changes() {
+  local repo_dir="$TMP_ROOT/repo-update-existing"
+  mkdir -p "$repo_dir"
+  setup_git_repo_with_origin "$repo_dir"
+
+  (
+    cd "$repo_dir"
+    git checkout -b overmind >/dev/null
+    cat >worker_registry.yaml <<'EOF'
+version: 1
+generated_at: "manual"
+description: "custom registry"
+workers:
+  - id: worker-1
+EOF
+    git add worker_registry.yaml
+    git commit -qm "custom registry"
+    git push -u origin overmind >/dev/null
+
+    cat >worker_registry.yaml <<'EOF'
+version: 1
+generated_at: "manual"
+description: "custom registry"
+workers:
+  - id: worker-1
+  - id: worker-2
+EOF
+  )
+
+  local out
+  out="$(
+    cd "$repo_dir" &&
+    overmind/bootstrap_overmind.sh
+  )"
+
+  assert_contains "$out" "Overmind bootstrap complete."
+  assert_contains "$out" "Registry already exists: worker_registry.yaml (preserved)."
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+  assert_equal "Update overmind worker registry" "$(git -C "$repo_dir" log -1 --pretty=%s)"
+
+  local local_head
+  local remote_head
+  local_head="$(git -C "$repo_dir" rev-parse HEAD)"
+  remote_head="$(git --git-dir "$repo_dir/remote.git" rev-parse refs/heads/overmind)"
+  assert_equal "$local_head" "$remote_head"
+
+  local remote_registry
+  remote_registry="$(git --git-dir "$repo_dir/remote.git" show refs/heads/overmind:worker_registry.yaml)"
+  assert_contains "$remote_registry" "- id: worker-2"
+}
+
 test_bootstrap_fails_outside_git_repo() {
   local dir="$TMP_ROOT/not-a-repo"
   mkdir -p "$dir"
@@ -279,6 +330,7 @@ test_bootstrap_surfaces_push_failure() {
 test_bootstrap_success_creates_branch_registry_and_upstream
 test_bootstrap_success_supports_remote_equals_syntax
 test_bootstrap_success_preserves_existing_registry
+test_bootstrap_success_commits_and_pushes_existing_registry_changes
 test_bootstrap_fails_outside_git_repo
 test_bootstrap_help_prints_usage
 test_bootstrap_fails_when_no_remote
