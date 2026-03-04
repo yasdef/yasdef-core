@@ -8,6 +8,7 @@ REGISTRY_FILE="worker_registry.yaml"
 WORKER_ID_FILE="ai/worker_id_dont_change_or_remove.txt"
 RESTORE_BRANCH_ON_EXIT=0
 REGISTRY_UPDATED=0
+WORKER_ID_CREATED=0
 REGISTRY_COMMIT_SHA=""
 
 usage() {
@@ -124,6 +125,7 @@ ensure_worker_id() {
   value="$(generate_worker_id)"
   printf '%s\n' "$value" >"$path"
   WORKER_ID="$value"
+  WORKER_ID_CREATED=1
   echo "Created worker ID file: $WORKER_ID_FILE"
 }
 
@@ -171,18 +173,19 @@ register_worker_if_needed() {
 
 commit_registry_changes_if_any() {
   local registry_path="$1"
+  local id_path="$2"
 
-  git add -- "$registry_path"
+  git add -- "$registry_path" "$id_path"
 
-  if git diff --cached --quiet -- "$registry_path"; then
-    if [[ "$REGISTRY_UPDATED" -eq 1 ]]; then
-      die "Registration updated '$REGISTRY_FILE' but no staged diff was detected."
+  if git diff --cached --quiet -- "$registry_path" "$id_path"; then
+    if [[ "$REGISTRY_UPDATED" -eq 1 || "$WORKER_ID_CREATED" -eq 1 ]]; then
+      die "Registration state changed but no staged diff was detected."
     fi
     echo "No changes detected for worker registration; skipping commit."
     return 0
   fi
 
-  if ! git commit -m "Register worker ${WORKER_ID} in overmind registry" -- "$registry_path"; then
+  if ! git commit -m "Register worker ${WORKER_ID} in overmind registry" -- "$registry_path" "$id_path"; then
     die "Failed to commit worker registration changes."
   fi
 
@@ -197,7 +200,7 @@ push_registration_changes() {
 }
 
 announce_commit_and_push_plan() {
-  if [[ "$REGISTRY_UPDATED" -eq 1 && -z "$REGISTRY_COMMIT_SHA" ]]; then
+  if [[ ("$REGISTRY_UPDATED" -eq 1 || "$WORKER_ID_CREATED" -eq 1) && -z "$REGISTRY_COMMIT_SHA" ]]; then
     die "Registration changed but no local commit was created; refusing to push."
   fi
 
@@ -231,14 +234,14 @@ cd "$REPO_ROOT"
 
 ensure_remote_available "$REMOTE_NAME"
 ensure_return_branch
-ensure_worker_id "$REPO_ROOT/$WORKER_ID_FILE"
 ensure_orchestrator_branch "$REMOTE_NAME"
 ensure_local_overmind_branch "$REMOTE_NAME"
 RESTORE_BRANCH_ON_EXIT=1
 sync_overmind_branch "$REMOTE_NAME"
 ensure_registry_file_exists "$REPO_ROOT/$REGISTRY_FILE"
+ensure_worker_id "$REPO_ROOT/$WORKER_ID_FILE"
 register_worker_if_needed "$REPO_ROOT/$REGISTRY_FILE"
-commit_registry_changes_if_any "$REPO_ROOT/$REGISTRY_FILE"
+commit_registry_changes_if_any "$REPO_ROOT/$REGISTRY_FILE" "$REPO_ROOT/$WORKER_ID_FILE"
 announce_commit_and_push_plan
 push_registration_changes "$REMOTE_NAME"
 checkout_return_branch

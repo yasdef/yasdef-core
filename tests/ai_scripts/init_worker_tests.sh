@@ -18,6 +18,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed: expected output to NOT contain: $needle" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 assert_file_exists() {
   local path="$1"
   if [[ ! -f "$path" ]]; then
@@ -94,6 +105,11 @@ find_worker_id_file() {
   find "$repo_dir/ai" -maxdepth 1 -type f -name '*dont_change_or_remove*' | sort | head -n 1
 }
 
+worker_id_from_overmind_branch() {
+  local repo_dir="$1"
+  git -C "$repo_dir" show overmind:ai/worker_id_dont_change_or_remove.txt 2>/dev/null | head -n 1 | tr -d '[:space:]'
+}
+
 count_registry_occurrences() {
   local content="$1"
   local worker_id="$2"
@@ -117,12 +133,8 @@ test_init_worker_success_registers_and_returns_master() {
   assert_contains "$out" "Local overmind commit:"
   assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
 
-  local worker_file
-  worker_file="$(find_worker_id_file "$repo_dir")"
-  assert_file_exists "$worker_file"
-
   local worker_id
-  worker_id="$(head -n 1 "$worker_file" | tr -d '[:space:]')"
+  worker_id="$(worker_id_from_overmind_branch "$repo_dir")"
   if [[ -z "$worker_id" ]]; then
     echo "Assertion failed: worker id is empty" >&2
     exit 1
@@ -135,6 +147,17 @@ test_init_worker_success_registers_and_returns_master() {
   local overmind_subject
   overmind_subject="$(git -C "$repo_dir" log overmind -1 --pretty=%s)"
   assert_contains "$overmind_subject" "Register worker "
+
+  local worker_file
+  worker_file="$(find_worker_id_file "$repo_dir")"
+  if [[ -n "$worker_file" ]]; then
+    echo "Assertion failed: worker id file should not exist on master working tree" >&2
+    exit 1
+  fi
+
+  local status_short
+  status_short="$(git -C "$repo_dir" status --short)"
+  assert_not_contains "$status_short" "ai/worker_id_dont_change_or_remove.txt"
 }
 
 test_init_worker_fails_when_no_overmind_branch() {
@@ -203,10 +226,8 @@ test_init_worker_is_idempotent() {
     ai/scripts/init_worker.sh >/dev/null
   )
 
-  local worker_file
-  worker_file="$(find_worker_id_file "$repo_dir")"
   local worker_id_before
-  worker_id_before="$(head -n 1 "$worker_file" | tr -d '[:space:]')"
+  worker_id_before="$(worker_id_from_overmind_branch "$repo_dir")"
 
   local out_second
   out_second="$(
@@ -214,7 +235,7 @@ test_init_worker_is_idempotent() {
     ai/scripts/init_worker.sh
   )"
   local worker_id_after
-  worker_id_after="$(head -n 1 "$worker_file" | tr -d '[:space:]')"
+  worker_id_after="$(worker_id_from_overmind_branch "$repo_dir")"
 
   assert_equal "$worker_id_before" "$worker_id_after"
   assert_contains "$out_second" "Worker already registered in worker_registry.yaml."
