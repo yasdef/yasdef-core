@@ -7,7 +7,7 @@ REMOTE_NAME="origin"
 
 usage() {
   cat <<'EOF'
-Usage: overmind/bootstrap_overmind.sh [--remote <name>] [--help]
+Usage: overmind/bootstrap_overmind.sh [--help]
 
 Bootstraps local Overmind coordination by:
   1) creating/checking out branch "overmind"
@@ -16,7 +16,6 @@ Bootstraps local Overmind coordination by:
   4) pushing branch to remote with upstream tracking
 
 Options:
-  --remote <name>  Remote name to use for push (default: origin)
   -h, --help       Show this help message
 EOF
 }
@@ -48,7 +47,7 @@ ensure_remote_available() {
   fi
 
   if ! git remote get-url "$remote" >/dev/null 2>&1; then
-    die "Remote '$remote' is not configured. Use --remote <name> with an existing remote."
+    die "Remote '$remote' is not configured."
   fi
 }
 
@@ -109,28 +108,14 @@ push_branch_with_upstream() {
   fi
 }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --remote)
-      if [[ -z "${2:-}" ]]; then
-        die "--remote requires a value."
-      fi
-      REMOTE_NAME="$2"
-      shift 2
-      ;;
-    --remote=*)
-      REMOTE_NAME="${1#--remote=}"
-      shift
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      die "Unknown argument: $1"
-      ;;
-  esac
-done
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -gt 0 ]]; then
+  die "Unknown argument: $1"
+fi
 
 require_git
 REPO_ROOT="$(resolve_repo_root)"

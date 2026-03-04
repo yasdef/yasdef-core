@@ -26,7 +26,7 @@ This approach can be expressed in a few sentences:
 1. Copy-paste the `ai/` folder to the root of your project.
 
 2. Make the bash scripts in `ai/scripts` executable:
-  `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_user_review.sh ai/scripts/ai_audit.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh`
+  `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_user_review.sh ai/scripts/ai_audit.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh ai/scripts/init_worker.sh`
 
 3. You need to provide `implementation_plan.md` in certain format, it should be in root of your project
 
@@ -49,8 +49,11 @@ This approach can be expressed in a few sentences:
 
 8. OPTIONAL — bootstrap local Overmind coordination branch + registry scaffold.
   `bash overmind/bootstrap_overmind.sh`
-  Use explicit remote when needed:
-  `bash overmind/bootstrap_overmind.sh --remote <remote-name>`
+
+9. OPTIONAL — initialize worker registration against coordinator `overmind`.
+  `bash ai/scripts/init_worker.sh`
+  If coordinator `overmind` is unavailable, the script fails fast with:
+  `no orchestrator detected, unable to proceed`
 
 
 ## Why we need yet another SDD framework?

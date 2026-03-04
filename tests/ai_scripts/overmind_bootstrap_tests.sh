@@ -106,22 +106,6 @@ test_bootstrap_success_creates_branch_registry_and_upstream() {
   fi
 }
 
-test_bootstrap_success_supports_remote_equals_syntax() {
-  local repo_dir="$TMP_ROOT/repo-remote-equals"
-  mkdir -p "$repo_dir"
-  setup_git_repo_with_origin "$repo_dir"
-
-  local out
-  out="$(
-    cd "$repo_dir" &&
-    overmind/bootstrap_overmind.sh --remote=origin
-  )"
-
-  assert_contains "$out" "Overmind bootstrap complete."
-  assert_contains "$out" "Remote: origin"
-  assert_equal "origin/overmind" "$(git -C "$repo_dir" rev-parse --abbrev-ref --symbolic-full-name @{u})"
-}
-
 test_bootstrap_success_preserves_existing_registry() {
   local repo_dir="$TMP_ROOT/repo-preserve"
   mkdir -p "$repo_dir"
@@ -238,8 +222,7 @@ test_bootstrap_help_prints_usage() {
   set -e
 
   assert_equal "0" "$status"
-  assert_contains "$out" "Usage: overmind/bootstrap_overmind.sh [--remote <name>] [--help]"
-  assert_contains "$out" "--remote <name>"
+  assert_contains "$out" "Usage: overmind/bootstrap_overmind.sh [--help]"
 }
 
 test_bootstrap_fails_when_no_remote() {
@@ -258,36 +241,20 @@ test_bootstrap_fails_when_no_remote() {
   assert_contains "$out" "No git remote configured."
 }
 
-test_bootstrap_fails_for_missing_selected_remote() {
-  local repo_dir="$TMP_ROOT/repo-missing-remote"
+test_bootstrap_rejects_remote_flag() {
+  local repo_dir="$TMP_ROOT/repo-remote-flag"
   mkdir -p "$repo_dir"
   setup_git_repo_with_origin "$repo_dir"
 
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && overmind/bootstrap_overmind.sh --remote mirror 2>&1)"
+  out="$(cd "$repo_dir" && overmind/bootstrap_overmind.sh --remote=origin 2>&1)"
   status=$?
   set -e
 
   assert_nonzero_status "$status"
-  assert_contains "$out" "Remote 'mirror' is not configured."
-}
-
-test_bootstrap_fails_when_remote_value_missing() {
-  local repo_dir="$TMP_ROOT/repo-missing-remote-value"
-  mkdir -p "$repo_dir"
-  setup_git_repo_with_origin "$repo_dir"
-
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$repo_dir" && overmind/bootstrap_overmind.sh --remote 2>&1)"
-  status=$?
-  set -e
-
-  assert_nonzero_status "$status"
-  assert_contains "$out" "--remote requires a value."
+  assert_contains "$out" "Unknown argument: --remote=origin"
 }
 
 test_bootstrap_fails_for_unknown_argument() {
@@ -328,14 +295,12 @@ test_bootstrap_surfaces_push_failure() {
 }
 
 test_bootstrap_success_creates_branch_registry_and_upstream
-test_bootstrap_success_supports_remote_equals_syntax
 test_bootstrap_success_preserves_existing_registry
 test_bootstrap_success_commits_and_pushes_existing_registry_changes
 test_bootstrap_fails_outside_git_repo
 test_bootstrap_help_prints_usage
 test_bootstrap_fails_when_no_remote
-test_bootstrap_fails_for_missing_selected_remote
-test_bootstrap_fails_when_remote_value_missing
+test_bootstrap_rejects_remote_flag
 test_bootstrap_fails_for_unknown_argument
 test_bootstrap_surfaces_push_failure
 
