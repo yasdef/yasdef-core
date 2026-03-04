@@ -1,6 +1,6 @@
-## Yet Another Spec Driven (Enhanced) Framework - YASDEF
+# Yet Another Spec Driven (Enhanced) Framework - YASDEF
 
-### Word from first commit
+## Word from first commit
 
 There’s nothing wrong with vibecoding. Building prototypes with AI — is a new superpower and it’s unlocked a huge wave of experimentation and helps people start something new that really matters. 
 But sometimes what you need - is not prototype. Some of us work in complex codebases — often in enterprise environments where predictability, maturity, and long-term maintainability matter more than raw velocity. This is sometimes true for startups as well.
@@ -12,7 +12,11 @@ This approach can be expressed in a few sentences:
 - Human control over agent swarms.
 - Spec-driven science over vibe-magic.
 
-### Quick start
+## Ouick start
+
+### Quick start - coordinator
+
+### Quick start - worker
 
 0. Read this carefully:
 - ⚠️ This is pre-alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project!
@@ -49,10 +53,10 @@ This approach can be expressed in a few sentences:
   `bash overmind/bootstrap_overmind.sh --remote <remote-name>`
 
 
-### Why we need yet another SDD framework?
+## Why we need yet another SDD framework?
 
 	•	Current SDD frameworks are great (I strongly recommend you forget about vibecoding and try open-spec, spec-kit, or another SDD framework), but they are built with the purpose of growing a vibecoder into a conscious product manager. That’s not actually what enterprise developer teams need right now.
-	•	YASDEF is built for seamless adoption of AI in the usual SDLC — upgrading it to AISDLC. The goal is 10× productivity while keeping enterprise-level quality, familiar processes, and, most importantly, not shifting responsibility from the developer to AI. If that sounds boring — we’re probably on the right track.
+	•	YASDEF is built for seamless adoption of AI in the usual SDLC — upgrading it to ASDLC. The goal is 10× productivity while keeping enterprise-level quality, familiar processes, and, most importantly, not shifting responsibility from the developer to AI. If that sounds boring — we’re probably on the right track.
 	•	We consider AI coding agents as another tool for engineers — maybe the best and most promising one in many years — but still… it’s a tool. And don’t forget: the bottleneck is never technology, it’s always people.
 	•	YASDEF has a distributed architecture for distributed teams: someone establishes plans, others write code, we have feedback loops, quality gates, and agile rituals… and we don’t really think we need to throw all of that away just because AI appeared.
 	•	YASDEF is about shifting developers from writing code to making architectural decisions and finding effective approaches. AI can write code. The engineer’s duty is to think, decide, and supervise.
@@ -60,11 +64,11 @@ This approach can be expressed in a few sentences:
 	•	We don’t like the idea that a developer works for 5 minutes and spends the rest of the time doing something else. YASDEF is about an approach where we work as long as needed but deliver 10× more value per unit of time. Code quality, maintainability, and readability are not negotiable trade-offs.
 	•	We can outsource many tasks to AI — but not thinking and decision-making.
 
-### How this works (or will be)
+## How this works (or will be)
 
-- **Coordinator:** (CURRENTLY NOT AVAILABLE) The Coordinator manages the whole project based on technical requirements, architecture, and core technical decisions. All tasks and subtasks form a cyclic graph. One branch of the graph is a sequence (a stack) of tasks. A stack becomes the source of an implementation plan. Each implementation plan contains a sequence of tasks that can be done one by one. The Coordinator should act agilely, manage the development process and task allocation based on feedback, and constantly optimize and recalculate the graph. The Coordinator never adds new tasks on its own; it only structures them in the graph. Requests to add tasks come from Workers (bottom-up) or from a human operator (top-down) as specific decisions. Coordinator responsible for token management and optimisation, for this it performs task-slicing based on model and reasoning.  
+- **Coordinator:** (/overmind) The Coordinator manages the whole project based on technical requirements, architecture, and core technical decisions. All tasks and subtasks form a cyclic graph. One branch of the graph is a sequence (a stack) of tasks. A stack becomes the source of an implementation plan. Each implementation plan contains a sequence of tasks that can be done one by one. The Coordinator should act agilely, manage the development process and task allocation based on feedback, and constantly optimize and recalculate the graph. The Coordinator never adds new tasks on its own; it only structures them in the graph. Requests to add tasks come from Workers (bottom-up) or from a human operator (top-down) as specific decisions. Coordinator responsible for token management and optimisation, for this it performs task-slicing based on model and reasoning.  
 
-- **Worker:** Workers are the actual code implementers. They take the implementation plan as input and split it into reasonable steps. Each step is implemented following a strict AI-dev process. The main goal is to guarantee high code quality while reducing manual coding burden for the operator. This shifts the human operator's role from coding to making complex technical decisions and ensuring architectural quality.
+- **Worker:** (/ai) Workers are the actual code implementers. They take the implementation plan as input and split it into reasonable steps. Each step is implemented following a strict AI-dev process. The main goal is to guarantee high code quality while reducing manual coding burden for the operator. This shifts the human operator's role from coding to making complex technical decisions and ensuring architectural quality.
 
 - **AI-dev process:** The AI_DEVELOPMENT_PROCESS.md is a set of rules for Workers and a strict sequence of gates that involve the human operator in some loops. The process flow is: design -> plan -> implementation -> user_review -> ai_audit (post-step audit/review, AI) -> post-review (non-AI). We do not share ai-context between model-driven phases. We run phase-scripts to create a stable, comprehensive prompt from the process artifacts and pass it to the chosen model.
 
@@ -78,7 +82,7 @@ This approach can be expressed in a few sentences:
   - Default mode (without `--debug`): orchestrator writes only latest-per-phase artifacts (`ai/logs/<project>-<phase>-latest-log` and `ai/prompts/<phase>_prompts/<project>-latest-<phase>-prompt.txt`), overwriting those latest files each run.
   - Non-debug safeguard: previously generated step-specific prompt files are not modified when `--debug` is off.
 
-### AI-dev process main rules
+## AI-dev process main rules
 
 - **Single source of truth for workflow rules**: Behavioral and process rules for AI execution live in `AI_DEVELOPMENT_PROCESS.md`. Scripts stay minimal and phase-scoped. All rules are defined once and referenced; they are never duplicated across phase scripts.
 - **Clean separation of concerns**:
@@ -89,7 +93,7 @@ This approach can be expressed in a few sentences:
 - **Determinism over speed**: Every decision, blocker, and new finding is recorded in durable artifacts (`decisions.md`, `blocker_log.md`, `open_questions.md`, `step_review_results/`). This enables reproducibility and allows the project to continue without AI assistance at any point. Since technical decisions records in structured format to further retro with team or/and with AI
 - **Human in the loop**: Complex technical decisions and architectural choices are not made by the Worker. Workers must explicitly ask the user for decisions before proceeding; user feedback during the dedicated user review phase is incorporated as generalizable rules in `user_review.md` to improve future iterations. 
 
-### Main process artifacts and responsibilities
+## Main process artifacts and responsibilities
 
 Each artifact below serves a specific role in the AI-dev process:
 
@@ -104,9 +108,11 @@ Each artifact below serves a specific role in the AI-dev process:
 - **step_review_results/**: Post-step audit findings (`review_result-<N>.md`), organized by severity (Critical/High/Medium/Low). Each finding has an explicit disposition (Accepted/Rejected) and follow-up work assignment.
 - **history.md**: Optional step completion log tracking dates, effort, surprises, and key decisions per step.
 
-### Phases inputs and outputs
+## Phases inputs and outputs
 
-The AI-dev process runs in six phases per step:
+### Coordinator phases
+
+### Worker cycle  - The AI-dev process runs in six phases per step:
 
 **Phase 1: Design**
 - Input: Current `implementation_plan.md`, `requirements_ears.md`, `decisions.md`, existing architecture/context docs.
@@ -139,7 +145,7 @@ The AI-dev process runs in six phases per step:
 - Output: Post-review updates (for example metrics/history updates and follow-up step alignment), performed without AI model execution.
 - Gate: Review dispositions are reflected in planning artifacts before next step starts.
 
-### What's done + plans
+## What's done + plans
 
 V-0.0.1
 
