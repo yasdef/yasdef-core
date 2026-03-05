@@ -3,9 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="$(basename "$ROOT")"
-PLAN="$ROOT/ai/implementation_plan.md"
+PLAN="$ROOT/overmind/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
-REQUIREMENTS="$ROOT/reqirements_ears.md"
+REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
 
 STEP=""
@@ -20,7 +20,7 @@ usage() {
 Usage: ai/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents] [--no-branch]
 
 Defaults:
-  - If --step is omitted, uses the first unchecked bullet in ai/implementation_plan.md.
+  - If --step is omitted, uses the first unchecked bullet in overmind/implementation_plan.md.
   - If --step-plan is omitted, uses ai/step_plans/step-<step>.md (required).
   - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required).
   - If --out is omitted, writes to ai/prompts/impl_prompts/<project>-step-<step>.prompt.txt.
@@ -255,7 +255,7 @@ get_requirements_section_by_tags() {
     if [[ -n "$section" ]]; then
       output+="$section"$'\n\n'
     else
-      output+="${type}-${id} not found in reqirements_ears.md"$'\n\n'
+      output+="${type}-${id} not found in overmind/reqirements_ears.md"$'\n\n'
     fi
   done <<<"$tags"
 
@@ -459,14 +459,14 @@ fi
 if [[ -z "$STEP" ]]; then
   line="$(get_next_unchecked)"
   if [[ -z "$line" ]]; then
-    echo "No unchecked bullets found in ai/implementation_plan.md." >&2
+    echo "No unchecked bullets found in overmind/implementation_plan.md." >&2
     exit 1
   fi
   IFS='|' read -r STEP STEP_TITLE BULLET <<<"$line"
 else
   STEP_TITLE="$(get_step_title "$STEP")"
   if [[ -z "$STEP_TITLE" ]]; then
-    echo "Step $STEP not found in ai/implementation_plan.md." >&2
+    echo "Step $STEP not found in overmind/implementation_plan.md." >&2
     exit 1
   fi
   BULLET="$(get_step_first_unchecked "$STEP")"
@@ -627,7 +627,7 @@ emit() {
   printf '%s\n' '- Execution state machine: step plan `## Plan (ordered)` only; preserve order and checkbox semantics.'
   printf '%s\n' '- Update `ai/step_plans/step-<N>.md` checklist state during implementation: mark each ordered bullet `[x]` only when that bullet is proven complete.'
   printf '%s\n' '- Verification strategy: targeted checks as needed per bullet; run full AGENTS.md verification once after all ordered bullets are `[x]`, before Section 5/User Review.'
-  printf '%s\n' '- Completion protocol: report progress against ordered bullets only; do not use `ai/implementation_plan.md` target bullets as implementation-phase gating.'
+  printf '%s\n' '- Completion protocol: report progress against ordered bullets only; do not use `overmind/implementation_plan.md` target bullets as implementation-phase gating.'
   printf '%s\n' '- The `implementation_plan.md` target-bullet proof-check runs first in ai_audit entry gate.'
   printf '%s\n' '- End final response with: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
   printf '\n'
@@ -677,7 +677,7 @@ emit() {
   printf '## References in Current Codebase\n'
   printf '%s\n\n' "$DESIGN_REFERENCES_SECTION"
 
-  printf 'Linked requirements (reqirements_ears.md excerpts for step tags)\n'
+  printf 'Linked requirements (overmind/reqirements_ears.md excerpts for step tags)\n'
   printf 'Requirement tags collected from step plan:\n'
   if [[ -n "$STEP_PLAN_TAGS" ]]; then
     while IFS= read -r tag; do

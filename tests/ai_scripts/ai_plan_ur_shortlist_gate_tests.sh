@@ -34,13 +34,13 @@ assert_not_contains() {
 setup_repo() {
   local repo_dir="$1"
 
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans" "$repo_dir/ai/templates"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans" "$repo_dir/ai/templates" "$repo_dir/overmind"
   cp "$AI_PLAN_SRC" "$repo_dir/ai/scripts/ai_plan.sh"
   cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
   cp "$TEMPLATE_SRC" "$repo_dir/ai/templates/step_plan_TEMPLATE.md"
   chmod +x "$repo_dir/ai/scripts/ai_plan.sh"
 
-  cat >"$repo_dir/ai/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [ ] Plan and discuss the step. [REQ-1]
 - [ ] Implement the feature endpoint. [REQ-1]
@@ -76,7 +76,7 @@ EOF
 - **Status**: Accepted
 EOF
 
-  cat >"$repo_dir/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 API behavior
 - Endpoint returns deterministic response.
 EOF

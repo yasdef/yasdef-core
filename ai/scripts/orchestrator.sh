@@ -34,6 +34,7 @@ DECISIONS_FILE="$ROOT/ai/decisions.md"
 BLOCKER_LOG_FILE="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS_FILE="$ROOT/ai/open_questions.md"
 USER_REVIEW_FILE="$ROOT/ai/user_review.md"
+IMPLEMENTATION_PLAN_PRIMARY="$ROOT/overmind/implementation_plan.md"
 
 # Run all child commands from repository root for consistent sandbox/workspace resolution.
 cd "$ROOT"
@@ -55,7 +56,7 @@ RESUME_BLOCK_REASON=""
 PHASE_EVAL_PHASES=()
 PHASE_EVAL_STATES=()
 PHASE_EVAL_DETAILS=()
-IMPLEMENTATION_PLAN_FILE="$ROOT/ai/implementation_plan.md"
+IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
 CANONICAL_PHASES=(design planning implementation user_review ai_audit post_review)
 
 usage() {
@@ -728,7 +729,7 @@ get_first_unchecked_step() {
       print step_num
       exit
     }
-  ' "$ROOT/ai/implementation_plan.md"
+  ' "$IMPLEMENTATION_PLAN_FILE"
 }
 
 resolve_step_for_phase_from_args() {
@@ -1495,7 +1496,7 @@ evaluate_planning_phase() {
   if [[ "$plan_checked" -eq 1 ]]; then
     phase_eval_set "planning" "complete" "step plan present and planning gate is [x]"
   else
-    phase_eval_set "planning" "incomplete" "planning gate not checked in ai/implementation_plan.md"
+    phase_eval_set "planning" "incomplete" "planning gate not checked in implementation_plan.md"
   fi
 }
 

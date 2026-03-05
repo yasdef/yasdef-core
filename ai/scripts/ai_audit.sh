@@ -2,11 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PLAN="$ROOT/ai/implementation_plan.md"
+PLAN="$ROOT/overmind/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
-REQUIREMENTS="$ROOT/reqirements_ears.md"
+REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
 
 STEP=""
@@ -245,7 +245,7 @@ get_step_target_bullets() {
     }
     END {
       if (count == 0) {
-        print "- (no non-review implementation bullets found in ai/implementation_plan.md step section)"
+        print "- (no non-review implementation bullets found in overmind/implementation_plan.md step section)"
       }
     }
   ' "$PLAN"
@@ -352,7 +352,7 @@ get_requirements_section() {
     if [[ -n "$section" ]]; then
       output+="$section"$'\n\n'
     else
-      output+="Requirement $req not found in reqirements_ears.md"$'\n\n'
+      output+="Requirement $req not found in overmind/reqirements_ears.md"$'\n\n'
     fi
   done <<<"$reqs"
 
@@ -463,7 +463,7 @@ ensure_review_branch
 
 STEP_TITLE="$(get_step_title "$STEP")"
 if [[ -z "$STEP_TITLE" ]]; then
-  echo "Step $STEP not found in ai/implementation_plan.md." >&2
+  echo "Step $STEP not found in overmind/implementation_plan.md." >&2
   exit 1
 fi
 
@@ -474,12 +474,12 @@ fi
 
 STEP_SECTION="$(get_step_section "$STEP")"
 if [[ -z "$STEP_SECTION" ]]; then
-  echo "Step $STEP section not found in ai/implementation_plan.md." >&2
+  echo "Step $STEP section not found in overmind/implementation_plan.md." >&2
   exit 1
 fi
 TARGET_PROOF_BULLETS="$(get_step_target_bullets "$STEP")"
 if [[ -z "$TARGET_PROOF_BULLETS" ]]; then
-  TARGET_PROOF_BULLETS="- (no non-review implementation bullets found in ai/implementation_plan.md step section)"
+  TARGET_PROOF_BULLETS="- (no non-review implementation bullets found in overmind/implementation_plan.md step section)"
 fi
 
 BLOCKER_LOG_SECTION="$(get_blocker_log_section "$STEP")"
@@ -550,7 +550,7 @@ fi
 emit() {
   printf 'ai_audit phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
-  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `ai/implementation_plan.md` target bullets, then continue Sections 6.1-6.2.\n'
+  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.2.\n'
   printf 'Execution pattern: run Section 6.1 as the main audit flow; for each finding, execute Section 6.2, then return to Section 6.1 and continue until all findings are dispositioned.\n'
   printf 'Use step plan + feature design as primary execution context.\n'
   printf 'Step plan artifact: %s\n' "$STEP_PLAN"
@@ -588,9 +588,9 @@ emit() {
     printf 'Uncommitted diff stat: none or unavailable\n'
   fi
   printf '\n'
-  printf '== ai/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
+  printf '== overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
-  printf '== ai_audit entry proof-check target bullets (from ai/implementation_plan.md) ==\n'
+  printf '== ai_audit entry proof-check target bullets (from overmind/implementation_plan.md) ==\n'
   printf '%s\n\n' "$TARGET_PROOF_BULLETS"
   printf '== %s ==\n' "$STEP_PLAN"
   cat "$STEP_PLAN"
@@ -624,7 +624,7 @@ emit() {
     cat "$ROOT/ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md"
     printf '\n\n'
   fi
-  printf '== reqirements_ears.md (linked requirements) ==\n'
+  printf '== overmind/reqirements_ears.md (linked requirements) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
