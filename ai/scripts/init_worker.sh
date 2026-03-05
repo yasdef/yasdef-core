@@ -8,8 +8,9 @@ REGISTRY_FILE="worker_registry.yaml"
 WORKER_ID_FILE="ai/worker_id_dont_change_or_remove.txt"
 RESTORE_BRANCH_ON_EXIT=0
 REGISTRY_UPDATED=0
-WORKER_ID_CREATED=0
 REGISTRY_COMMIT_SHA=""
+MASTER_WORKER_ID_UPDATED=0
+MASTER_WORKER_ID_COMMIT_SHA=""
 
 usage() {
   cat <<'EOF'
@@ -107,26 +108,40 @@ generate_worker_id() {
   printf '%s-%s-%s' "$(date +%s)" "$RANDOM" "$RANDOM"
 }
 
-ensure_worker_id() {
-  local path="$1"
+load_or_generate_worker_id() {
   local value=""
-  mkdir -p "$(dirname "$path")"
 
-  if [[ -f "$path" ]]; then
-    value="$(head -n 1 "$path" | tr -d '[:space:]')"
+  if git cat-file -e "${RETURN_BRANCH}:${WORKER_ID_FILE}" >/dev/null 2>&1; then
+    value="$(git show "${RETURN_BRANCH}:${WORKER_ID_FILE}" | head -n 1 | tr -d '[:space:]')"
     if [[ -z "$value" ]]; then
-      die "Worker ID file exists but is empty: $WORKER_ID_FILE"
+      die "Worker ID file exists on '$RETURN_BRANCH' but is empty: $WORKER_ID_FILE"
     fi
     WORKER_ID="$value"
-    echo "Using existing worker ID from $WORKER_ID_FILE."
+    echo "Using existing worker ID from ${RETURN_BRANCH}:${WORKER_ID_FILE}."
     return 0
   fi
 
   value="$(generate_worker_id)"
-  printf '%s\n' "$value" >"$path"
   WORKER_ID="$value"
-  WORKER_ID_CREATED=1
-  echo "Created worker ID file: $WORKER_ID_FILE"
+  echo "Generated new worker ID for registration; it will be committed on '$RETURN_BRANCH'."
+}
+
+persist_worker_id_on_master() {
+  local path="$1"
+  local existing=""
+  mkdir -p "$(dirname "$path")"
+
+  if [[ -f "$path" ]]; then
+    existing="$(head -n 1 "$path" | tr -d '[:space:]')"
+    if [[ "$existing" == "$WORKER_ID" ]]; then
+      echo "Worker ID file already up to date on '$RETURN_BRANCH': $WORKER_ID_FILE."
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "$WORKER_ID" >"$path"
+  MASTER_WORKER_ID_UPDATED=1
+  echo "Prepared worker ID file on '$RETURN_BRANCH': $WORKER_ID_FILE"
 }
 
 ensure_registry_file_exists() {
@@ -173,20 +188,19 @@ register_worker_if_needed() {
 
 commit_registry_changes_if_any() {
   local registry_path="$1"
-  local id_path="$2"
 
-  git add -- "$registry_path" "$id_path"
+  git add -- "$registry_path"
 
-  if git diff --cached --quiet -- "$registry_path" "$id_path"; then
-    if [[ "$REGISTRY_UPDATED" -eq 1 || "$WORKER_ID_CREATED" -eq 1 ]]; then
-      die "Registration state changed but no staged diff was detected."
+  if git diff --cached --quiet -- "$registry_path"; then
+    if [[ "$REGISTRY_UPDATED" -eq 1 ]]; then
+      die "Registration updated '$REGISTRY_FILE' but no staged diff was detected."
     fi
-    echo "No changes detected for worker registration; skipping commit."
+    echo "No changes detected for worker registration on '$ORCHESTRATOR_BRANCH'; skipping commit."
     return 0
   fi
 
-  if ! git commit -m "Register worker ${WORKER_ID} in overmind registry" -- "$registry_path" "$id_path"; then
-    die "Failed to commit worker registration changes."
+  if ! git commit -m "Register worker ${WORKER_ID} in overmind registry" -- "$registry_path"; then
+    die "Failed to commit worker registration changes on '$ORCHESTRATOR_BRANCH'."
   fi
 
   REGISTRY_COMMIT_SHA="$(git rev-parse --short HEAD)"
@@ -200,8 +214,8 @@ push_registration_changes() {
 }
 
 announce_commit_and_push_plan() {
-  if [[ ("$REGISTRY_UPDATED" -eq 1 || "$WORKER_ID_CREATED" -eq 1) && -z "$REGISTRY_COMMIT_SHA" ]]; then
-    die "Registration changed but no local commit was created; refusing to push."
+  if [[ "$REGISTRY_UPDATED" -eq 1 && -z "$REGISTRY_COMMIT_SHA" ]]; then
+    die "Registration changed but no local '$ORCHESTRATOR_BRANCH' commit was created; refusing to push."
   fi
 
   if [[ -n "$REGISTRY_COMMIT_SHA" ]]; then
@@ -211,6 +225,26 @@ announce_commit_and_push_plan() {
     echo "No local overmind commit needed; worker already registered."
     echo "Pushing local overmind branch to confirm remote sync..."
   fi
+}
+
+commit_worker_id_on_master_if_any() {
+  local id_path="$1"
+
+  git add -- "$id_path"
+
+  if git diff --cached --quiet -- "$id_path"; then
+    if [[ "$MASTER_WORKER_ID_UPDATED" -eq 1 ]]; then
+      die "Worker ID update was expected on '$RETURN_BRANCH' but no staged diff was detected."
+    fi
+    echo "No changes detected for worker ID on '$RETURN_BRANCH'; skipping commit."
+    return 0
+  fi
+
+  if ! git commit -m "Persist worker ID ${WORKER_ID}" -- "$id_path"; then
+    die "Failed to commit worker ID file on '$RETURN_BRANCH'."
+  fi
+
+  MASTER_WORKER_ID_COMMIT_SHA="$(git rev-parse --short HEAD)"
 }
 
 checkout_return_branch() {
@@ -234,17 +268,19 @@ cd "$REPO_ROOT"
 
 ensure_remote_available "$REMOTE_NAME"
 ensure_return_branch
+load_or_generate_worker_id
 ensure_orchestrator_branch "$REMOTE_NAME"
 ensure_local_overmind_branch "$REMOTE_NAME"
 RESTORE_BRANCH_ON_EXIT=1
 sync_overmind_branch "$REMOTE_NAME"
 ensure_registry_file_exists "$REPO_ROOT/$REGISTRY_FILE"
-ensure_worker_id "$REPO_ROOT/$WORKER_ID_FILE"
 register_worker_if_needed "$REPO_ROOT/$REGISTRY_FILE"
-commit_registry_changes_if_any "$REPO_ROOT/$REGISTRY_FILE" "$REPO_ROOT/$WORKER_ID_FILE"
+commit_registry_changes_if_any "$REPO_ROOT/$REGISTRY_FILE"
 announce_commit_and_push_plan
 push_registration_changes "$REMOTE_NAME"
 checkout_return_branch
+persist_worker_id_on_master "$REPO_ROOT/$WORKER_ID_FILE"
+commit_worker_id_on_master_if_any "$REPO_ROOT/$WORKER_ID_FILE"
 RESTORE_BRANCH_ON_EXIT=0
 
 echo "Worker init complete."
@@ -255,4 +291,9 @@ if [[ -n "$REGISTRY_COMMIT_SHA" ]]; then
   echo "Local overmind commit: $REGISTRY_COMMIT_SHA"
 else
   echo "Local overmind commit: none (worker already registered)"
+fi
+if [[ -n "$MASTER_WORKER_ID_COMMIT_SHA" ]]; then
+  echo "Local master worker-id commit: $MASTER_WORKER_ID_COMMIT_SHA"
+else
+  echo "Local master worker-id commit: none (worker ID already persisted)"
 fi

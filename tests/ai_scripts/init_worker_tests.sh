@@ -105,9 +105,9 @@ find_worker_id_file() {
   find "$repo_dir/ai" -maxdepth 1 -type f -name '*dont_change_or_remove*' | sort | head -n 1
 }
 
-worker_id_from_overmind_branch() {
+worker_id_from_master_branch() {
   local repo_dir="$1"
-  git -C "$repo_dir" show overmind:ai/worker_id_dont_change_or_remove.txt 2>/dev/null | head -n 1 | tr -d '[:space:]'
+  git -C "$repo_dir" show master:ai/worker_id_dont_change_or_remove.txt 2>/dev/null | head -n 1 | tr -d '[:space:]'
 }
 
 count_registry_occurrences() {
@@ -131,10 +131,12 @@ test_init_worker_success_registers_and_returns_master() {
   assert_contains "$out" "Committed local overmind changes:"
   assert_contains "$out" "Pushing local overmind commit to remote 'origin/overmind'..."
   assert_contains "$out" "Local overmind commit:"
+  assert_contains "$out" "Prepared worker ID file on 'master': ai/worker_id_dont_change_or_remove.txt"
+  assert_contains "$out" "Local master worker-id commit:"
   assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
 
   local worker_id
-  worker_id="$(worker_id_from_overmind_branch "$repo_dir")"
+  worker_id="$(worker_id_from_master_branch "$repo_dir")"
   if [[ -z "$worker_id" ]]; then
     echo "Assertion failed: worker id is empty" >&2
     exit 1
@@ -150,14 +152,24 @@ test_init_worker_success_registers_and_returns_master() {
 
   local worker_file
   worker_file="$(find_worker_id_file "$repo_dir")"
-  if [[ -n "$worker_file" ]]; then
-    echo "Assertion failed: worker id file should not exist on master working tree" >&2
+  if [[ -z "$worker_file" ]]; then
+    echo "Assertion failed: worker id file should exist on master working tree" >&2
     exit 1
   fi
+  assert_equal "$worker_id" "$(head -n 1 "$worker_file" | tr -d '[:space:]')"
+
+  local master_subject
+  master_subject="$(git -C "$repo_dir" log master -1 --pretty=%s)"
+  assert_contains "$master_subject" "Persist worker ID "
 
   local status_short
   status_short="$(git -C "$repo_dir" status --short)"
+  assert_not_contains "$status_short" "worker_registry.yaml"
   assert_not_contains "$status_short" "ai/worker_id_dont_change_or_remove.txt"
+
+  local overmind_worker_file
+  overmind_worker_file="$(git -C "$repo_dir" show overmind:ai/worker_id_dont_change_or_remove.txt 2>/dev/null || true)"
+  assert_equal "" "$overmind_worker_file"
 }
 
 test_init_worker_fails_when_no_overmind_branch() {
@@ -227,7 +239,7 @@ test_init_worker_is_idempotent() {
   )
 
   local worker_id_before
-  worker_id_before="$(worker_id_from_overmind_branch "$repo_dir")"
+  worker_id_before="$(worker_id_from_master_branch "$repo_dir")"
 
   local out_second
   out_second="$(
@@ -235,17 +247,25 @@ test_init_worker_is_idempotent() {
     ai/scripts/init_worker.sh
   )"
   local worker_id_after
-  worker_id_after="$(worker_id_from_overmind_branch "$repo_dir")"
+  worker_id_after="$(worker_id_from_master_branch "$repo_dir")"
 
   assert_equal "$worker_id_before" "$worker_id_after"
+  assert_contains "$out_second" "Using existing worker ID from master:ai/worker_id_dont_change_or_remove.txt."
   assert_contains "$out_second" "Worker already registered in worker_registry.yaml."
   assert_contains "$out_second" "No local overmind commit needed; worker already registered."
   assert_contains "$out_second" "Local overmind commit: none (worker already registered)"
+  assert_contains "$out_second" "No changes detected for worker ID on 'master'; skipping commit."
+  assert_contains "$out_second" "Local master worker-id commit: none (worker ID already persisted)"
   assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
 
   local remote_registry
   remote_registry="$(git --git-dir "$repo_dir/remote.git" show overmind:worker_registry.yaml)"
   assert_equal "1" "$(count_registry_occurrences "$remote_registry" "$worker_id_after")"
+
+  local status_short
+  status_short="$(git -C "$repo_dir" status --short)"
+  assert_not_contains "$status_short" "worker_registry.yaml"
+  assert_not_contains "$status_short" "ai/worker_id_dont_change_or_remove.txt"
 }
 
 test_init_worker_restores_master_on_push_failure() {

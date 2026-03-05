@@ -52,6 +52,9 @@ This approach can be expressed in a few sentences:
 
 9. OPTIONAL — initialize worker registration against coordinator `overmind`.
   `bash ai/scripts/init_worker.sh`
+  Successful run behavior:
+  - `worker_registry.yaml` is updated/committed/pushed on branch `overmind` (shared coordination state).
+  - `ai/worker_id_dont_change_or_remove.txt` is persisted/committed on local `master` (worker-local identity).
   If coordinator `overmind` is unavailable, the script fails fast with:
   `no orchestrator detected, unable to proceed`
 
