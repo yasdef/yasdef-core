@@ -41,7 +41,7 @@ assert_not_equal() {
 setup_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/step_plans" "$repo_dir/ai/step_review_results"
+    "$repo_dir/ai/step_plans" "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   chmod +x "$repo_dir/ai/scripts/orchestrator.sh"
@@ -176,7 +176,7 @@ write_impl_plan() {
   [[ "$impl_b_checked" == "1" ]] && impl_b_box="x"
   [[ "$review_checked" == "1" ]] && review_box="x"
 
-  cat >"$repo_dir/ai/implementation_plan.md" <<EOF
+  cat >"$repo_dir/overmind/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
 Est. step total: 5 SP
 - [$plan_box] ${gate_prefix}Plan and discuss the step (SP=1)

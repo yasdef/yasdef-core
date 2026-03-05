@@ -23,14 +23,14 @@ This approach can be expressed in a few sentences:
 - ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that.
 - ✅ You need the Codex CLI (https://chatgpt.com/codex) available to run this framework, or you can change the model in `ai/setup/models.md` but scripts was not tested with another CLI's
 
-1. Copy-paste the `ai/` folder to the root of your project.
+1. Copy-paste the `ai/` and `overmind/` folders to the root of your project.
 
 2. Make the bash scripts in `ai/scripts` executable:
   `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_user_review.sh ai/scripts/ai_audit.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh ai/scripts/init_worker.sh`
 
-3. You need to provide `implementation_plan.md` in certain format, it should be in root of your project
+3. You need to provide `overmind/implementation_plan.md` in the required format.
 
-4. If you run Worker standalone without Coordinator and don't have implementation_plan.md ask your model to generate it based on any plan or requirements you have. You can find prompt in "Helpers" block below. 
+4. If you run Worker standalone without Coordinator and don't have `overmind/implementation_plan.md`, ask your model to generate it based on your requirements. You can find prompts in the "Helpers" block below.
 
 5. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
   Script tests are canonical under `tests/ai_scripts/` (not under `ai/`).
@@ -53,7 +53,7 @@ This approach can be expressed in a few sentences:
 9. OPTIONAL — initialize worker registration against coordinator `overmind`.
   `bash ai/scripts/init_worker.sh`
   Successful run behavior:
-  - `worker_registry.yaml` is updated/committed/pushed on branch `overmind` (shared coordination state).
+  - `overmind/worker_registry.yaml` is updated/committed/pushed on branch `overmind` (shared coordination state).
   - `ai/worker_id_dont_change_or_remove.txt` is persisted/committed on local `master` (worker-local identity).
   If coordinator `overmind` is unavailable, the script fails fast with:
   `no orchestrator detected, unable to proceed`
@@ -103,8 +103,8 @@ This approach can be expressed in a few sentences:
 
 Each artifact below serves a specific role in the AI-dev process:
 
-- **requirements_ears.md**: Source of truth for behavioral requirements and acceptance criteria (EARS format).
-- **implementation_plan.md**: Ordered execution plan at the step level; tracks all tasks and subtasks with story point estimates. Work happens bullet-by-bullet. Updated dynamically as the Coordinator refactors the graph.
+- **overmind/reqirements_ears.md**: Source of truth for behavioral requirements and acceptance criteria (EARS format).
+- **overmind/implementation_plan.md**: Ordered execution plan at the step level; tracks all tasks and subtasks with story point estimates. Work happens bullet-by-bullet. Updated dynamically as the Coordinator refactors the graph.
 - **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
 - **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include scope, preconditions, architecture, risks, and test strategy.
 - **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
@@ -121,12 +121,12 @@ Each artifact below serves a specific role in the AI-dev process:
 ### Worker cycle  - The AI-dev process runs in six phases per step:
 
 **Phase 1: Design**
-- Input: Current `implementation_plan.md`, `requirements_ears.md`, `decisions.md`, existing architecture/context docs.
+- Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, existing architecture/context docs.
 - Output: `ai/designs/feature-<N>.md` with feature-level design decisions and constraints.
 - Gate: Design assumptions and unknowns are captured before planning starts.
 
 **Phase 2: Planning**
-- Input: Current `implementation_plan.md`, `requirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
+- Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
 - Input (additional): `ai/designs/feature-<N>.md`.
 - Output: `ai/step_plans/step-<N>.md` with full scope, architecture, test strategy, and execution command for the implementation phase.
 - Gate: All open questions must be answered before planning completion.
@@ -229,10 +229,10 @@ Scope: command-execution safety (non-git concerns).
 - Add explicit opt-in for extra environment variables (for example `--pass-env KEY1,KEY2`) instead of inheriting full environment.
 
 ### Helpers
-- Here is the prompt to create requirements_ears.md from usual technical requirements (you should run it from root after ai/ folder was added)
-`carefully examine technical_requirements.md and create reqirements_ears.md in root folder, follow ai/templates/reqirements_ears_TEMPLATE.md and ai/golden_examples/reqirements_ears_GOLDEN_EXAMPLE.md`
---Here is the prompt to create implementation_plan from reqirements_ears.md and technical_requirements.md including the partially developed projects (you should run it from root after ai/ folder was added): 
-`carefully examine all project files especially AGENTS.md and README.md if they are presented, then from reqirements_ears.md (use is mandatory) and technical_requirements.md (optionally, if they are presented), create in ai/ folder implementation_plan.md based on ai/templates/implementation_plan_TEMPLATE.md and ai/golden_examples/implementation_plan_GOLDEN_EXAMPLE.md; in this implementation plan you should add already implemented steps as well and not implemented, not implemented steps should be sliced based on functional, try to make it equal in terms of implementation efforts (10-20 SP means 1-3 day of work for human dev )`
+- Here is the prompt to create `overmind/reqirements_ears.md` from usual technical requirements (run from repo root):
+`carefully examine technical_requirements.md and create overmind/reqirements_ears.md, follow overmind/templates/reqirements_ears_TEMPLATE.md and overmind/golden_examples/reqirements_ears_GOLDEN_EXAMPLE.md`
+--Here is the prompt to create `overmind/implementation_plan.md` from `overmind/reqirements_ears.md` and `technical_requirements.md` (run from repo root): 
+`carefully examine all project files especially AGENTS.md and README.md if they are presented, then from overmind/reqirements_ears.md (use is mandatory) and technical_requirements.md (optionally, if they are presented), create overmind/implementation_plan.md based on overmind/templates/implementation_plan_TEMPLATE.md and overmind/golden_examples/implementation_plan_GOLDEN_EXAMPLE.md; in this implementation plan you should add already implemented steps as well and not implemented, not implemented steps should be sliced based on functional, try to make it equal in terms of implementation efforts (10-20 SP means 1-3 day of work for human dev )`
 
 ### License
 

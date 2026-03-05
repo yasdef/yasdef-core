@@ -64,7 +64,7 @@ setup_repo() {
   local ordered_mode="$3"
 
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/step_plans"
+    "$repo_dir/ai/step_plans" "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   cp "$USER_REVIEW_SRC" "$repo_dir/ai/scripts/ai_user_review.sh"
@@ -113,7 +113,7 @@ EOF
     impl_box="x"
   fi
 
-  cat >"$repo_dir/ai/implementation_plan.md" <<EOF
+  cat >"$repo_dir/overmind/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
 Est. step total: 5 SP
 - [x] Plan and discuss the step (SP=1)
@@ -177,7 +177,7 @@ EOF
 # AGENTS
 EOF
 
-  cat >"$repo_dir/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
 - demo
 EOF
@@ -285,7 +285,7 @@ test_user_review_prompt_uses_ordered_plan_state_only() {
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/user_review_prompts/test.prompt.txt")"
   assert_contains "$prompt" 'User review phase-state source is step plan `## Plan (ordered)` only.'
-  assert_not_contains "$prompt" "== ai/implementation_plan.md"
+  assert_not_contains "$prompt" "== overmind/implementation_plan.md"
   assert_not_contains "$prompt" 'User review checklist (`## Target Bullets`)'
 }
 

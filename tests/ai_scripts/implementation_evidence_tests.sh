@@ -53,12 +53,12 @@ assert_line_before() {
 setup_impl_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/templates" "$repo_dir/ai/golden_examples"
+    "$repo_dir/ai/templates" "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
 
   cp "$AI_IMPL_SRC" "$repo_dir/ai/scripts/ai_implementation.sh"
   chmod +x "$repo_dir/ai/scripts/ai_implementation.sh"
 
-  cat >"$repo_dir/ai/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 Est. step total: 5 SP
 - [x] Plan and discuss the step (SP=1)
@@ -143,7 +143,7 @@ EOF
 ## Step 1.1 Demo
 - No open questions.
 EOF
-  cat >"$repo_dir/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
 - req 1 details
 ### Requirement 2 Non-target
@@ -167,7 +167,7 @@ EOF
 
 setup_orchestrator_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans" "$repo_dir/overmind"
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   chmod +x "$repo_dir/ai/scripts/orchestrator.sh"
 
@@ -207,7 +207,7 @@ user_review | echo | mock-model
 ai_audit | echo | mock-model
 EOF
 
-  cat >"$repo_dir/ai/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 Est. step total: 5 SP
 - [x] Plan and discuss the step (SP=1)
@@ -260,7 +260,7 @@ test_ai_implementation_prompt_has_deterministic_structure() {
   assert_contains "$prompt" "Scope contract (design)"
   assert_contains "$prompt" "Key design details (excerpt)"
   assert_contains "$prompt" "Codebase entrypoints (design references)"
-  assert_contains "$prompt" "Linked requirements (reqirements_ears.md excerpts for step tags)"
+  assert_contains "$prompt" "Linked requirements (overmind/reqirements_ears.md excerpts for step tags)"
   assert_contains "$prompt" "- [ ] 1. Implement part A [REQ-1] [NFR-2]."
   assert_contains "$prompt" "- [x] 2. Implement part B [REQ-1]."
   assert_contains "$prompt" "## Applicable UR Shortlist"
@@ -271,7 +271,7 @@ test_ai_implementation_prompt_has_deterministic_structure() {
   assert_line_before "$prompt" "Step-plan execution context" "Scope contract (design)"
   assert_line_before "$prompt" "Scope contract (design)" "Key design details (excerpt)"
   assert_line_before "$prompt" "Key design details (excerpt)" "Codebase entrypoints (design references)"
-  assert_line_before "$prompt" "Codebase entrypoints (design references)" "Linked requirements (reqirements_ears.md excerpts for step tags)"
+  assert_line_before "$prompt" "Codebase entrypoints (design references)" "Linked requirements (overmind/reqirements_ears.md excerpts for step tags)"
   assert_not_contains "$prompt" "== estimation summary =="
   assert_not_contains "$prompt" "== repo snapshot =="
 }
@@ -602,12 +602,12 @@ test_process_doc_defines_evidence_reasoning_summary_gate() {
 
 setup_ai_audit_prompt_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
 
   cp "$AI_AUDIT_SRC" "$repo_dir/ai/scripts/ai_audit.sh"
   chmod +x "$repo_dir/ai/scripts/ai_audit.sh"
 
-  cat >"$repo_dir/ai/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 Est. step total: 5 SP
 - [x] Plan and discuss the step (SP=1)
@@ -664,7 +664,7 @@ EOF
 - none
 EOF
 
-  cat >"$repo_dir/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
 - demo
 EOF
@@ -697,8 +697,8 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/ai_audit_prompts/test.prompt.txt")"
   assert_contains "$prompt" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.'
-  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `ai/implementation_plan.md` target bullets, then continue Sections 6.1-6.2.'
-  assert_contains "$prompt" "== ai_audit entry proof-check target bullets (from ai/implementation_plan.md) =="
+  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.2.'
+  assert_contains "$prompt" "== ai_audit entry proof-check target bullets (from overmind/implementation_plan.md) =="
   assert_contains "$prompt" "- Implement part A (SP=2)"
   assert_contains "$prompt" "- Implement part B (SP=1)"
 }

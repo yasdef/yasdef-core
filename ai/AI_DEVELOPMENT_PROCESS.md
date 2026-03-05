@@ -1,6 +1,6 @@
 # AI Development Process (spec-driven)
 
-This repo aims for production-level changes, not prototypes. The workflow below is the default loop for implementing `ai/implementation_plan.md` bullets with AI help.
+This repo aims for production-level changes, not prototypes. The workflow below is the default loop for implementing `overmind/implementation_plan.md` bullets with AI help.
 
 Scope: this file defines the AI-assisted development process and is intended to be project-agnostic. Project-specific build/test commands and API spec locations are defined in `AGENTS.md`.
 
@@ -16,8 +16,8 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
 ## Artifacts and their roles
-- `reqirements_ears.md`: source of truth for behavioral requirements and acceptance criteria.
-- `ai/implementation_plan.md`: step-level backlog and target-bullet contract artifact; Implementation/User Review do not use it as the execution state machine, and `ai_audit` starts with explicit target-bullet proof-check against it.
+- `overmind/reqirements_ears.md`: source of truth for behavioral requirements and acceptance criteria.
+- `overmind/implementation_plan.md`: step-level backlog and target-bullet contract artifact; Implementation/User Review do not use it as the execution state machine, and `ai_audit` starts with explicit target-bullet proof-check against it.
 - `ai/step_designs/`: feature design artifacts created before planning for user review.
 - `ai/templates/feature_design_TEMPLATE.md` and `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`: structure and example for feature design artifacts.
 - `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts.
@@ -35,14 +35,14 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - Do not duplicate detailed workflow rules across script prompts. If a rule changes, update this file and keep scripts as thin wrappers.
 
 ## Planning artifact governance
-- Only add entries to `ai/blocker_log.md` under steps that are already in progress in `ai/implementation_plan.md` (at least one bullet marked `[x]`).
-- When updating `ai/implementation_plan.md`, review and update `ai/blocker_log.md` to keep blockers aligned to the in-progress steps.
-- Remove blockers from `ai/blocker_log.md` once the related work is captured in `ai/implementation_plan.md` in further steps (not current), or if it's done.
+- Only add entries to `ai/blocker_log.md` under steps that are already in progress in `overmind/implementation_plan.md` (at least one bullet marked `[x]`).
+- When updating `overmind/implementation_plan.md`, review and update `ai/blocker_log.md` to keep blockers aligned to the in-progress steps.
+- Remove blockers from `ai/blocker_log.md` once the related work is captured in `overmind/implementation_plan.md` in further steps (not current), or if it's done.
 - When evaluating whether something is a blocker for a specific bullet, confirm its prerequisites exist and are complete (and if they are in previous steps, confirm those bullets are marked `[x]`). If prerequisites are missing, add them to the current step (mark as technical debt if discovered late) before evaluating the target bullet.
 - Track non-blocking questions per step in `ai/open_questions.md` and review them at the start of the step-planning phase.
 - Record durable technical decisions in `ai/decisions.md` (do not use `ai/blocker_log.md` for rules/memoizers).
 
-## Per-step workflow (repeat for each step in `ai/implementation_plan.md`)
+## Per-step workflow (repeat for each step in `overmind/implementation_plan.md`)
 
 ### 1) Feature design (mandatory)
 Before step planning:
@@ -103,7 +103,7 @@ Before step planning:
 - UR-shortlist quality gate: do not close planning if `## Applicable UR Shortlist` is missing, uses non-canonical content, or includes more than 8 UR IDs.
 - If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
 - Only when the plan is accepted, open questions are resolved/closed, and all design "Things to Decide" items have explicit outcomes, immediately mark the "Plan and discuss the step" bullet as done and add Step sections to `ai/blocker_log.md` and `ai/open_questions.md` (even if "none"), then commit the planning artifacts.
-- Completion-line gate: output the exact planning completion line (`Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after verifying in `ai/implementation_plan.md` that this step's "Plan and discuss the step." bullet is marked `[x]` (and included in the planning commit when changed).
+- Completion-line gate: output the exact planning completion line (`Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after verifying in `overmind/implementation_plan.md` that this step's "Plan and discuss the step." bullet is marked `[x]` (and included in the planning commit when changed).
 
 ### 3) Implement ordered plan (adaptive batch execution)
 #### 3.1) Adaptive implementation execution
@@ -127,14 +127,14 @@ Before step planning:
 - Before changing any ordered bullet from `[ ]` to `[x]`, make sure that bullet is implemented and verified for the current change.
 - If implementation or verification is incomplete/uncertain, keep the bullet `[ ]`.
 - If blocked, record blockers/open questions and continue with remaining feasible work.
-- Do not use `ai/implementation_plan.md` target bullets as implementation-phase gating or completion state.
+- Do not use `overmind/implementation_plan.md` target bullets as implementation-phase gating or completion state.
 - Detailed target-bullet proof-check (`PROVEN`/`NOT_PROVEN`) is performed in Section 6.0 (`ai_audit` entry).
 
 ### 4) Verification gates (required before Section 5)
 - **Tests (two-tier timing)**:
   - Targeted verification may run during implementation as needed (focused tests/lint/typecheck).
   - Full step verification gate from `AGENTS.md` runs once after all ordered bullets are `[x]` and before entering Section 5.
-- **Requirements**: confirm affected `reqirements_ears.md` acceptance criteria are satisfied for the implemented ordered-plan scope.
+- **Requirements**: confirm affected `overmind/reqirements_ears.md` acceptance criteria are satisfied for the implemented ordered-plan scope.
 - **Docs**:
   - If endpoints/inputs/outputs change: update the API specification and client collection as defined in `AGENTS.md`.
   - If a new design choice was made: record it in `ai/decisions.md` using `ai/templates/decisions_TEMPLATE.md` and `ai/golden_examples/decisions_GOLDEN_EXAMPLE.md`.
@@ -142,14 +142,14 @@ Before step planning:
 
 #### 4.1) Implementation handoff constraints (required before Section 5)
 - Implementation reporting must map progress/evidence to ordered bullets in `## Plan (ordered)` only.
-- Do not run `ai/implementation_plan.md` target-bullet proof-check in implementation; that proof-check is the first gate in Section 6.
+- Do not run `overmind/implementation_plan.md` target-bullet proof-check in implementation; that proof-check is the first gate in Section 6.
 - Implementation phase completion is script-gated by orchestrator: before phase success, it validates that all ordered checklist items in `## Plan (ordered)` are `[x]`.
 - Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]` and the full step verification gate has passed.
 
 ### 5) User review (required before moving to the next step)
 Entry precondition:
 - This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: the step plan exists, contains `## Plan (ordered)`, all ordered checklist items are marked `[x]`, and the Section 4 full verification gate has passed.
-- User review operates on ordered-plan completion state only; do not use `ai/implementation_plan.md` target bullets as user_review phase-state gating.
+- User review operates on ordered-plan completion state only; do not use `overmind/implementation_plan.md` target bullets as user_review phase-state gating.
 
 1. Before starting the user review loop, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.
 2. Before asking for review feedback, provide a concise `Review Brief` (plain language, product-level) covering exactly:
@@ -183,7 +183,7 @@ Entry precondition:
 ### 6) Post-step ai_audit/review (required before moving to the next step)
 
 #### 6.0) Entry proof-check against implementation_plan target bullets (required first gate)
-- Before deeper audit analysis, run explicit bullet-by-bullet proof-check against current-step target bullets in `ai/implementation_plan.md` (non-review implementation bullets for the step).
+- Before deeper audit analysis, run explicit bullet-by-bullet proof-check against current-step target bullets in `overmind/implementation_plan.md` (non-review implementation bullets for the step).
 - Allowed outcomes per target bullet:
   - `PROVEN`: concrete implementation evidence exists.
   - `NOT_PROVEN`: implementation evidence is missing/incomplete/uncertain.
@@ -203,20 +203,20 @@ Entry precondition:
 - Do not start the next implementation step in this phase.
 - Start by identifying current uncommitted step changes (for example, `git status --short` and `git diff --name-status`) and inspecting changed files.
 - Post-step audit is analysis-only. Do not change runtime code, do not implement fixes, and do not run tests in this phase.
-- Allowed changes in this phase are planning/audit artifacts only (for example: `ai/implementation_plan.md`, `ai/blocker_log.md`, `ai/open_questions.md`, `ai/decisions.md`, `ai/step_review_results/*`).
+- Allowed changes in this phase are planning/audit artifacts only (for example: `overmind/implementation_plan.md`, `ai/blocker_log.md`, `ai/open_questions.md`, `ai/decisions.md`, `ai/step_review_results/*`).
 - If recording new decisions or blockers in this phase, use `ai/templates/decisions_TEMPLATE.md` + `ai/golden_examples/decisions_GOLDEN_EXAMPLE.md` and `ai/templates/blocker_log_TEMPLATE.md` + `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`.
 - If the user asks to fix an issue immediately during post-step audit, do not implement it and do not suggest immediate implementation yourself; record it as follow-up work (step/bullet/open question/decision) per this section.
 - Re-check for newly introduced blockers/technical debt:
   - If it blocks the next bullet in the current step: add it to `ai/blocker_log.md`.
-  - Otherwise: add it as a new future bullet in `ai/implementation_plan.md`.
+  - Otherwise: add it as a new future bullet in `overmind/implementation_plan.md`.
 - Ensure no behavior was changed “just to satisfy a test”.
 - Review all changes produced during the current step (typically on `step-<step>-review`), focusing on correctness and regression risk.
-  - Perform an analysis-heavy review: cross-check against `AGENTS.md` rules (idempotency, validation, transaction boundaries, ledger/projection consistency, stream routing, guard rules), `reqirements_ears.md` acceptance criteria, and updated docs/tests.
+  - Perform an analysis-heavy review: cross-check against `AGENTS.md` rules (idempotency, validation, transaction boundaries, ledger/projection consistency, stream routing, guard rules), `overmind/reqirements_ears.md` acceptance criteria, and updated docs/tests.
   - Produce a detailed review in the response: list findings (if any) with severity (Critical/High/Medium/Low) and file references. If no findings, state that explicitly and mention any residual risks or testing gaps.
   - If issues are found, execute Section 6.2 for each finding. After each finding is dispositioned, return to Section 6.1 and continue the audit.
 - Record estimation actuals on the "Review step implementation" bullet (actual SP, token usage or time, surprises). Update future bullet estimates and the step-size target based on the error.
 - If the "Review step implementation" bullet is complete but missing actuals, do not report this as a user-facing finding/issue. Instead, append a best-effort estimated `Actuals: ...` entry immediately in this phase and continue the audit.
-- Close the "Review step implementation" bullet once the post-step audit write-up is complete and every finding has an explicit disposition recorded (**Accepted** or **Rejected**) and any accepted items are captured as follow-up work (typically as a new step/bullet in `ai/implementation_plan.md`, or as an item in `ai/open_questions.md`/`ai/blocker_log.md` if still unclear).
+- Close the "Review step implementation" bullet once the post-step audit write-up is complete and every finding has an explicit disposition recorded (**Accepted** or **Rejected**) and any accepted items are captured as follow-up work (typically as a new step/bullet in `overmind/implementation_plan.md`, or as an item in `ai/open_questions.md`/`ai/blocker_log.md` if still unclear).
 - **Commit gate**: only when there are **no accepted unresolved findings** and the user confirms completion, commit all step changes on the current step/review branch and propose the commit commands. If any accepted follow-up work remains, do **not** propose commit commands in this phase. Do not merge to `main`/`master` in this phase.
 - Completion-line gate (ai_audit phase): output the exact ai_audit completion line (`ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after post-step audit write-up is complete and every finding has an explicit disposition (**Accepted** or **Rejected**) with accepted items captured as follow-up work.
 
@@ -226,7 +226,7 @@ Entry precondition:
 2. Ask the user to accept/reject the current issue (confirm severity and whether it should be addressed now).
 3. Based on the user’s decision:
    - If rejected: mark it as rejected/closed in `review_result-<current_step>.md` (brief rationale).
-   - If accepted for resolution: analyze `ai/implementation_plan.md` and add it as follow-up work in the appropriate place:
+   - If accepted for resolution: analyze `overmind/implementation_plan.md` and add it as follow-up work in the appropriate place:
      - Prefer adding a follow-up step immediately after the current step using letter suffixes (e.g., `1.6` → `1.6a`, `1.6a` → `1.6b`, etc.) when it is directly related and should not block earlier steps.
      - Otherwise, add it as a new later step (e.g., `1.6` → `1.12`) if it’s larger or should be scheduled separately.
      - If the “what to do” is still unclear, add it as an item in `ai/open_questions.md` for an already-created step (so it is reviewed during that step’s planning bullet).
@@ -234,7 +234,7 @@ Entry precondition:
 
 ## Estimation Gates (required)
 - **Scale**: use SP values `{1, 2, 3, 5, 8}`. Keep estimates rough.
-- **Notation**: append `(SP=...)` to each bullet in `ai/implementation_plan.md`.
+- **Notation**: append `(SP=...)` to each bullet in `overmind/implementation_plan.md`.
 - **Step total**: add `Est. step total: <N> SP` under each step header.
 - **Review loop**: when marking "Review step implementation" as done, append actuals (e.g., `Actuals: SP=..., tokens=..., surprises=..., est_error=...`) and recalibrate remaining step estimates.
 - **Goal**: converge on an ideal step size range that balances context stability and meaningful requirement decomposition; adjust the target range as data accumulates.

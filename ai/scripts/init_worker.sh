@@ -4,7 +4,7 @@ set -euo pipefail
 REMOTE_NAME="origin"
 ORCHESTRATOR_BRANCH="overmind"
 RETURN_BRANCH="master"
-REGISTRY_FILE="worker_registry.yaml"
+REGISTRY_FILE="overmind/worker_registry.yaml"
 WORKER_ID_FILE="ai/worker_id_dont_change_or_remove.txt"
 RESTORE_BRANCH_ON_EXIT=0
 REGISTRY_UPDATED=0
@@ -19,7 +19,7 @@ Usage: ai/scripts/init_worker.sh [--help]
 Initializes a worker for Overmind coordination by:
   1) ensuring local worker ID file exists under ai/
   2) validating orchestrator branch overmind exists remotely
-  3) checking out overmind and registering worker ID in worker_registry.yaml
+  3) checking out overmind and registering worker ID in overmind/worker_registry.yaml
   4) committing and pushing registration changes
   5) switching back to master
 

@@ -3,11 +3,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="$(basename "$ROOT")"
-PLAN="$ROOT/ai/implementation_plan.md"
+PLAN="$ROOT/overmind/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
-REQUIREMENTS="$ROOT/reqirements_ears.md"
+REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
 USER_REVIEW="$ROOT/ai/user_review.md"
 
@@ -309,7 +309,7 @@ get_requirements_section() {
     if [[ -n "$section" ]]; then
       output+="$section"$'\n\n'
     else
-      output+="Requirement $req not found in reqirements_ears.md"$'\n\n'
+      output+="Requirement $req not found in overmind/reqirements_ears.md"$'\n\n'
     fi
   done <<<"$reqs"
 

@@ -34,13 +34,13 @@ assert_not_contains() {
 setup_repo() {
   local repo_dir="$1"
 
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/templates" "$repo_dir/ai/step_designs"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/templates" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
   cp "$AI_DESIGN_SRC" "$repo_dir/ai/scripts/ai_design.sh"
   cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
   cp "$TEMPLATE_SRC" "$repo_dir/ai/templates/feature_design_TEMPLATE.md"
   chmod +x "$repo_dir/ai/scripts/ai_design.sh"
 
-  cat >"$repo_dir/ai/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [ ] Plan and discuss the step. [REQ-1]
 - [ ] Implement design scope. [REQ-1]
@@ -65,7 +65,7 @@ EOF
 # User review rules
 EOF
 
-  cat >"$repo_dir/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
 - Demo requirement.
 EOF
@@ -108,6 +108,17 @@ test_feature_rich_mode_block_is_opt_in() {
   assert_not_contains "$default_out" "Feature-rich design/planning mode: ENABLED (design-only add-on)."
 }
 
+test_overmind_paths_are_used() {
+  local repo_dir="$TMP_ROOT/repo-design-overmind"
+  setup_repo "$repo_dir"
+
+  local out
+  out="$(run_design "$repo_dir")"
+  assert_contains "$out" "Step 1.1 - Demo"
+  assert_contains "$out" "### Requirement 1 Demo"
+}
+
 test_feature_rich_mode_block_is_opt_in
+test_overmind_paths_are_used
 
 echo "All ai_design feature-rich mode tests passed."

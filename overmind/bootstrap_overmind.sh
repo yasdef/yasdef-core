@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BRANCH_NAME="overmind"
-REGISTRY_FILE="worker_registry.yaml"
+REGISTRY_FILE="overmind/worker_registry.yaml"
 REMOTE_NAME="origin"
 
 usage() {
@@ -11,8 +11,8 @@ Usage: overmind/bootstrap_overmind.sh [--help]
 
 Bootstraps local Overmind coordination by:
   1) creating/checking out branch "overmind"
-  2) creating worker_registry.yaml scaffold when missing
-  3) committing worker_registry.yaml changes when present
+  2) creating overmind/worker_registry.yaml scaffold when missing
+  3) committing overmind/worker_registry.yaml changes when present
   4) pushing branch to remote with upstream tracking
 
 Options:
@@ -72,6 +72,7 @@ scaffold_registry_if_missing() {
 
   local ts=""
   ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+  mkdir -p "$(dirname "$registry_path")"
   cat >"$registry_path" <<EOF
 version: 1
 generated_at: "$ts"

@@ -87,11 +87,11 @@ test_bootstrap_success_creates_branch_registry_and_upstream() {
 
   assert_contains "$out" "Overmind bootstrap complete."
   assert_contains "$out" "Branch: overmind"
-  assert_contains "$out" "Registry: worker_registry.yaml"
+  assert_contains "$out" "Registry: overmind/worker_registry.yaml"
   assert_contains "$out" "Remote: origin"
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
 
-  local registry="$repo_dir/worker_registry.yaml"
+  local registry="$repo_dir/overmind/worker_registry.yaml"
   assert_file_exists "$registry"
   assert_contains "$(cat "$registry")" "version: 1"
   assert_contains "$(cat "$registry")" "workers: []"
@@ -114,31 +114,31 @@ test_bootstrap_success_preserves_existing_registry() {
   (
     cd "$repo_dir"
     git checkout -b overmind >/dev/null
-    cat >worker_registry.yaml <<'EOF'
+    cat >overmind/worker_registry.yaml <<'EOF'
 version: 99
 generated_at: "manual"
 description: "custom registry"
 workers:
   - id: worker-1
 EOF
-    git add worker_registry.yaml
+    git add overmind/worker_registry.yaml
     git commit -qm "custom registry"
     git push -u origin overmind >/dev/null
     git checkout -b scratch >/dev/null
   )
 
   local before
-  before="$(cat "$repo_dir/worker_registry.yaml")"
+  before="$(cat "$repo_dir/overmind/worker_registry.yaml")"
   local out
   out="$(
     cd "$repo_dir" &&
     overmind/bootstrap_overmind.sh
   )"
   local after
-  after="$(cat "$repo_dir/worker_registry.yaml")"
+  after="$(cat "$repo_dir/overmind/worker_registry.yaml")"
 
   assert_equal "$before" "$after"
-  assert_contains "$out" "Registry already exists: worker_registry.yaml (preserved)."
+  assert_contains "$out" "Registry already exists: overmind/worker_registry.yaml (preserved)."
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
 }
 
@@ -150,18 +150,18 @@ test_bootstrap_success_commits_and_pushes_existing_registry_changes() {
   (
     cd "$repo_dir"
     git checkout -b overmind >/dev/null
-    cat >worker_registry.yaml <<'EOF'
+    cat >overmind/worker_registry.yaml <<'EOF'
 version: 1
 generated_at: "manual"
 description: "custom registry"
 workers:
   - id: worker-1
 EOF
-    git add worker_registry.yaml
+    git add overmind/worker_registry.yaml
     git commit -qm "custom registry"
     git push -u origin overmind >/dev/null
 
-    cat >worker_registry.yaml <<'EOF'
+    cat >overmind/worker_registry.yaml <<'EOF'
 version: 1
 generated_at: "manual"
 description: "custom registry"
@@ -178,7 +178,7 @@ EOF
   )"
 
   assert_contains "$out" "Overmind bootstrap complete."
-  assert_contains "$out" "Registry already exists: worker_registry.yaml (preserved)."
+  assert_contains "$out" "Registry already exists: overmind/worker_registry.yaml (preserved)."
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
   assert_equal "Update overmind worker registry" "$(git -C "$repo_dir" log -1 --pretty=%s)"
 
@@ -189,7 +189,7 @@ EOF
   assert_equal "$local_head" "$remote_head"
 
   local remote_registry
-  remote_registry="$(git --git-dir "$repo_dir/remote.git" show refs/heads/overmind:worker_registry.yaml)"
+  remote_registry="$(git --git-dir "$repo_dir/remote.git" show refs/heads/overmind:overmind/worker_registry.yaml)"
   assert_contains "$remote_registry" "- id: worker-2"
 }
 

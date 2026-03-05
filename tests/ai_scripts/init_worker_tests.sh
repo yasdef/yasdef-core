@@ -87,13 +87,14 @@ setup_repo_with_origin_and_overmind() {
     git push -u origin master >/dev/null
 
     git checkout -b overmind >/dev/null
-    cat >worker_registry.yaml <<'EOF'
+    mkdir -p overmind
+    cat >overmind/worker_registry.yaml <<'EOF'
 version: 1
 generated_at: "2026-03-04T00:00:00Z"
 description: "Local worker registry for Overmind git-based coordination."
 workers: []
 EOF
-    git add worker_registry.yaml
+    git add overmind/worker_registry.yaml
     git commit -qm "bootstrap registry"
     git push -u origin overmind >/dev/null
     git checkout master >/dev/null
@@ -143,7 +144,7 @@ test_init_worker_success_registers_and_returns_master() {
   fi
 
   local remote_registry
-  remote_registry="$(git --git-dir "$repo_dir/remote.git" show overmind:worker_registry.yaml)"
+  remote_registry="$(git --git-dir "$repo_dir/remote.git" show overmind:overmind/worker_registry.yaml)"
   assert_equal "1" "$(count_registry_occurrences "$remote_registry" "$worker_id")"
 
   local overmind_subject
@@ -164,7 +165,7 @@ test_init_worker_success_registers_and_returns_master() {
 
   local status_short
   status_short="$(git -C "$repo_dir" status --short)"
-  assert_not_contains "$status_short" "worker_registry.yaml"
+  assert_not_contains "$status_short" "overmind/worker_registry.yaml"
   assert_not_contains "$status_short" "ai/worker_id_dont_change_or_remove.txt"
 
   local overmind_worker_file
@@ -251,7 +252,7 @@ test_init_worker_is_idempotent() {
 
   assert_equal "$worker_id_before" "$worker_id_after"
   assert_contains "$out_second" "Using existing worker ID from master:ai/worker_id_dont_change_or_remove.txt."
-  assert_contains "$out_second" "Worker already registered in worker_registry.yaml."
+  assert_contains "$out_second" "Worker already registered in overmind/worker_registry.yaml."
   assert_contains "$out_second" "No local overmind commit needed; worker already registered."
   assert_contains "$out_second" "Local overmind commit: none (worker already registered)"
   assert_contains "$out_second" "No changes detected for worker ID on 'master'; skipping commit."
@@ -259,12 +260,12 @@ test_init_worker_is_idempotent() {
   assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
 
   local remote_registry
-  remote_registry="$(git --git-dir "$repo_dir/remote.git" show overmind:worker_registry.yaml)"
+  remote_registry="$(git --git-dir "$repo_dir/remote.git" show overmind:overmind/worker_registry.yaml)"
   assert_equal "1" "$(count_registry_occurrences "$remote_registry" "$worker_id_after")"
 
   local status_short
   status_short="$(git -C "$repo_dir" status --short)"
-  assert_not_contains "$status_short" "worker_registry.yaml"
+  assert_not_contains "$status_short" "overmind/worker_registry.yaml"
   assert_not_contains "$status_short" "ai/worker_id_dont_change_or_remove.txt"
 }
 

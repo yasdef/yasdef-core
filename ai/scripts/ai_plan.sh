@@ -3,12 +3,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="$(basename "$ROOT")"
-PLAN="$ROOT/ai/implementation_plan.md"
+PLAN="$ROOT/overmind/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 DECISIONS="$ROOT/ai/decisions.md"
 BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
-REQUIREMENTS="$ROOT/reqirements_ears.md"
+REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
 STEP_PLAN_TEMPLATE="$ROOT/ai/templates/step_plan_TEMPLATE.md"
 STEP_PLAN_GOLDEN="$ROOT/ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md"
@@ -25,7 +25,7 @@ usage() {
 Usage: ai/scripts/ai_plan.sh [--step 1.3] [--out file] [--design file] [--include-agents] [--branch-name name] [--feature-rich-design-planning]
 
 Defaults:
-  - If --step is omitted, uses the first unchecked bullet in ai/implementation_plan.md.
+  - If --step is omitted, uses the first unchecked bullet in overmind/implementation_plan.md.
   - If --out is omitted, uses ai/step_plans/step-<step>.md (created from ai/templates/step_plan_TEMPLATE.md if missing).
   - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required; hard fail if missing).
   - ai/decisions.md is pointer-only by default.
@@ -285,7 +285,7 @@ get_requirements_section() {
     if [[ -n "$section" ]]; then
       output+="$section"$'\n\n'
     else
-      output+="Requirement $req not found in reqirements_ears.md"$'\n\n'
+      output+="Requirement $req not found in overmind/reqirements_ears.md"$'\n\n'
     fi
   done <<<"$reqs"
 
@@ -397,7 +397,7 @@ write_step_plan_from_template() {
         printf '%s\n' "$line"
         in_req_tags=1
         ;;
-      "- <REQ tags from ai/implementation_plan.md (or (none))>")
+      "- <REQ tags from overmind/implementation_plan.md (or (none))>")
         if [[ "$in_req_tags" -eq 1 ]]; then
           printf '%s\n' "$req_lines"
           in_req_tags=0
@@ -531,14 +531,14 @@ done
 if [[ -z "$STEP" ]]; then
   line="$(get_next_unchecked)"
   if [[ -z "$line" ]]; then
-    echo "No unchecked bullets found in ai/implementation_plan.md." >&2
+    echo "No unchecked bullets found in overmind/implementation_plan.md." >&2
     exit 1
   fi
   IFS='|' read -r STEP STEP_TITLE BULLET <<<"$line"
 else
   STEP_TITLE="$(get_step_title "$STEP")"
   if [[ -z "$STEP_TITLE" ]]; then
-    echo "Step $STEP not found in ai/implementation_plan.md." >&2
+    echo "Step $STEP not found in overmind/implementation_plan.md." >&2
     exit 1
   fi
   BULLET="$(get_step_first_unchecked "$STEP")"
@@ -574,7 +574,7 @@ ensure_planning_branch
 
 STEP_SECTION="$(get_step_section "$STEP")"
 if [[ -z "$STEP_SECTION" ]]; then
-  echo "Step $STEP section not found in ai/implementation_plan.md." >&2
+  echo "Step $STEP section not found in overmind/implementation_plan.md." >&2
   exit 1
 fi
 
@@ -684,7 +684,7 @@ emit() {
   printf 'Use golden examples from the context pack.\n'
   printf '\n'
   printf 'Context pack\n'
-  printf '== ai/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
+  printf '== overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
   printf '== ai/step_designs/step-%s-design.md ==\n' "$STEP"
   cat "$DESIGN_FILE"
@@ -707,7 +707,7 @@ emit() {
     printf 'Read directly from repo as example reference.\n'
     printf 'Path: ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md\n\n'
   fi
-  printf '== reqirements_ears.md (linked requirements) ==\n'
+  printf '== overmind/reqirements_ears.md (linked requirements) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
