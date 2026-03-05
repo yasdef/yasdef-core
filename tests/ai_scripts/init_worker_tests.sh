@@ -103,12 +103,44 @@ EOF
 
 find_worker_id_file() {
   local repo_dir="$1"
-  find "$repo_dir/ai" -maxdepth 1 -type f -name '*dont_change_or_remove*' | sort | head -n 1
+  find "$repo_dir/ai" -maxdepth 1 -type f -name '*_dont_touch.txt' | sort | head -n 1
+}
+
+worker_id_file_from_branch() {
+  local repo_dir="$1"
+  local branch="$2"
+  local listing=""
+  local -a files=()
+
+  listing="$(git -C "$repo_dir" ls-tree -r --name-only "$branch" -- ai 2>/dev/null \
+    | grep -E '^ai/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_dont_touch\.txt$' || true)"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    files+=("$line")
+  done <<<"$listing"
+
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    printf ''
+    return 0
+  fi
+
+  if [[ "${#files[@]}" -ne 1 ]]; then
+    echo "Assertion failed: expected exactly one worker id file on branch '$branch', got ${#files[@]}" >&2
+    exit 1
+  fi
+
+  printf '%s' "${files[0]}"
 }
 
 worker_id_from_master_branch() {
   local repo_dir="$1"
-  git -C "$repo_dir" show master:ai/worker_id_dont_change_or_remove.txt 2>/dev/null | head -n 1 | tr -d '[:space:]'
+  local path=""
+  path="$(worker_id_file_from_branch "$repo_dir" master)"
+  if [[ -z "$path" ]]; then
+    printf ''
+    return 0
+  fi
+  git -C "$repo_dir" show "master:${path}" 2>/dev/null | head -n 1 | tr -d '[:space:]'
 }
 
 count_registry_occurrences() {
@@ -132,7 +164,8 @@ test_init_worker_success_registers_and_returns_master() {
   assert_contains "$out" "Committed local overmind changes:"
   assert_contains "$out" "Pushing local overmind commit to remote 'origin/overmind'..."
   assert_contains "$out" "Local overmind commit:"
-  assert_contains "$out" "Prepared worker ID file on 'master': ai/worker_id_dont_change_or_remove.txt"
+  assert_contains "$out" "Prepared worker ID file on 'master': ai/"
+  assert_contains "$out" "_dont_touch.txt"
   assert_contains "$out" "Local master worker-id commit:"
   assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
 
@@ -166,10 +199,10 @@ test_init_worker_success_registers_and_returns_master() {
   local status_short
   status_short="$(git -C "$repo_dir" status --short)"
   assert_not_contains "$status_short" "overmind/worker_registry.yaml"
-  assert_not_contains "$status_short" "ai/worker_id_dont_change_or_remove.txt"
+  assert_not_contains "$status_short" "_dont_touch.txt"
 
   local overmind_worker_file
-  overmind_worker_file="$(git -C "$repo_dir" show overmind:ai/worker_id_dont_change_or_remove.txt 2>/dev/null || true)"
+  overmind_worker_file="$(git -C "$repo_dir" ls-tree -r --name-only overmind -- ai | grep -E '_dont_touch\.txt$' || true)"
   assert_equal "" "$overmind_worker_file"
 }
 
@@ -251,7 +284,8 @@ test_init_worker_is_idempotent() {
   worker_id_after="$(worker_id_from_master_branch "$repo_dir")"
 
   assert_equal "$worker_id_before" "$worker_id_after"
-  assert_contains "$out_second" "Using existing worker ID from master:ai/worker_id_dont_change_or_remove.txt."
+  assert_contains "$out_second" "Using existing worker ID from master:ai/"
+  assert_contains "$out_second" "_dont_touch.txt."
   assert_contains "$out_second" "Worker already registered in overmind/worker_registry.yaml."
   assert_contains "$out_second" "No local overmind commit needed; worker already registered."
   assert_contains "$out_second" "Local overmind commit: none (worker already registered)"
@@ -266,7 +300,7 @@ test_init_worker_is_idempotent() {
   local status_short
   status_short="$(git -C "$repo_dir" status --short)"
   assert_not_contains "$status_short" "overmind/worker_registry.yaml"
-  assert_not_contains "$status_short" "ai/worker_id_dont_change_or_remove.txt"
+  assert_not_contains "$status_short" "_dont_touch.txt"
 }
 
 test_init_worker_restores_master_on_push_failure() {

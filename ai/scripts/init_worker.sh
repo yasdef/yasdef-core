@@ -5,7 +5,8 @@ REMOTE_NAME="origin"
 ORCHESTRATOR_BRANCH="overmind"
 RETURN_BRANCH="master"
 REGISTRY_FILE="overmind/worker_registry.yaml"
-WORKER_ID_FILE="ai/worker_id_dont_change_or_remove.txt"
+WORKER_ID_FILE_SUFFIX="_dont_touch.txt"
+WORKER_ID_FILE=""
 RESTORE_BRANCH_ON_EXIT=0
 REGISTRY_UPDATED=0
 REGISTRY_COMMIT_SHA=""
@@ -105,24 +106,78 @@ generate_worker_id() {
     uuidgen | tr '[:upper:]' '[:lower:]'
     return 0
   fi
-  printf '%s-%s-%s' "$(date +%s)" "$RANDOM" "$RANDOM"
+  # Fallback UUID-like generator when uuidgen is unavailable.
+  local hex
+  hex="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  printf '%s-%s-%s-%s-%s' \
+    "${hex:0:8}" "${hex:8:4}" "${hex:12:4}" "${hex:16:4}" "${hex:20:12}"
+}
+
+is_valid_uuid() {
+  local value="$1"
+  [[ "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+}
+
+extract_worker_id_from_file_path() {
+  local path="$1"
+  local base
+  base="$(basename "$path")"
+  printf '%s' "${base%"$WORKER_ID_FILE_SUFFIX"}"
+}
+
+list_worker_id_files_on_branch() {
+  local branch="$1"
+  git ls-tree -r --name-only "$branch" -- ai 2>/dev/null \
+    | grep -E '^ai/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_dont_touch\.txt$' \
+    || true
 }
 
 load_or_generate_worker_id() {
   local value=""
+  local existing_file=""
+  local extracted=""
+  local master_worker_files_raw=""
+  local -a master_worker_files=()
 
-  if git cat-file -e "${RETURN_BRANCH}:${WORKER_ID_FILE}" >/dev/null 2>&1; then
-    value="$(git show "${RETURN_BRANCH}:${WORKER_ID_FILE}" | head -n 1 | tr -d '[:space:]')"
-    if [[ -z "$value" ]]; then
-      die "Worker ID file exists on '$RETURN_BRANCH' but is empty: $WORKER_ID_FILE"
+  master_worker_files_raw="$(list_worker_id_files_on_branch "$RETURN_BRANCH")"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    master_worker_files+=("$line")
+  done <<<"$master_worker_files_raw"
+
+  if (( ${#master_worker_files[@]} > 1 )); then
+    die "Multiple worker ID files found on '$RETURN_BRANCH' under ai/*_dont_touch.txt. Keep exactly one canonical identity file."
+  fi
+
+  if (( ${#master_worker_files[@]} == 1 )); then
+    existing_file="${master_worker_files[0]}"
+    extracted="$(extract_worker_id_from_file_path "$existing_file")"
+    if ! is_valid_uuid "$extracted"; then
+      die "Worker ID filename is not a valid UUID on '$RETURN_BRANCH': $existing_file"
     fi
-    WORKER_ID="$value"
+
+    value="$(git show "${RETURN_BRANCH}:${existing_file}" | head -n 1 | tr -d '[:space:]')"
+    if [[ -z "$value" ]]; then
+      die "Worker ID file exists on '$RETURN_BRANCH' but is empty: $existing_file"
+    fi
+
+    if [[ "$value" != "$extracted" ]]; then
+      die "Worker ID file content mismatch on '$RETURN_BRANCH': ${existing_file} (expected '$extracted', got '$value')."
+    fi
+
+    WORKER_ID="$extracted"
+    WORKER_ID_FILE="$existing_file"
     echo "Using existing worker ID from ${RETURN_BRANCH}:${WORKER_ID_FILE}."
     return 0
   fi
 
   value="$(generate_worker_id)"
+  if ! is_valid_uuid "$value"; then
+    die "Generated worker ID is not a valid UUID: $value"
+  fi
+
   WORKER_ID="$value"
+  WORKER_ID_FILE="ai/${WORKER_ID}${WORKER_ID_FILE_SUFFIX}"
   echo "Generated new worker ID for registration; it will be committed on '$RETURN_BRANCH'."
 }
 

@@ -54,7 +54,7 @@ This approach can be expressed in a few sentences:
   `bash ai/scripts/init_worker.sh`
   Successful run behavior:
   - `overmind/worker_registry.yaml` is updated/committed/pushed on branch `overmind` (shared coordination state).
-  - `ai/worker_id_dont_change_or_remove.txt` is persisted/committed on local `master` (worker-local identity).
+  - `ai/<uuid>_dont_touch.txt` is persisted/committed on local `master` (worker-local identity).
   If coordinator `overmind` is unavailable, the script fails fast with:
   `no orchestrator detected, unable to proceed`
 
