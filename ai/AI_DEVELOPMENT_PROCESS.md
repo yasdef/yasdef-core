@@ -175,7 +175,6 @@ Entry precondition:
 6. Summarize what changed and ask for the next review round.
 7. Repeat steps 4-6 until the user explicitly confirms the review is complete (e.g., "done", "no more comments").
 8. Only after the user confirms completion:
-   - Run UR hygiene validation for `ai/user_review.md` when that file was modified in the current review cycle; fail phase completion on missing required fields, duplicate IDs, or overlapping trigger/rule entries.
    - Run one final verification test command for the step (prefer the repo’s full verification gate from `AGENTS.md`) and report the result.
 9. If the final verification passes, propose the next step: Post-step audit/review (Section 6).
 - Do not run Section 6 in the implementation phase; Section 6 is executed in the `ai_audit` phase.

@@ -81,6 +81,7 @@ This approach can be expressed in a few sentences:
 - **Phase-script behavior:** A phase-script managed by orchestrator, creates prompt, then model (via pipe orchestrator -> cli) consumes the script's result as a prompt. Specifically, orchestrator runs a coding agent (cli) with parameters like model, reasoning effort, and a request to run a script. Script-driven prompt generation make input prompt stable and guaranty it fils up context with correct set of system files. 
 
 - **Orchestration:** Since each phase starts as a terminal command, we can orchestrate the whole process from top-level script `ai/scripts/orchestrator.sh`.
+  - Worker-assigned discovery rule: when phase step is not provided explicitly, orchestrator resolves the next step from `overmind/implementation_plan.md` using worker UUID (`ai/*_dont_touch.txt`) and `#### Assigned: <uuid>` ownership blocks only.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
   - Safety rule: `--resume` cannot be combined with explicit `--phase`.
