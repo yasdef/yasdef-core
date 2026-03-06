@@ -4,7 +4,6 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 USER_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/ai_user_review.sh"
-VALIDATOR_SRC="$SOURCE_ROOT/ai/scripts/validate_user_review.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -68,8 +67,7 @@ setup_repo() {
 
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   cp "$USER_REVIEW_SRC" "$repo_dir/ai/scripts/ai_user_review.sh"
-  cp "$VALIDATOR_SRC" "$repo_dir/ai/scripts/validate_user_review.sh"
-  chmod +x "$repo_dir/ai/scripts/orchestrator.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/validate_user_review.sh"
+  chmod +x "$repo_dir/ai/scripts/orchestrator.sh" "$repo_dir/ai/scripts/ai_user_review.sh"
 
   cat >"$repo_dir/ai/scripts/ai_design.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -289,8 +287,8 @@ test_user_review_prompt_uses_ordered_plan_state_only() {
   assert_not_contains "$prompt" 'User review checklist (`## Target Bullets`)'
 }
 
-test_user_review_gate_fails_on_invalid_user_review_update() {
-  local repo_dir="$TMP_ROOT/repo-user-review-gate-invalid"
+test_user_review_does_not_block_on_invalid_user_review_update() {
+  local repo_dir="$TMP_ROOT/repo-user-review-invalid-ur-allowed"
   setup_repo "$repo_dir" 1 checked
 
   cat >"$repo_dir/ai/scripts/fake_model.sh" <<'EOF'
@@ -311,49 +309,15 @@ EOF
   chmod +x "$repo_dir/ai/scripts/fake_model.sh"
 
   local status=0
-  local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 2>&1)"
+  (cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 >/tmp/user-review-invalid-ur.out 2>/tmp/user-review-invalid-ur.err)
   status=$?
   set -e
 
-  if [[ "$status" -eq 0 ]]; then
-    echo "Assertion failed: user_review should fail when UR hygiene validation fails" >&2
+  if [[ "$status" -ne 0 ]]; then
+    echo "Assertion failed: user_review should not fail due to invalid ai/user_review.md content" >&2
     exit 1
   fi
-  assert_contains "$out" "User review hygiene validation failed."
-  assert_contains "$out" "missing required fields"
-  assert_file_exists "$repo_dir/model-ran.flag"
-}
-
-test_user_review_gate_passes_on_valid_user_review_update() {
-  local repo_dir="$TMP_ROOT/repo-user-review-gate-valid"
-  setup_repo "$repo_dir" 1 checked
-
-  cat >"$repo_dir/ai/scripts/fake_model.sh" <<'EOF'
-#!/usr/bin/env bash
-touch "model-ran.flag"
-cat >>"ai/user_review.md" <<'UR'
-
-- **ID**: UR-0002
-- **Status**: Accepted
-- **Date**: 2026-03-03
-- **Context**: Test
-- **Trigger**: New durable review rule discovered.
-- **Rule**: Add template-complete UR entries only.
-- **How to verify**: Run UR validator and confirm no errors.
-- **Example(s)**: Add one canonical UR id for this rule intent.
-- **References**: `ai/user_review.md` `ai/scripts/validate_user_review.sh`
-UR
-echo "model-ran"
-EOF
-  chmod +x "$repo_dir/ai/scripts/fake_model.sh"
-
-  (
-    cd "$repo_dir"
-    ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 >/tmp/user-review-gate-valid.out 2>/tmp/user-review-gate-valid.err
-  )
-
   assert_file_exists "$repo_dir/model-ran.flag"
   assert_branch_equals "$repo_dir" "step-1.1-user-review"
 }
@@ -363,7 +327,6 @@ test_user_review_normalizes_plain_ordered_bullets_to_unchecked
 test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state
 test_user_review_prompt_uses_ordered_plan_state_only
-test_user_review_gate_fails_on_invalid_user_review_update
-test_user_review_gate_passes_on_valid_user_review_update
+test_user_review_does_not_block_on_invalid_user_review_update
 
 echo "All user review phase tests passed."

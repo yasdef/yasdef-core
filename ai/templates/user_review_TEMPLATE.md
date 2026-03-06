@@ -27,4 +27,4 @@ Example block:
 - **Rule**: Record only reusable review rules and keep one canonical entry per rule intent.
 - **How to verify**: Confirm required fields are present and no overlapping Trigger+Rule exists under another UR ID.
 - **Example(s)**: Update existing `UR-0001` with refined verification notes instead of adding `UR-0042` for the same rule.
-- **References**: `ai/user_review.md` `ai/scripts/validate_user_review.sh`
+- **References**: `ai/user_review.md` `ai/templates/user_review_TEMPLATE.md`

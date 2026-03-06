@@ -78,6 +78,7 @@ Default behavior:
   - --feature-rich-design-planning does not change implementation/user_review/ai_audit/post_review behavior.
   - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
   - When running interactively, asks for confirmation before planning/implementation/user_review/ai_audit.
+  - If interactive confirmation is denied for any phase, orchestration stops immediately and does not prompt downstream phases in that run.
   - Writes per-phase logs to ai/logs/<project>-<phase>-latest-log (or step-specific names with --debug).
   - post_review consolidates per-step token usage and metrics into ai/history.md.
 
@@ -427,13 +428,9 @@ confirm_phase_if_interactive() {
 
   phase_key="$(canonicalize_phase_name "$phase")"
 
-  case "$phase_key" in
-    planning|implementation|user_review|ai_audit)
-      ;;
-    *)
-      return 0
-      ;;
-  esac
+  if ! phase_requires_interactive_confirmation "$phase_key"; then
+    return 0
+  fi
 
   if [[ ! -t 0 ]]; then
     return 0
@@ -456,6 +453,18 @@ confirm_phase_if_interactive() {
         ;;
     esac
   done
+}
+
+phase_requires_interactive_confirmation() {
+  local phase="$1"
+  case "$phase" in
+    planning|implementation|user_review|ai_audit)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 load_model_config() {
@@ -535,7 +544,7 @@ run_planning_phase() {
   load_model_config "planning"
 
   local step planning_prompt_out
-  step="$(resolve_step_for_phase_from_args "planning" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")"
+  step="$(resolve_step_for_phase_from_args "planning" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")" || return 1
   planning_prompt_out="$(resolve_prompt_output_path "planning" "$step")"
 
   local plan_cmd=("$ROOT/ai/scripts/ai_plan.sh")
@@ -587,7 +596,7 @@ run_design_phase() {
   load_model_config "design"
 
   local step design_prompt_out
-  step="$(resolve_step_for_phase_from_args "design" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")"
+  step="$(resolve_step_for_phase_from_args "design" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")" || return 1
   design_prompt_out="$(resolve_prompt_output_path "design" "$step")"
 
   local design_cmd=("$ROOT/ai/scripts/ai_design.sh")
@@ -716,20 +725,157 @@ get_step_from_design_path() {
   return 1
 }
 
+is_valid_uuid() {
+  local value="$1"
+  [[ "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+}
+
+resolve_overmind_remote_name() {
+  local remote=""
+  remote="$(git -C "$ROOT" config --get "branch.overmind.remote" 2>/dev/null || true)"
+  if [[ -z "$remote" ]]; then
+    remote="origin"
+  fi
+  printf '%s' "$remote"
+}
+
+ensure_synced_overmind_for_step_selection() {
+  local remote=""
+
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "Step selection requires a git repository."
+  fi
+
+  if ! git -C "$ROOT" show-ref --verify --quiet "refs/heads/overmind"; then
+    die "Step selection requires local Git branch 'overmind'."
+  fi
+
+  if [[ "$(get_current_branch_name)" != "overmind" ]]; then
+    if ! git -C "$ROOT" checkout overmind >/dev/null 2>&1; then
+      die "Failed to checkout local Git branch 'overmind' for step selection."
+    fi
+  fi
+
+  remote="$(resolve_overmind_remote_name)"
+  if ! git -C "$ROOT" remote get-url "$remote" >/dev/null 2>&1; then
+    die "Step selection requires configured remote '$remote' for branch 'overmind'."
+  fi
+
+  if ! git -C "$ROOT" ls-remote --exit-code --heads "$remote" "overmind" >/dev/null 2>&1; then
+    die "Step selection requires remote Git branch '$remote/overmind'."
+  fi
+
+  if ! git -C "$ROOT" pull --ff-only "$remote" "overmind" >/dev/null 2>&1; then
+    die "Failed to sync local Git branch 'overmind' from '$remote/overmind'."
+  fi
+}
+
+discover_worker_uuid_for_step_selection() {
+  local -a candidates=()
+  local file base worker_uuid
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    candidates+=("$file")
+  done < <(find "$ROOT/ai" -maxdepth 1 -type f -name '*_dont_touch.txt' -print 2>/dev/null || true)
+
+  if [[ ${#candidates[@]} -eq 0 ]] && git -C "$ROOT" show-ref --verify --quiet "refs/heads/master"; then
+    while IFS= read -r file; do
+      [[ -n "$file" ]] || continue
+      candidates+=("$ROOT/$file")
+    done < <(
+      git -C "$ROOT" ls-tree -r --name-only master -- ai 2>/dev/null \
+        | grep -E '^ai/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_dont_touch\.txt$' \
+        || true
+    )
+  fi
+
+  if [[ ${#candidates[@]} -eq 0 ]]; then
+    die "No worker identity file found matching ai/*_dont_touch.txt."
+  fi
+
+  if [[ ${#candidates[@]} -gt 1 ]]; then
+    die "Multiple worker identity files found matching ai/*_dont_touch.txt. Keep exactly one canonical file."
+  fi
+
+  base="$(basename "${candidates[0]}")"
+  worker_uuid="${base%_dont_touch.txt}"
+  if ! is_valid_uuid "$worker_uuid"; then
+    die "Worker identity filename is malformed (expected <uuid>_dont_touch.txt): ai/$base"
+  fi
+
+  printf '%s' "$worker_uuid"
+}
+
 get_first_unchecked_step() {
-  awk '
-    /^### Step / {
-      line = $0
-      sub(/^### Step /, "", line)
-      split(line, parts, " ")
-      step_num = parts[1]
-      next
-    }
-    /^- \[ \]/ {
-      print step_num
-      exit
-    }
-  ' "$IMPLEMENTATION_PLAN_FILE"
+  local worker_uuid=""
+  local selected_step=""
+
+  ensure_synced_overmind_for_step_selection
+  if [[ ! -f "$IMPLEMENTATION_PLAN_FILE" ]]; then
+    die "Required file not found: $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")"
+  fi
+  if ! worker_uuid="$(discover_worker_uuid_for_step_selection)"; then
+    return 1
+  fi
+
+  selected_step="$(
+    awk -v target_uuid="$worker_uuid" '
+      function trim(s) {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+        return s
+      }
+      BEGIN {
+        step_num = ""
+        assigned_uuid = ""
+        matched_assignment = 0
+        found = 0
+      }
+      /^### Step / {
+        line = $0
+        sub(/^### Step /, "", line)
+        split(line, parts, " ")
+        step_num = parts[1]
+        assigned_uuid = ""
+        next
+      }
+      /^#### Assigned:[[:space:]]*/ {
+        line = $0
+        sub(/^#### Assigned:[[:space:]]*/, "", line)
+        assigned_uuid = trim(line)
+        if (assigned_uuid == target_uuid) {
+          matched_assignment = 1
+        }
+        next
+      }
+      /^- \[ \]/ {
+        if (step_num != "" && assigned_uuid == target_uuid) {
+          print step_num
+          found = 1
+          exit
+        }
+      }
+      END {
+        if (found == 1) {
+          exit 0
+        }
+        if (matched_assignment == 1) {
+          print "__NO_FREE_ASSIGNED_BULLETS__"
+          exit 0
+        }
+        print "__NO_ASSIGNED_STEPS__"
+      }
+    ' "$IMPLEMENTATION_PLAN_FILE"
+  )"
+
+  if [[ "$selected_step" == "__NO_ASSIGNED_STEPS__" ]]; then
+    die "No steps in $(repo_relpath "$IMPLEMENTATION_PLAN_FILE") are assigned to worker UUID '$worker_uuid'."
+  fi
+
+  if [[ "$selected_step" == "__NO_FREE_ASSIGNED_BULLETS__" ]]; then
+    die "No free unchecked bullets remain for worker UUID '$worker_uuid' in $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")."
+  fi
+
+  printf '%s' "$selected_step"
 }
 
 resolve_step_for_phase_from_args() {
@@ -833,7 +979,9 @@ resolve_step_for_phase_from_args() {
   done
 
   local inferred=""
-  inferred="$(get_first_unchecked_step || true)"
+  if ! inferred="$(get_first_unchecked_step)"; then
+    return 1
+  fi
   if [[ -n "$inferred" ]]; then
     printf '%s' "$inferred"
   fi
@@ -1002,15 +1150,6 @@ run_user_review_phase() {
     status=0
   else
     status=$?
-  fi
-
-  if [[ "$status" -eq 0 ]]; then
-    local ur_gate_cmd=("$ROOT/ai/scripts/ai_user_review.sh" --step-plan "$latest_plan" --validate-user-review-gate)
-    local ur_gate_status=0
-    "${ur_gate_cmd[@]}" || ur_gate_status=$?
-    if [[ "$ur_gate_status" -ne 0 ]]; then
-      status="$ur_gate_status"
-    fi
   fi
 
   return "$status"
@@ -1880,7 +2019,9 @@ for phase in "${REQUESTED_PHASES[@]+"${REQUESTED_PHASES[@]}"}"; do
       RAN_POST_REVIEW=1
     fi
   else
-    echo "Skipping stage: $phase" >&2
+    denied_phase="$(canonicalize_phase_name "$phase")"
+    echo "Execution stopped: user denied phase progression at $denied_phase." >&2
+    break
   fi
 done
 
