@@ -41,6 +41,10 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - When evaluating whether something is a blocker for a specific bullet, confirm its prerequisites exist and are complete (and if they are in previous steps, confirm those bullets are marked `[x]`). If prerequisites are missing, add them to the current step (mark as technical debt if discovered late) before evaluating the target bullet.
 - Track non-blocking questions per step in `ai/open_questions.md` and review them at the start of the step-planning phase.
 - Record durable technical decisions in `ai/decisions.md` (do not use `ai/blocker_log.md` for rules/memoizers).
+- Canonical TODO handoff marker format is strict: `TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`.
+- Marker usage is restricted to concrete blockers found during `user_review` or `ai_audit`; do not add these markers in design/planning/implementation phases.
+- Every canonical marker must map to blocker tracking: `BLK-<id>` must match the blocker identifier used in `ai/blocker_log.md` and be specific enough to seed follow-up work.
+- `ai_audit` is the only phase that converts canonical markers into follow-up implementation-plan steps and removes consumed markers after successful plan update.
 
 ## Per-step workflow (repeat for each step in `overmind/implementation_plan.md`)
 
@@ -195,9 +199,16 @@ Entry precondition:
   2 - Include each in-scope target bullet exactly once with `PROVEN` or `NOT_PROVEN`.
   3 - For every `PROVEN` bullet, include code refs, reachability, and test evidence/mapping.
   4 - No guesses: missing/uncertain evidence requires `NOT_PROVEN`.
-- If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis. Continue 6.1/6.2 only after the entry proof-check passes.
+- If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis. Continue 6.1-6.3 only after the entry proof-check passes.
 
-#### 6.1) Audit review and findings
+#### 6.1) Analyse TODOs and convert them to findings (required second gate)
+- After Section 6.0 passes, scan the in-scope changed files for canonical markers: `TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`.
+- Convert every valid canonical marker into an explicit audit finding before continuing to deeper review.
+- Do not leave canonical TODO markers as informal notes; they must become tracked findings with blocker ID and source reference.
+- Non-canonical TODO-like markers are not auto-accepted; if relevant, rewrite them as explicit findings with clear rationale.
+- All TODO-derived findings are then processed via Sections 6.2 and 6.3 like any other finding.
+
+#### 6.2) Audit review and findings
 - Entry precondition for this phase: Section 5 (User review) is already complete. Do not ask the user to reconfirm Section 5 during post-step audit.
 - Do not start the next implementation step in this phase.
 - Start by identifying current uncommitted step changes (for example, `git status --short` and `git diff --name-status`) and inspecting changed files.
@@ -212,15 +223,15 @@ Entry precondition:
 - Review all changes produced during the current step (typically on `step-<step>-review`), focusing on correctness and regression risk.
   - Perform an analysis-heavy review: cross-check against `AGENTS.md` rules (idempotency, validation, transaction boundaries, ledger/projection consistency, stream routing, guard rules), `overmind/reqirements_ears.md` acceptance criteria, and updated docs/tests.
   - Produce a detailed review in the response: list findings (if any) with severity (Critical/High/Medium/Low) and file references. If no findings, state that explicitly and mention any residual risks or testing gaps.
-  - If issues are found, execute Section 6.2 for each finding. After each finding is dispositioned, return to Section 6.1 and continue the audit.
+  - If issues are found, execute Section 6.3 for each finding. After each finding is dispositioned, return to Section 6.2 and continue the audit.
 - Record estimation actuals on the "Review step implementation" bullet (actual SP, token usage or time, surprises). Update future bullet estimates and the step-size target based on the error.
 - If the "Review step implementation" bullet is complete but missing actuals, do not report this as a user-facing finding/issue. Instead, append a best-effort estimated `Actuals: ...` entry immediately in this phase and continue the audit.
 - Close the "Review step implementation" bullet once the post-step audit write-up is complete and every finding has an explicit disposition recorded (**Accepted** or **Rejected**) and any accepted items are captured as follow-up work (typically as a new step/bullet in `overmind/implementation_plan.md`, or as an item in `ai/open_questions.md`/`ai/blocker_log.md` if still unclear).
 - **Commit gate**: only when there are **no accepted unresolved findings** and the user confirms completion, commit all step changes on the current step/review branch and propose the commit commands. If any accepted follow-up work remains, do **not** propose commit commands in this phase. Do not merge to `main`/`master` in this phase.
 - Completion-line gate (ai_audit phase): output the exact ai_audit completion line (`ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after post-step audit write-up is complete and every finding has an explicit disposition (**Accepted** or **Rejected**) with accepted items captured as follow-up work.
 
-#### 6.2) Per-finding issue disposition workflow
-- Run this subsection separately for each finding identified in Section 6.1.
+#### 6.3) Per-finding issue disposition workflow
+- Run this subsection separately for each finding identified in Section 6.2.
 1. Create or update `ai/step_review_results/review_result-<current_step>.md` using `ai/templates/audit_result_TEMPLATE.md` and follow the formatting from `ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md`.
 2. Ask the user to accept/reject the current issue (confirm severity and whether it should be addressed now).
 3. Based on the user’s decision:
@@ -229,7 +240,7 @@ Entry precondition:
      - Prefer adding a follow-up step immediately after the current step using letter suffixes (e.g., `1.6` → `1.6a`, `1.6a` → `1.6b`, etc.) when it is directly related and should not block earlier steps.
      - Otherwise, add it as a new later step (e.g., `1.6` → `1.12`) if it’s larger or should be scheduled separately.
      - If the “what to do” is still unclear, add it as an item in `ai/open_questions.md` for an already-created step (so it is reviewed during that step’s planning bullet).
-4. Return to Section 6.1 and continue the audit. Repeat Section 6.2 for the next finding until all findings have explicit disposition.
+4. Return to Section 6.2 and continue the audit. Repeat Section 6.3 for the next finding until all findings have explicit disposition.
 
 ## Estimation Gates (required)
 - **Scale**: use SP values `{1, 2, 3, 5, 8}`. Keep estimates rough.
@@ -240,7 +251,7 @@ Entry precondition:
 
 ## Definition of Done
 - `Plan and discuss the step.` completion criteria are defined in Section 2.
-- `Review step implementation.` completion criteria are defined in Section 6 (especially 6.1 and 6.2).
+- `Review step implementation.` completion criteria are defined in Section 6 (especially 6.1, 6.2, and 6.3).
 
 For implementation bullets (all step bullets except `Plan and discuss the step.` and `Review step implementation.`), a bullet is “done” only when:
 - Behavior is implemented correctly and safely (including idempotency/rollback expectations).
