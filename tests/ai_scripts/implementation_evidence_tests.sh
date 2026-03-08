@@ -598,6 +598,7 @@ test_process_doc_defines_evidence_reasoning_summary_gate() {
   assert_contains "$content" "Evidence Reasoning Summary output (required at ai_audit entry):"
   assert_contains "$content" 'For every `PROVEN` bullet, include code refs, reachability, and test evidence/mapping.'
   assert_contains "$content" 'If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis.'
+  assert_contains "$content" "#### 6.1) Analyse TODOs and convert them to findings (required second gate)"
 }
 
 setup_ai_audit_prompt_repo() {
@@ -648,9 +649,11 @@ EOF
 ### 6) Post-step ai_audit/review (required before moving to the next step)
 #### 6.0) Entry proof-check against implementation_plan target bullets (required first gate)
 - gate
-#### 6.1) Audit review and findings
+#### 6.1) Analyse TODOs and convert them to findings (required second gate)
+- todos
+#### 6.2) Audit review and findings
 - review
-#### 6.2) Per-finding issue disposition workflow
+#### 6.3) Per-finding issue disposition workflow
 - disposition
 EOF
 
@@ -696,8 +699,9 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
 
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/ai_audit_prompts/test.prompt.txt")"
-  assert_contains "$prompt" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.'
-  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.2.'
+  assert_contains "$prompt" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.3, Prompt governance) and AGENTS.md as the authoritative rules for this phase.'
+  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.3.'
+  assert_contains "$prompt" 'TODO YASDEF handoff instruction: during this ai_audit, find canonical markers (`TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`) and for each of them follow Section 6.1 to convert TODOs into findings.'
   assert_contains "$prompt" "== ai_audit entry proof-check target bullets (from overmind/implementation_plan.md) =="
   assert_contains "$prompt" "- Implement part A (SP=2)"
   assert_contains "$prompt" "- Implement part B (SP=1)"

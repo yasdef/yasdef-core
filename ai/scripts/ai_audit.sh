@@ -549,9 +549,10 @@ fi
 
 emit() {
   printf 'ai_audit phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.2, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
-  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.2.\n'
-  printf 'Execution pattern: run Section 6.1 as the main audit flow; for each finding, execute Section 6.2, then return to Section 6.1 and continue until all findings are dispositioned.\n'
+  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.3, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
+  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.3.\n'
+  printf 'TODO YASDEF handoff instruction: during this ai_audit, find canonical markers (`TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`) and for each of them follow Section 6.1 to convert TODOs into findings.\n'
+  printf 'Execution pattern: run Section 6.1 first (TODO-to-finding conversion), then run Section 6.2 as the main audit flow; for each finding, execute Section 6.3, then return to Section 6.2 and continue until all findings are dispositioned.\n'
   printf 'Use step plan + feature design as primary execution context.\n'
   printf 'Step plan artifact: %s\n' "$STEP_PLAN"
   printf 'Feature design artifact: %s\n' "$DESIGN_FILE"
@@ -612,7 +613,7 @@ emit() {
   printf '%s\n\n' "$DESIGN_ADR_SECTION"
   printf '== Design decisions to confirm ==\n'
   printf '%s\n\n' "$DESIGN_DECISIONS_SECTION"
-  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.2) ==\n'
+  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.3) ==\n'
   printf '%s\n\n' "$POST_STEP_AUDIT_SECTION"
   if [[ -f "$ROOT/ai/templates/audit_result_TEMPLATE.md" ]]; then
     printf '== ai/templates/audit_result_TEMPLATE.md ==\n'
