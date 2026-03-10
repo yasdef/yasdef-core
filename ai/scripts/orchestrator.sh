@@ -1781,14 +1781,7 @@ evaluate_design_phase() {
     return 0
   fi
 
-  local missing_sections=""
-  missing_sections="$(check_required_sections "$design_file" "Goal" "In Scope" "Out of Scope")"
-  if [[ "$missing_sections" != "ok" ]]; then
-    phase_eval_set "design" "invalid" "missing required sections: $missing_sections"
-    return 0
-  fi
-
-  phase_eval_set "design" "complete" "design artifact present with required sections"
+  phase_eval_set "design" "complete" "design artifact present"
 }
 
 evaluate_planning_phase() {

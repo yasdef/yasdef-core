@@ -445,6 +445,9 @@ emit() {
     printf 'Each optional bullet must state default decision intent (`Accepted` or `Deferred`) and why.\n'
     printf 'Keep required scope boundaries unchanged unless an optional item is explicitly accepted.\n'
   fi
+  printf 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh %s`.\n' "$design_label"
+  printf 'If the readiness check fails, do not emit the final completion line yet. Either continue iterating and re-run the check, or ask exactly two options: `1.` continue iterating and re-check, `2.` force the design phase done and proceed.\n'
+  printf 'If option `2` is chosen, record that forced-done outcome in the design artifact before using the completion line.\n'
   printf 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'

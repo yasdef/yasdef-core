@@ -105,6 +105,7 @@ write_design_and_plan_artifacts() {
   local repo_dir="$1"
   local step="$2"
   local ordered_mode="${3:-all_checked}"
+  local design_mode="${4:-complete}"
 
   local ordered_block=""
   local include_ordered_section=1
@@ -145,7 +146,9 @@ write_design_and_plan_artifacts() {
       ;;
   esac
 
-  cat >"$repo_dir/ai/step_designs/step-$step-design.md" <<'EOF'
+  case "$design_mode" in
+    complete)
+      cat >"$repo_dir/ai/step_designs/step-$step-design.md" <<'EOF'
 ## Goal
 test
 ## In Scope
@@ -153,6 +156,18 @@ test
 ## Out of Scope
 test
 EOF
+      ;;
+    missing_sections)
+      cat >"$repo_dir/ai/step_designs/step-$step-design.md" <<'EOF'
+## Goal
+test
+EOF
+      ;;
+    *)
+      echo "Unknown design_mode: $design_mode" >&2
+      exit 1
+      ;;
+  esac
   if [[ "$include_ordered_section" -eq 1 ]]; then
     cat >"$repo_dir/ai/step_plans/step-$step.md" <<EOF
 # Step Plan: 1.1 - Demo
@@ -214,6 +229,20 @@ test_resume_starts_at_planning() {
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "Selected start phase: planning"
   assert_contains "$out" "Executed phases: planning implementation user_review ai_audit post_review"
+}
+
+test_resume_starts_at_planning_when_design_sections_missing() {
+  local repo_dir="$TMP_ROOT/repo-planning-missing-design-sections"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1" "all_checked" "missing_sections"
+  write_impl_plan "$repo_dir" 0 0 0 0
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "design: complete (design artifact present)"
+  assert_contains "$out" "Selected start phase: planning"
+  assert_not_contains "$out" "missing required sections"
 }
 
 test_resume_starts_at_planning_when_step_plan_missing() {
@@ -424,6 +453,7 @@ test_resume_blocks_when_ordered_plan_has_no_checklist_items() {
 }
 
 test_resume_starts_at_planning
+test_resume_starts_at_planning_when_design_sections_missing
 test_resume_starts_at_planning_when_step_plan_missing
 test_partial_markers_rerun_implementation
 test_resume_starts_at_user_review
