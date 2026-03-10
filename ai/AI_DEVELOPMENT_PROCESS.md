@@ -65,7 +65,6 @@ Before step planning:
 - Track unresolved questions/unknowns in `ai/open_questions.md` when they need explicit follow-up in planning.
 - Design is a hard gate: planning must not run without `ai/step_designs/step-<step>-design.md`.
 - Implementation prompts must use this design artifact plus the step plan as primary context inputs.
-- Completion-line gate: output the exact design completion line (`Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) after verifying that this step is finished, nothing left to do
 
 
 ### 2) Step plan and discussion (mandatory first bullet)

@@ -445,6 +445,7 @@ emit() {
     printf 'Each optional bullet must state default decision intent (`Accepted` or `Deferred`) and why.\n'
     printf 'Keep required scope boundaries unchanged unless an optional item is explicitly accepted.\n'
   fi
+  printf 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'
   printf '== overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
