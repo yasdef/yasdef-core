@@ -16,11 +16,11 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
 ## Artifacts and their roles
-- `overmind/reqirements_ears.md`: source of truth for behavioral requirements and acceptance criteria.
+- `overmind/reqirements_ears.md`: source of truth for behavioral requirements and acceptance criteria; it is consumed directly at boundary phases (Design and ai_audit).
 - `overmind/implementation_plan.md`: step-level backlog and target-bullet contract artifact; Implementation/User Review do not use it as the execution state machine, and `ai_audit` starts with explicit target-bullet proof-check against it.
 - `ai/step_designs/`: feature design artifacts created before planning for user review.
 - `ai/templates/feature_design_TEMPLATE.md` and `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`: structure and example for feature design artifacts.
-- `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts.
+- `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts and the only mid-phase execution contract (`## Plan (ordered)` + translated functional requirements).
 - `ai/blocker_log.md`: unknowns/blockers discovered while working an in-progress step.
 - `ai/templates/blocker_log_TEMPLATE.md` and `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`: structure and example for blocker log entries.
 - `ai/decisions.md`: durable technical decisions (“why we chose X”).
@@ -31,7 +31,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 ## Prompt governance (single source of rules)
 - Behavioral/process rules for AI execution must live in this file.
 - `ai/scripts/*.sh` prompts should stay minimal and phase-scoped: tell the model which phase it is in, where outputs go, and to follow the relevant sections of this file plus `AGENTS.md`.
-- For implementation phase prompts specifically: emit a short phase contract and avoid duplicating detailed process prose from this file; keep context focused on step-specific execution inputs (`## Plan (ordered)`, constraints, tests/risks, and linked requirement excerpts).
+- For implementation phase prompts specifically: emit a short phase contract and avoid duplicating detailed process prose from this file; keep context focused on step-specific execution inputs (`## Plan (ordered)`, translated functional requirements, constraints, tests/risks).
 - Do not duplicate detailed workflow rules across script prompts. If a rule changes, update this file and keep scripts as thin wrappers.
 
 ## Planning artifact governance
@@ -54,6 +54,9 @@ Before step planning:
 - Generate or update the feature design artifact via `ai/scripts/ai_design.sh` at `ai/step_designs/step-<step>-design.md`.
 - Use `ai/templates/feature_design_TEMPLATE.md` as the default structure and follow `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`.
 - The feature design should be concise and capture: goals/non-goals, scope/out of scope, decisions/trade-offs, proposal/design details, risks/mitigations, quality/testing, alternatives, open questions, and relevant code references.
+- Design must include both:
+  - step scope bullets (`## Target Bullets (excluding planning/review)`), and
+  - selected EARS requirement blocks for planning translation (`## Selected EARS Requirements (for planning translation)`).
 - Include only relevant constraints from `AGENTS.md` and relevant insights from `ai/user_review.md` (do not dump all rules).
 - Shortlist only relevant accepted ADRs from `ai/decisions.md` and capture them in the design artifact (do not dump all ADRs).
 - In this phase, do not finalize durable decisions and do not update `ai/decisions.md`; capture candidate decisions under "Things to Decide" in the design artifact for final planning discussion.
@@ -76,6 +79,17 @@ Before step planning:
 - Use web research for best practices when needed; record sources in the plan to reduce hallucinations.
 - The plan must be concise and execution-focused: ordered steps, constraints, decisions, tests, and docs/artifacts to update.
 - Scope contract lives in the feature design artifact: `## Goal`, `## In Scope`, and `## Out of Scope`. Do not restate those sections in the step plan; instead add a pointer to the design and focus the plan on execution.
+- Step-plan structure contract:
+  - Do not include `## Target Bullets` in step plans.
+  - Do not include `## Requirement Tags` in step plans.
+  - Require `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)` (in that order).
+- Functional-requirement translation contract (Design -> Plan):
+  - Each translated functional requirement maps to exactly one selected EARS block from design.
+  - Each selected EARS block must map to at least one translated functional requirement.
+  - Each translated requirement must use implementation-specific, testable `SHALL` language.
+  - Each translated requirement must be captured as a checklist line (`- [ ]` / `- [x]`) with FR id, SHALL statement, and one or more `EARS[...]` references.
+- Canonical translated functional requirement template (required in step plan):
+  - `- [ ] FR-<step-id>-<nnn> The system SHALL ... EARS[REQ-...]`
 - The plan must include an "Implementation Notes" or "Constraints" section that explicitly references `AGENTS.md` and `ai/AI_DEVELOPMENT_PROCESS.md`.
 - The plan must include an "Architecture / Helper Flow" section describing helper/service design and call flow when applicable.
 - The plan must include an "Applicable UR Shortlist" section.
@@ -115,9 +129,10 @@ Before step planning:
 - Exception: pause and ask the user only when blocked by a required user decision/input.
 - Treat the feature design as the scope contract (`## Goal`, `## In Scope`, `## Out of Scope`) and the step plan `## Plan (ordered)` as the execution contract.
 - `## Plan (ordered)` is the only implementation-phase execution checklist/state machine.
+- `## Functional Requirements (translated from design EARS)` is the implementation/user_review requirement contract; use it together with `## Plan (ordered)` during execution.
 - Ordered bullets are checkbox lifecycle items (`[ ]` / `[x]`). If a bullet is plain text without checkbox syntax, treat it as unchecked until normalized/closed.
 - Implementation strategy is adaptive: batch work in the most coherent order when needed, but close checklist state per ordered bullet and mark `[x]` only when that specific bullet is proven complete.
-- Review the step plan, design artifact, and supporting artifacts before coding: linked requirements sections, `ai/decisions.md`, `ai/blocker_log.md`, and `ai/open_questions.md`.
+- Review the step plan, design artifact, and supporting artifacts before coding: translated functional requirements, `ai/decisions.md`, `ai/blocker_log.md`, and `ai/open_questions.md`.
 - If implementation must deviate from the step plan, update the step plan first, then continue implementation.
 - If design "Things to Decide" are still unresolved in the step plan during implementation: do not decide unilaterally in implementation. Recommend rerunning planning to resolve decisions first, then follow the user's instruction on whether to return to planning or proceed with explicit risk acceptance.
 - If a required project decision/blocker appears during implementation, stop and ask the user before proceeding.
@@ -138,21 +153,22 @@ Before step planning:
 - **Tests (two-tier timing)**:
   - Targeted verification may run during implementation as needed (focused tests/lint/typecheck).
   - Full step verification gate from `AGENTS.md` runs once after all ordered bullets are `[x]` and before entering Section 5.
-- **Requirements**: confirm affected `overmind/reqirements_ears.md` acceptance criteria are satisfied for the implemented ordered-plan scope.
+- **Requirements**: confirm every translated functional requirement is implemented and verified
+  - Mark each functional-requirement checklist line `[x]` only when that requirement is implemented and verified; keep `[ ]` otherwise.
 - **Docs**:
   - If endpoints/inputs/outputs change: update the API specification and client collection as defined in `AGENTS.md`.
   - If a new design choice was made: record it in `ai/decisions.md` using `ai/templates/decisions_TEMPLATE.md` and `ai/golden_examples/decisions_GOLDEN_EXAMPLE.md`.
   - If a decision replaces a prior one: mark the older ADR as **Superseded** and link to the superseding ADR.
 
 #### 4.1) Implementation handoff constraints (required before Section 5)
-- Implementation reporting must map progress/evidence to ordered bullets in `## Plan (ordered)` only.
+- Implementation reporting must map progress/evidence to both `## Plan (ordered)` bullets and translated functional requirements.
 - Do not run `overmind/implementation_plan.md` target-bullet proof-check in implementation; that proof-check is the first gate in Section 6.
-- Implementation phase completion is script-gated by orchestrator: before phase success, it validates that all ordered checklist items in `## Plan (ordered)` are `[x]`.
-- Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]` and the full step verification gate has passed.
+- Implementation phase completion is script-gated by orchestrator: before phase success, it validates that all ordered checklist items in `## Plan (ordered)` are `[x]`, and all translated functional requirement checklist items are `[x]`.
+- Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]`, all translated functional requirement checklist items are `[x]`, and the full step verification gate has passed.
 
 ### 5) User review (required before moving to the next step)
 Entry precondition:
-- This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: the step plan exists, contains `## Plan (ordered)`, all ordered checklist items are marked `[x]`, and the Section 4 full verification gate has passed.
+- This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: the step plan exists, contains `## Plan (ordered)` and translated functional requirements, all ordered checklist items are marked `[x]`, all translated functional requirement checklist items are `[x]`, and the Section 4 full verification gate has passed.
 - User review operates on ordered-plan completion state only; do not use `overmind/implementation_plan.md` target bullets as user_review phase-state gating.
 
 1. Before starting the user review loop, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.

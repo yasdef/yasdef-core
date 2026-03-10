@@ -141,10 +141,10 @@ EOF
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<EOF
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- Implement part A
 ## Plan (ordered)
 $ordered_block
+## Functional Requirements (translated from design EARS)
+- [x] FR-1.1-001 The system SHALL implement part A behavior. EARS[REQ-1]
 EOF
 
   cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
@@ -283,8 +283,37 @@ test_user_review_prompt_uses_ordered_plan_state_only() {
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/user_review_prompts/test.prompt.txt")"
   assert_contains "$prompt" 'User review phase-state source is step plan `## Plan (ordered)` only.'
+  assert_contains "$prompt" 'User review functional-requirement source is step plan `## Functional Requirements (translated from design EARS)`.'
   assert_not_contains "$prompt" "== overmind/implementation_plan.md"
   assert_not_contains "$prompt" 'User review checklist (`## Target Bullets`)'
+}
+
+test_user_review_fails_when_functional_requirements_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-functional-requirements-incomplete"
+  setup_repo "$repo_dir" 1 checked
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Plan (ordered)
+- [x] 1. Implement part A.
+## Functional Requirements (translated from design EARS)
+- [ ] FR-1.1-001 The system SHALL implement part A behavior. EARS[REQ-1]
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: user_review phase must fail when translated functional requirements are unchecked" >&2
+    exit 1
+  fi
+  assert_contains "$out" "User review precheck failed for step 1.1."
+  assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before starting user review."
+  assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
 test_user_review_does_not_block_on_invalid_user_review_update() {
@@ -327,6 +356,7 @@ test_user_review_normalizes_plain_ordered_bullets_to_unchecked
 test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state
 test_user_review_prompt_uses_ordered_plan_state_only
+test_user_review_fails_when_functional_requirements_unchecked
 test_user_review_does_not_block_on_invalid_user_review_update
 
 echo "All user review phase tests passed."

@@ -31,6 +31,17 @@ assert_not_contains() {
   fi
 }
 
+assert_not_heading() {
+  local haystack="$1"
+  local heading="$2"
+  if printf '%s\n' "$haystack" | grep -Eq "^##[[:space:]]+${heading}([[:space:]]|$)"; then
+    echo "Assertion failed: expected output to not contain heading: ## $heading" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 assert_line_before() {
   local haystack="$1"
   local first="$2"
@@ -69,11 +80,21 @@ EOF
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- [ ] Implement part A [REQ-1] [NFR-2]
-- [ ] Implement part B [REQ-1]
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A behavior.
+- Plan Links: 1
+- Verification: Add/update tests.
+- Status: pending
+### FR-1.1-02
+- Source EARS Block: NFR-2
+- Requirement: The system SHALL enforce non-functional constraint for part B path.
+- Plan Links: 2
+- Verification: Add/update tests.
+- Status: done
 ## Applicable UR Shortlist
 - UR-0100 - Validate JWT auth boundary handling.
 - UR-0101 - Keep endpoint contract assertions stable.
@@ -217,10 +238,15 @@ Est. step total: 5 SP
 EOF
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 - 1. demo
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL support demo behavior.
+- Plan Links: 1
+- Verification: demo
+- Status: done
 EOF
   cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
@@ -260,7 +286,8 @@ test_ai_implementation_prompt_has_deterministic_structure() {
   assert_contains "$prompt" "Scope contract (design)"
   assert_contains "$prompt" "Key design details (excerpt)"
   assert_contains "$prompt" "Codebase entrypoints (design references)"
-  assert_contains "$prompt" "Linked requirements (overmind/reqirements_ears.md excerpts for step tags)"
+  assert_contains "$prompt" "## Functional Requirements (translated from design EARS)"
+  assert_contains "$prompt" "### FR-1.1-01"
   assert_contains "$prompt" "- [ ] 1. Implement part A [REQ-1] [NFR-2]."
   assert_contains "$prompt" "- [x] 2. Implement part B [REQ-1]."
   assert_contains "$prompt" "## Applicable UR Shortlist"
@@ -271,7 +298,7 @@ test_ai_implementation_prompt_has_deterministic_structure() {
   assert_line_before "$prompt" "Step-plan execution context" "Scope contract (design)"
   assert_line_before "$prompt" "Scope contract (design)" "Key design details (excerpt)"
   assert_line_before "$prompt" "Key design details (excerpt)" "Codebase entrypoints (design references)"
-  assert_line_before "$prompt" "Codebase entrypoints (design references)" "Linked requirements (overmind/reqirements_ears.md excerpts for step tags)"
+  assert_line_before "$prompt" "Codebase entrypoints (design references)" "Process pointers"
   assert_not_contains "$prompt" "== estimation summary =="
   assert_not_contains "$prompt" "== repo snapshot =="
 }
@@ -282,11 +309,21 @@ test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- Implement part A
-- Implement part B
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A behavior.
+- Plan Links: 1
+- Verification: Add/update tests.
+- Status: pending
+### FR-1.1-02
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part B behavior.
+- Plan Links: 2
+- Verification: Add/update tests.
+- Status: pending
 ## Applicable UR Shortlist
 - UR-0001 - Step-plan rule one.
 - UR-0002 - Step-plan rule two.
@@ -366,10 +403,15 @@ test_ai_implementation_prompt_caps_and_requirement_filtering() {
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- [ ] Implement part A [REQ-1] [NFR-2]
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A behavior.
+- Plan Links: 1
+- Verification: test-1
+- Status: pending
 ## Applicable UR Shortlist
 - UR-0001 - one
 ## Plan (ordered)
@@ -475,9 +517,9 @@ EOF
   assert_not_contains "$prompt" "proposal-21-should-not-appear"
   assert_contains "$prompt" "drisk-10"
   assert_not_contains "$prompt" "drisk-11-should-not-appear"
-  assert_contains "$prompt" "### Requirement 1 Demo"
-  assert_contains "$prompt" "### NFR 2 Demo NFR"
-  assert_not_contains "$prompt" "### Requirement 2 Non-target"
+  assert_contains "$prompt" "## Functional Requirements (translated from design EARS)"
+  assert_contains "$prompt" "### FR-1.1-01"
+  assert_contains "$prompt" "Source EARS Block: REQ-1"
 }
 
 test_ai_implementation_prompt_is_deterministic_and_compact() {
@@ -511,10 +553,15 @@ test_ai_implementation_prompt_normalizes_plain_ordered_bullets() {
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- [ ] Implement part A [REQ-1]
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A behavior.
+- Plan Links: 1, 2
+- Verification: Add/update tests.
+- Status: pending
 ## Applicable UR Shortlist
 - None.
 ## Plan (ordered)
@@ -549,11 +596,16 @@ test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked() {
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 - [x] 1. demo A
 - [ ] 2. demo B
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL support demo A and B.
+- Plan Links: 1, 2
+- Verification: demo
+- Status: done
 EOF
 
   local status=0
@@ -577,17 +629,72 @@ test_orchestrator_implementation_gate_passes_when_all_ordered_items_checked() {
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 - [x] 1. demo A
 - [x] 2. demo B
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL support demo A and B.
+- Plan Links: 1, 2
+- Verification: demo
+- Status: done
 EOF
 
   (
     cd "$repo_dir"
     ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 >/tmp/orch-impl-gate-pass.out 2>/tmp/orch-impl-gate-pass.err
   )
+}
+
+test_orchestrator_implementation_gate_fails_when_functional_requirements_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-orch-impl-functional-incomplete"
+  setup_orchestrator_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Plan (ordered)
+- [x] 1. demo A
+- [x] 2. demo B
+## Functional Requirements (translated from design EARS)
+- [x] FR-1.1-001 The system SHALL support demo A. EARS[REQ-1]
+- [ ] FR-1.1-002 The system SHALL support demo B. EARS[REQ-1]
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: implementation phase should fail when translated functional requirements are unchecked" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Implementation exit gate failed for step 1.1."
+  assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before finishing implementation phase."
+}
+
+test_step_plan_template_enforces_functional_requirement_contract() {
+  local template="$SOURCE_ROOT/ai/templates/step_plan_TEMPLATE.md"
+  local golden="$SOURCE_ROOT/ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md"
+  local template_content golden_content
+
+  template_content="$(cat "$template")"
+  golden_content="$(cat "$golden")"
+
+  assert_not_heading "$template_content" "Target Bullets"
+  assert_not_heading "$template_content" "Requirement Tags"
+  assert_contains "$template_content" "## Functional Requirements (translated from design EARS)"
+  assert_contains "$template_content" "- [ ] FR-<step-id>-001 The system SHALL"
+  assert_contains "$template_content" "EARS[REQ-<id>]"
+
+  assert_not_heading "$golden_content" "Target Bullets"
+  assert_not_heading "$golden_content" "Requirement Tags"
+  assert_contains "$golden_content" "## Functional Requirements (translated from design EARS)"
+  assert_contains "$golden_content" "- [x] FR-1.6b-001 The system SHALL"
+  assert_contains "$golden_content" "EARS[REQ-12.1]"
 }
 
 test_process_doc_defines_evidence_reasoning_summary_gate() {
@@ -619,12 +726,22 @@ EOF
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- Implement part A
-- Implement part B
 ## Plan (ordered)
 - [x] 1. Implement part A.
 - [x] 2. Implement part B.
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A.
+- Plan Links: 1
+- Verification: demo
+- Status: done
+### FR-1.1-02
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part B.
+- Plan Links: 2
+- Verification: demo
+- Status: done
 EOF
 
   cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
@@ -805,6 +922,8 @@ test_ai_implementation_prompt_is_deterministic_and_compact
 test_ai_implementation_prompt_normalizes_plain_ordered_bullets
 test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked
 test_orchestrator_implementation_gate_passes_when_all_ordered_items_checked
+test_orchestrator_implementation_gate_fails_when_functional_requirements_unchecked
+test_step_plan_template_enforces_functional_requirement_contract
 test_process_doc_defines_evidence_reasoning_summary_gate
 test_process_doc_defines_review_brief_mode
 test_review_brief_golden_example_exists

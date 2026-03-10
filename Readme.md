@@ -107,7 +107,7 @@ Each artifact below serves a specific role in the AI-dev process:
 - **overmind/reqirements_ears.md**: Source of truth for behavioral requirements and acceptance criteria (EARS format).
 - **overmind/implementation_plan.md**: Ordered execution plan at the step level; tracks all tasks and subtasks with story point estimates. Work happens bullet-by-bullet. Updated dynamically as the Coordinator refactors the graph.
 - **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
-- **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include scope, preconditions, architecture, risks, and test strategy.
+- **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include `## Plan (ordered)`, translated functional requirements, preconditions, architecture, risks, and test strategy.
 - **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
 - **open_questions.md**: Non-blocking questions tracked per step, reviewed at step planning start. Removed once answered.
 - **decisions.md**: Durable technical decisions (Architecture Decision Records) recorded during planning and implementation. Includes decision context, alternatives considered, and rationale. Used to avoid rehashing settled choices.
@@ -129,18 +129,18 @@ Each artifact below serves a specific role in the AI-dev process:
 **Phase 2: Planning**
 - Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
 - Input (additional): `ai/designs/feature-<N>.md`.
-- Output: `ai/step_plans/step-<N>.md` with full scope, architecture, test strategy, and execution command for the implementation phase.
+- Output: `ai/step_plans/step-<N>.md` with `## Plan (ordered)`, translated functional requirements from design-selected EARS blocks, architecture, test strategy, and execution command for the implementation phase.
 - Gate: All open questions must be answered before planning completion.
 
 **Phase 3: Implementation**
 - Input: Step plan (`ai/step_plans/step-<N>.md`), design (`ai/designs/feature-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
 - Output: Implemented changes on a local topic branch (`step-<N>-implementation`), updated tests/docs/planning artifacts, plus Evidence Reasoning Summary and Review Brief handoff for the next phase.
-- Gate: All non-review bullets must be `[x]`; verification + evidence closure must pass; implementation does not commit before user review starts.
+- Gate: All ordered bullets must be `[x]`, all translated functional requirement checklist items must be `[x]`, verification closure must pass, and implementation does not commit before user review starts.
 
 **Phase 4: User Review**
 - Input: Implementation outputs from Phase 3, step plan/design context, `ai/user_review.md`.
 - Output: User-requested adjustments on `step-<N>-user-review`, targeted tests/docs updates, and generalized review rules in `ai/user_review.md` when applicable.
-- Gate: Entry precheck requires all non-review implementation bullets checked before model execution.
+- Gate: Entry precheck requires all `## Plan (ordered)` checklist items `[x]` and all translated functional requirement checklist items `[x]` before model execution.
 
 **Phase 5: Post-Step Audit & Review (AI)**
 - Input: Implemented + user-review changes, step plan, design, and user feedback outcomes.

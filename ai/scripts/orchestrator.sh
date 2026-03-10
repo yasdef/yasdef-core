@@ -1481,21 +1481,167 @@ list_unchecked_ordered_plan_items() {
   done <<<"$items"
 }
 
+get_step_plan_functional_requirements_section_from_file() {
+  local file="$1"
+  local section
+  section="$(get_markdown_section_body "$file" "## Functional Requirements (translated from design EARS)")"
+  if [[ -n "${section//[[:space:]]/}" ]]; then
+    printf '%s' "$section"
+    return 0
+  fi
+  section="$(get_markdown_section_body "$file" "## Functional Requirements")"
+  if [[ -n "${section//[[:space:]]/}" ]]; then
+    printf '%s' "$section"
+    return 0
+  fi
+  return 1
+}
+
+list_functional_requirement_entries() {
+  local section="$1"
+  printf '%s\n' "$section" | awk '
+    function flush_current() {
+      if (fr != "") {
+        normalized = tolower(status)
+        gsub(/[[:space:]]+/, "", normalized)
+        gsub(/`/, "", normalized)
+        if (normalized == "done") {
+          print "- [x] " fr
+        } else {
+          print "- [ ] " fr
+        }
+      }
+      fr = ""
+      status = ""
+    }
+    /^###[[:space:]]+FR-[A-Za-z0-9._-]+/ {
+      flush_current()
+      fr = $0
+      sub(/^### /, "", fr)
+      next
+    }
+    /^-[[:space:]]+Status:[[:space:]]*/ {
+      status = $0
+      sub(/^- Status:[[:space:]]*/, "", status)
+      next
+    }
+    /^-[[:space:]]+\[[xX[:space:]]\][[:space:]]+FR-[A-Za-z0-9._-]+[[:space:]]+/ {
+      flush_current()
+      print $0
+      next
+    }
+    /^-?[[:space:]]*FR-[A-Za-z0-9._-]+[[:space:]]+/ {
+      flush_current()
+      line = $0
+      sub(/^-?[[:space:]]*/, "", line)
+      print line
+      next
+    }
+    END { flush_current() }
+  '
+}
+
+normalize_functional_requirement_item() {
+  local line="$1"
+
+  if [[ "$line" =~ ^-[[:space:]]+\[[xX[:space:]]\][[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
+    printf '%s\n' "$line"
+    return 0
+  fi
+  if [[ "$line" =~ ^-[[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
+    local body
+    body="$(printf '%s' "$line" | sed -E 's/^-[[:space:]]+//')"
+    printf '%s\n' "- [ ] $body"
+    return 0
+  fi
+  if [[ "$line" =~ ^FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
+    printf '%s\n' "- [ ] $line"
+    return 0
+  fi
+  return 1
+}
+
+list_normalized_functional_requirement_items() {
+  local section="$1"
+  local entries line normalized
+  entries="$(list_functional_requirement_entries "$section")"
+  while IFS= read -r line; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    if normalized="$(normalize_functional_requirement_item "$line")"; then
+      printf '%s\n' "$normalized"
+    fi
+  done <<<"$entries"
+}
+
+list_unchecked_functional_requirement_items() {
+  local items="$1"
+  local line
+  while IFS= read -r line; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    if [[ ! "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
+      printf '%s\n' "$line"
+    fi
+  done <<<"$items"
+}
+
+phase_eval_functional_requirements_counts() {
+  local step="$1"
+  local step_plan="$ROOT/ai/step_plans/step-$step.md"
+  local functional_section normalized_items
+  local total=0
+  local done=0
+
+  if [[ ! -f "$step_plan" ]]; then
+    printf 'missing_step_plan|%d|%d|%d' "$total" "$done" "$((total - done))"
+    return 0
+  fi
+
+  functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
+  if [[ -z "${functional_section//[[:space:]]/}" ]]; then
+    printf 'missing_section|%d|%d|%d' "$total" "$done" "$((total - done))"
+    return 0
+  fi
+
+  normalized_items="$(list_normalized_functional_requirement_items "$functional_section")"
+  while IFS= read -r line; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    total=$((total + 1))
+    if [[ "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
+      done=$((done + 1))
+    fi
+  done <<<"$normalized_items"
+
+  if [[ "$total" -eq 0 ]]; then
+    printf 'no_items|%d|%d|%d' "$total" "$done" "$((total - done))"
+    return 0
+  fi
+  printf 'ok|%d|%d|%d' "$total" "$done" "$((total - done))"
+}
+
 ensure_implementation_phase_completion_gate() {
   local step="$1"
   local ordered_counts ordered_state ordered_total ordered_checked
+  local functional_counts functional_state functional_total functional_done
+  local rerun_cmd
+  rerun_cmd="ai/scripts/orchestrator.sh --phase implementation -- --step $step"
   ordered_counts="$(phase_eval_ordered_plan_counts "$step")"
   IFS='|' read -r ordered_state ordered_total ordered_checked _ <<<"$ordered_counts"
+  functional_counts="$(phase_eval_functional_requirements_counts "$step")"
+  IFS='|' read -r functional_state functional_total functional_done _ <<<"$functional_counts"
 
   if [[ "$ordered_state" == "missing_step_plan" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
     echo "Step plan not found: $ROOT/ai/step_plans/step-$step.md" >&2
+    echo "Implementation phase was not finished correctly because step plan is missing." >&2
+    echo "Restart implementation with: $rerun_cmd" >&2
     return 1
   fi
 
   if [[ "$ordered_state" == "missing_section" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
     echo "Step plan gate requires section '## Plan (ordered)' in ai/step_plans/step-$step.md." >&2
+    echo "Implementation phase was not finished correctly because ordered checklist section is missing." >&2
+    echo "Restart implementation with: $rerun_cmd" >&2
     return 1
   fi
 
@@ -1503,6 +1649,8 @@ ensure_implementation_phase_completion_gate() {
     echo "Implementation exit gate failed for step $step." >&2
     echo "No ordered plan checklist items were found under '## Plan (ordered)' in ai/step_plans/step-$step.md." >&2
     echo "Add ordered bullets as checklist items and mark them [x] only when each is proven complete." >&2
+    echo "Implementation phase was not finished correctly because ordered checklist items are missing." >&2
+    echo "Restart implementation with: $rerun_cmd" >&2
     return 1
   fi
 
@@ -1519,6 +1667,42 @@ ensure_implementation_phase_completion_gate() {
     if [[ -n "$unchecked" ]]; then
       printf '%s\n' "$unchecked" >&2
     fi
+    echo "Implementation phase was not finished correctly because ordered checklist has unchecked items." >&2
+    echo "Restart implementation with: $rerun_cmd" >&2
+    return 1
+  fi
+
+  if [[ "$functional_state" == "missing_section" ]]; then
+    echo "Implementation exit gate failed for step $step." >&2
+    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in ai/step_plans/step-$step.md." >&2
+    echo "Implementation phase was not finished correctly because functional requirements section is missing." >&2
+    echo "Restart implementation with: $rerun_cmd" >&2
+    return 1
+  fi
+
+  if [[ "$functional_state" == "no_items" ]]; then
+    echo "Implementation exit gate failed for step $step." >&2
+    echo "No translated functional requirements were found in ai/step_plans/step-$step.md." >&2
+    echo "Add entries like: - [ ] FR-$step-001 The system SHALL ... EARS[REQ-...]." >&2
+    echo "Implementation phase was not finished correctly because functional requirements checklist is empty." >&2
+    echo "Restart implementation with: $rerun_cmd" >&2
+    return 1
+  fi
+
+  if [[ "$functional_done" -ne "$functional_total" ]]; then
+    local step_plan functional_section normalized_fr unchecked_fr
+    step_plan="$ROOT/ai/step_plans/step-$step.md"
+    functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
+    normalized_fr="$(list_normalized_functional_requirement_items "$functional_section")"
+    unchecked_fr="$(list_unchecked_functional_requirement_items "$normalized_fr")"
+    echo "Implementation exit gate failed for step $step." >&2
+    echo "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before finishing implementation phase." >&2
+    echo "Unchecked functional requirements (normalized):" >&2
+    if [[ -n "${unchecked_fr//[[:space:]]/}" ]]; then
+      printf '%s\n' "$unchecked_fr" >&2
+    fi
+    echo "Implementation phase was not finished correctly because functional requirements checklist has unchecked items." >&2
+    echo "Restart implementation with: $rerun_cmd" >&2
     return 1
   fi
 
@@ -1621,7 +1805,14 @@ evaluate_planning_phase() {
   fi
 
   local missing_sections=""
-  missing_sections="$(check_required_sections "$step_plan" "Target Bullets" "Plan (ordered)")"
+  missing_sections="$(check_required_sections "$step_plan" "Plan (ordered)")"
+  if [[ "$missing_sections" == "ok" ]]; then
+    local functional_section
+    functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
+    if [[ -z "${functional_section//[[:space:]]/}" ]]; then
+      missing_sections="Functional Requirements (translated from design EARS)"
+    fi
+  fi
   if [[ "$missing_sections" != "ok" ]]; then
     phase_eval_set "planning" "invalid" "step plan missing required sections: $missing_sections"
     return 0
@@ -1643,8 +1834,11 @@ evaluate_implementation_phase() {
   local step="$1"
   local ordered_counts="$2"
   local ordered_state ordered_total ordered_checked ordered_unchecked
+  local functional_counts functional_state functional_total functional_done functional_unchecked
 
   IFS='|' read -r ordered_state ordered_total ordered_checked ordered_unchecked <<<"$ordered_counts"
+  functional_counts="$(phase_eval_functional_requirements_counts "$step")"
+  IFS='|' read -r functional_state functional_total functional_done functional_unchecked <<<"$functional_counts"
 
   if [[ "$ordered_state" == "missing_step_plan" ]]; then
     phase_eval_set "implementation" "invalid" "missing ai/step_plans/step-$step.md"
@@ -1661,12 +1855,27 @@ evaluate_implementation_phase() {
     return 0
   fi
 
-  if [[ "$ordered_checked" -eq "$ordered_total" ]]; then
-    phase_eval_set "implementation" "complete" "all ordered-plan checklist items are [x] ($ordered_checked/$ordered_total checked)"
+  if [[ "$functional_state" == "missing_section" ]]; then
+    phase_eval_set "implementation" "invalid" "step plan missing required section: Functional Requirements (translated from design EARS)"
     return 0
   fi
 
-  phase_eval_set "implementation" "incomplete" "ordered-plan checklist is not complete ($ordered_checked/$ordered_total checked)"
+  if [[ "$functional_state" == "no_items" ]]; then
+    phase_eval_set "implementation" "invalid" "no translated functional requirements found under step plan functional requirements section"
+    return 0
+  fi
+
+  if [[ "$ordered_checked" -eq "$ordered_total" && "$functional_done" -eq "$functional_total" ]]; then
+    phase_eval_set "implementation" "complete" "all ordered-plan checklist items are [x] and all functional requirements are [x] ($ordered_checked/$ordered_total bullets, $functional_done/$functional_total requirements)"
+    return 0
+  fi
+
+  if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
+    phase_eval_set "implementation" "incomplete" "ordered-plan checklist is not complete ($ordered_checked/$ordered_total checked)"
+    return 0
+  fi
+
+  phase_eval_set "implementation" "incomplete" "functional requirements checklist is not complete ($functional_done/$functional_total checked)"
 }
 
 user_review_branch_exists_for_step() {
@@ -1697,8 +1906,11 @@ evaluate_user_review_phase() {
   local step="$1"
   local ordered_counts="$2"
   local ordered_state ordered_total ordered_checked ordered_unchecked
+  local functional_counts functional_state functional_total functional_done functional_unchecked
 
   IFS='|' read -r ordered_state ordered_total ordered_checked ordered_unchecked <<<"$ordered_counts"
+  functional_counts="$(phase_eval_functional_requirements_counts "$step")"
+  IFS='|' read -r functional_state functional_total functional_done functional_unchecked <<<"$functional_counts"
 
   if [[ "$ordered_state" == "missing_step_plan" ]]; then
     phase_eval_set "user_review" "invalid" "missing ai/step_plans/step-$step.md"
@@ -1715,8 +1927,23 @@ evaluate_user_review_phase() {
     return 0
   fi
 
+  if [[ "$functional_state" == "missing_section" ]]; then
+    phase_eval_set "user_review" "invalid" "step plan missing required section: Functional Requirements (translated from design EARS)"
+    return 0
+  fi
+
+  if [[ "$functional_state" == "no_items" ]]; then
+    phase_eval_set "user_review" "invalid" "no translated functional requirements found under step plan functional requirements section"
+    return 0
+  fi
+
   if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
     phase_eval_set "user_review" "incomplete" "implementation phase is not complete based on ordered plan ($ordered_checked/$ordered_total checked)"
+    return 0
+  fi
+
+  if [[ "$functional_done" -ne "$functional_total" ]]; then
+    phase_eval_set "user_review" "incomplete" "implementation phase is not complete based on functional requirements ($functional_done/$functional_total checked)"
     return 0
   fi
 
@@ -1797,10 +2024,12 @@ evaluate_resume_phase_states() {
     die "Required file not found: $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")"
   fi
 
-  local counts="" ordered_counts="" ordered_state=""
+  local counts="" ordered_counts="" ordered_state="" functional_counts="" functional_state=""
   counts="$(phase_eval_step_bullet_counts "$step")"
   ordered_counts="$(phase_eval_ordered_plan_counts "$step")"
   ordered_state="${ordered_counts%%|*}"
+  functional_counts="$(phase_eval_functional_requirements_counts "$step")"
+  functional_state="${functional_counts%%|*}"
   evaluate_design_phase "$step"
   evaluate_planning_phase "$step" "$counts"
   evaluate_implementation_phase "$step" "$ordered_counts"
@@ -1814,6 +2043,12 @@ evaluate_resume_phase_states() {
   elif [[ "$ordered_state" == "no_checklist_items" ]]; then
     RESUME_BLOCKED=1
     RESUME_BLOCK_REASON="step plan '## Plan (ordered)' has no checklist-parsable items; add ordered checklist items before using --resume."
+  elif [[ "$functional_state" == "missing_section" ]]; then
+    RESUME_BLOCKED=1
+    RESUME_BLOCK_REASON="step plan is missing required section '## Functional Requirements (translated from design EARS)'; add translated requirements before using --resume."
+  elif [[ "$functional_state" == "no_items" ]]; then
+    RESUME_BLOCKED=1
+    RESUME_BLOCK_REASON="step plan has no translated functional requirements; add checklist entries like '- [ ] FR-... The system SHALL ... EARS[...]' before using --resume."
   fi
 }
 

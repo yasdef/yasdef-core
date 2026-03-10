@@ -108,6 +108,18 @@ write_design_and_plan_artifacts() {
 
   local ordered_block=""
   local include_ordered_section=1
+  local functional_block='### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL complete demo A.
+- Plan Links: 1
+- Verification: demo
+- Status: done
+### FR-1.1-02
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL complete demo B.
+- Plan Links: 2
+- Verification: demo
+- Status: done'
   case "$ordered_mode" in
     all_checked)
       ordered_block='- [x] 1. demo A
@@ -144,16 +156,21 @@ EOF
   if [[ "$include_ordered_section" -eq 1 ]]; then
     cat >"$repo_dir/ai/step_plans/step-$step.md" <<EOF
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 $ordered_block
+## Functional Requirements (translated from design EARS)
+$functional_block
 EOF
   else
     cat >"$repo_dir/ai/step_plans/step-$step.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL complete demo A.
+- Plan Links: 1
+- Verification: demo
+- Status: done
 EOF
   fi
 }
@@ -361,7 +378,7 @@ test_resume_does_not_require_evidence_before_ai_audit() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (all ordered-plan checklist items are [x] (2/2 checked))"
+  assert_contains "$out" "implementation: complete (all ordered-plan checklist items are [x] and all functional requirements are [x] (2/2 bullets, 2/2 requirements))"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }

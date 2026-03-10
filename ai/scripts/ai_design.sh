@@ -166,7 +166,7 @@ get_requirements_section() {
   local reqs
   reqs="$(printf '%s\n' "$step_section" | grep -oE "\\[REQ-[0-9]+(\\.[0-9]+)?\\]" | tr -d '[]' | sed 's/^REQ-//' | sort -u)"
   if [[ -z "$reqs" ]]; then
-    echo "No requirement tags found. Add [REQ-<number>] to step bullets to include spec sections."
+    echo "No REQ tags found in step bullets. Select EARS blocks manually in design `## Selected EARS Requirements (for planning translation)`."
     return 0
   fi
 
@@ -263,6 +263,13 @@ write_design_from_template() {
           printf '%s\n' "$TARGET_BULLETS"
         else
           printf -- '- (none found; verify overmind/implementation_plan.md step bullets)\n'
+        fi
+        ;;
+      "- <selected EARS requirement excerpts used to translate step-plan functional requirements>")
+        if [[ -n "$REQ_SECTION" ]]; then
+          printf '%s\n' "$REQ_SECTION"
+        else
+          printf -- '- (none found; add selected EARS blocks from overmind/reqirements_ears.md)\n'
         fi
         ;;
       *)
@@ -450,7 +457,7 @@ emit() {
     cat "$DESIGN_GOLDEN"
     printf '\n\n'
   fi
-  printf '== overmind/reqirements_ears.md (linked requirements) ==\n'
+  printf '== overmind/reqirements_ears.md (selected EARS candidates for design translation) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
