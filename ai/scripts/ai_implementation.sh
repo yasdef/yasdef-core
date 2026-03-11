@@ -6,6 +6,7 @@ PROJECT="$(basename "$ROOT")"
 PLAN="$ROOT/overmind/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 AGENTS="$ROOT/AGENTS.md"
+PLANNING_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 
 STEP=""
 OUT=""
@@ -434,12 +435,6 @@ if [[ -z "$OUT" ]]; then
   OUT="$ROOT/ai/prompts/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"
 fi
 
-if [[ ! -f "$STEP_PLAN" ]]; then
-  echo "Step plan not found at $STEP_PLAN." >&2
-  echo "Run ai/scripts/ai_plan.sh --step $STEP --out $STEP_PLAN first." >&2
-  exit 1
-fi
-
 if [[ ! -f "$DESIGN_FILE" ]]; then
   echo "Feature design not found at $DESIGN_FILE." >&2
   echo "Run ai/scripts/ai_design.sh --step $STEP first." >&2
@@ -448,6 +443,18 @@ fi
 
 if [[ "$SKIP_BRANCH" -eq 0 ]]; then
   ensure_implementation_branch
+fi
+
+PLANNING_READINESS_STATUS=0
+PLANNING_READINESS_OUTPUT=""
+set +e
+PLANNING_READINESS_OUTPUT="$("$PLANNING_READINESS_HELPER" "$STEP" 2>&1)"
+PLANNING_READINESS_STATUS=$?
+set -e
+
+if [[ "$PLANNING_READINESS_STATUS" -ne 0 ]]; then
+  printf '%s\n' "$PLANNING_READINESS_OUTPUT" >&2
+  exit "$PLANNING_READINESS_STATUS"
 fi
 
 STEP_PLAN_ORDERED_PLAN_SECTION_RAW="$(get_step_plan_section "## Plan (ordered)")"

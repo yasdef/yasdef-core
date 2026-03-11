@@ -1786,40 +1786,15 @@ evaluate_design_phase() {
 
 evaluate_planning_phase() {
   local step="$1"
-  local step_plan="$ROOT/ai/step_plans/step-$step.md"
   local counts="$2"
-  local have_plan plan_checked
+  local have_review review_checked impl_total impl_checked
 
-  IFS='|' read -r have_plan plan_checked _ <<<"$counts"
+  IFS='|' read -r _ _ have_review review_checked impl_total impl_checked <<<"$counts"
 
-  if [[ ! -f "$step_plan" ]]; then
-    phase_eval_set "planning" "incomplete" "missing ai/step_plans/step-$step.md"
-    return 0
-  fi
-
-  local missing_sections=""
-  missing_sections="$(check_required_sections "$step_plan" "Plan (ordered)")"
-  if [[ "$missing_sections" == "ok" ]]; then
-    local functional_section
-    functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
-    if [[ -z "${functional_section//[[:space:]]/}" ]]; then
-      missing_sections="Functional Requirements (translated from design EARS)"
-    fi
-  fi
-  if [[ "$missing_sections" != "ok" ]]; then
-    phase_eval_set "planning" "invalid" "step plan missing required sections: $missing_sections"
-    return 0
-  fi
-
-  if [[ "$have_plan" -eq 0 ]]; then
-    phase_eval_set "planning" "invalid" "implementation plan missing 'Plan and discuss the step' bullet"
-    return 0
-  fi
-
-  if [[ "$plan_checked" -eq 1 ]]; then
-    phase_eval_set "planning" "complete" "step plan present and planning gate is [x]"
+  if [[ "$impl_checked" -gt 0 || "$review_checked" -eq 1 ]]; then
+    phase_eval_set "planning" "complete" "later-phase execution markers detected ($impl_checked/$impl_total implementation bullets checked)"
   else
-    phase_eval_set "planning" "incomplete" "planning gate not checked in implementation_plan.md"
+    phase_eval_set "planning" "incomplete" "later-phase execution has not started yet"
   fi
 }
 
@@ -2030,19 +2005,6 @@ evaluate_resume_phase_states() {
   evaluate_ai_audit_phase "$step"
   evaluate_post_review_phase "$step" "$counts"
 
-  if [[ "$ordered_state" == "missing_section" ]]; then
-    RESUME_BLOCKED=1
-    RESUME_BLOCK_REASON="step plan is missing required section '## Plan (ordered)'; add it before using --resume."
-  elif [[ "$ordered_state" == "no_checklist_items" ]]; then
-    RESUME_BLOCKED=1
-    RESUME_BLOCK_REASON="step plan '## Plan (ordered)' has no checklist-parsable items; add ordered checklist items before using --resume."
-  elif [[ "$functional_state" == "missing_section" ]]; then
-    RESUME_BLOCKED=1
-    RESUME_BLOCK_REASON="step plan is missing required section '## Functional Requirements (translated from design EARS)'; add translated requirements before using --resume."
-  elif [[ "$functional_state" == "no_items" ]]; then
-    RESUME_BLOCKED=1
-    RESUME_BLOCK_REASON="step plan has no translated functional requirements; add checklist entries like '- [ ] FR-... The system SHALL ... EARS[...]' before using --resume."
-  fi
 }
 
 resolve_resume_start_phase() {

@@ -119,6 +119,12 @@ Before step planning:
 - Decision-depth quality gate: if design unresolved decisions are empty but a plan-critical trade-off still exists in prerequisites/risks/tests/docs, ask one explicit two-option confirmation prompt before closing planning; if no plan-critical trade-offs remain, explicitly record that no additional decision prompt is required.
 - UR-shortlist quality gate: do not close planning if `## Applicable UR Shortlist` is missing, uses non-canonical content, or includes more than 8 UR IDs.
 - If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
+- Planning Readiness Gate: before emitting the planning completion line, run `ai/scripts/helpers/check_planning_readiness.sh <step>`.
+- If the Planning Readiness Gate exits non-zero, do not emit the completion line. Tell the user what failed and present exactly two options: `1.` try to fix the reason and re-run the helper, `2.` finish the step immediately with failed status.
+- After presenting the Planning Readiness Gate options, stop and wait for the user's reply. Do not choose option `1` or `2` without explicit user input.
+- If the user chooses `1`, continue planning, fix the readiness issue, and re-run the Planning Readiness Gate.
+- If the user chooses `2`, finish the step immediately with failed status.
+- Do not emit the planning completion line unless the Planning Readiness Gate later exits `0`.
 - Only when the plan is accepted, open questions are resolved/closed, and all design "Things to Decide" items have explicit outcomes, immediately mark the "Plan and discuss the step" bullet as done and add Step sections to `ai/blocker_log.md` and `ai/open_questions.md` (even if "none"), then commit the planning artifacts.
 - Completion-line gate: output the exact planning completion line (`Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after verifying in `overmind/implementation_plan.md` that this step's "Plan and discuss the step." bullet is marked `[x]` (and included in the planning commit when changed).
 

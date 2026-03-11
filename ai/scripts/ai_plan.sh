@@ -9,6 +9,7 @@ DECISIONS="$ROOT/ai/decisions.md"
 BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
 AGENTS="$ROOT/AGENTS.md"
+PLANNING_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 STEP_PLAN_TEMPLATE="$ROOT/ai/templates/step_plan_TEMPLATE.md"
 STEP_PLAN_GOLDEN="$ROOT/ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md"
 
@@ -653,7 +654,9 @@ emit() {
     printf 'Derive up to 5 optional hardening candidates from design risks/trade-offs and record each in `## Decisions Needed` as `Accepted` or `Deferred` with rationale.\n'
     printf 'If any optional item materially changes implementation path and remains unresolved, ask one explicit two-option prompt (`1.` recommended, `2.` alternative) before planning closure.\n'
   fi
-  printf 'When planning phase is fully complete, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
+  printf 'Before ending the planning phase, run `%s %s`.\n' "${PLANNING_READINESS_HELPER#"$ROOT"/}" "$STEP"
+  printf 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.\n'
+  printf 'Only after the Planning Readiness Gate is satisfied, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Commit gate: when you commit planning artifacts, include both the step plan and the feature design artifact (do not commit only %s).\n' "$out_label"
   printf 'Minimum commit set (if changed): %s, %s\n' "$out_label" "$design_label"
   printf 'Write/update the step plan at: %s\n' "$OUT"

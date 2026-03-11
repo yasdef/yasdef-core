@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
+HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 AI_AUDIT_SRC="$SOURCE_ROOT/ai/scripts/ai_audit.sh"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 
@@ -64,10 +65,11 @@ assert_line_before() {
 setup_impl_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/templates" "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
+    "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/templates" "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
 
   cp "$AI_IMPL_SRC" "$repo_dir/ai/scripts/ai_implementation.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh"
+  cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo

@@ -266,8 +266,25 @@ EOF
   status=$?
   set -e
   assert_not_equal "$status" "0"
-  assert_not_contains "$out" "Resume blocked: missing ai/step_plans/step-1.1.md; create the step plan before using --resume."
-  assert_contains "$out" "Step plan not found:"
+  assert_contains "$out" "planning: incomplete (later-phase execution has not started yet)"
+  assert_contains "$out" "implementation: invalid (missing ai/step_plans/step-1.1.md)"
+  assert_contains "$out" "Selected start phase: planning"
+  assert_not_contains "$out" "Resume blocked:"
+}
+
+test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_started() {
+  local repo_dir="$TMP_ROOT/repo-implementation-unchecked-planning-gate"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1" "partial"
+  write_impl_plan "$repo_dir" 0 1 0 0
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "planning: complete (later-phase execution markers detected (1/2 implementation bullets checked))"
+  assert_contains "$out" "implementation: incomplete (ordered-plan checklist is not complete (1/2 checked))"
+  assert_contains "$out" "Selected start phase: implementation"
+  assert_not_contains "$out" "planning gate not checked"
 }
 
 test_partial_markers_rerun_implementation() {
@@ -412,56 +429,45 @@ test_resume_does_not_require_evidence_before_ai_audit() {
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
 
-test_resume_blocks_when_ordered_plan_section_missing() {
+test_resume_allows_implementation_when_ordered_plan_section_missing() {
   local repo_dir="$TMP_ROOT/repo-missing-ordered-section"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1" "missing_section"
   write_impl_plan "$repo_dir" 1 1 1 0
 
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
-  status=$?
-  set -e
-  assert_not_equal "$status" "0"
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "implementation: invalid (step plan missing required section: Plan (ordered))"
-  assert_contains "$out" "Selected start phase: none (resume blocked by invalid phase state)"
-  assert_contains "$out" "Block reason: step plan is missing required section '## Plan (ordered)'"
-  assert_contains "$out" "Resume blocked: step plan is missing required section '## Plan (ordered)'"
+  assert_contains "$out" "Selected start phase: implementation"
+  assert_not_contains "$out" "Resume blocked:"
 }
 
-test_resume_blocks_when_ordered_plan_has_no_checklist_items() {
+test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items() {
   local repo_dir="$TMP_ROOT/repo-no-ordered-checklist-items"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1" "no_checklist_items"
   write_impl_plan "$repo_dir" 1 1 1 0
 
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
-  status=$?
-  set -e
-  assert_not_equal "$status" "0"
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "implementation: invalid (no checklist items found under step plan section 'Plan (ordered)')"
-  assert_contains "$out" "Selected start phase: none (resume blocked by invalid phase state)"
-  assert_contains "$out" "Block reason: step plan '## Plan (ordered)' has no checklist-parsable items"
-  assert_contains "$out" "Resume blocked: step plan '## Plan (ordered)' has no checklist-parsable items"
+  assert_contains "$out" "Selected start phase: implementation"
+  assert_not_contains "$out" "Resume blocked:"
 }
 
 test_resume_starts_at_planning
 test_resume_starts_at_planning_when_design_sections_missing
 test_resume_starts_at_planning_when_step_plan_missing
+test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_started
 test_partial_markers_rerun_implementation
 test_resume_starts_at_user_review
 test_resume_starts_at_ai_audit_after_user_review_complete
 test_resume_starts_at_ai_audit_with_prefixed_gates
 test_resume_does_not_require_evidence_before_ai_audit
-test_resume_blocks_when_ordered_plan_section_missing
-test_resume_blocks_when_ordered_plan_has_no_checklist_items
+test_resume_allows_implementation_when_ordered_plan_section_missing
+test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items
 test_review_phase_is_rejected
 test_cli_validation
 test_missing_step_error
