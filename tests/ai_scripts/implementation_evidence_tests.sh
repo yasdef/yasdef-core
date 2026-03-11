@@ -3,7 +3,8 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
-HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
+PLANNING_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
+IMPLEMENTATION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 AI_AUDIT_SRC="$SOURCE_ROOT/ai/scripts/ai_audit.sh"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 
@@ -68,8 +69,11 @@ setup_impl_repo() {
     "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/templates" "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
 
   cp "$AI_IMPL_SRC" "$repo_dir/ai/scripts/ai_implementation.sh"
-  cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+  cp "$PLANNING_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" \
+    "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh" \
+    "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
@@ -294,6 +298,8 @@ test_ai_implementation_prompt_has_deterministic_structure() {
   assert_contains "$prompt" "- [x] 2. Implement part B [REQ-1]."
   assert_contains "$prompt" "## Applicable UR Shortlist"
   assert_contains "$prompt" "UR-0100 - Validate JWT auth boundary handling."
+  assert_contains "$prompt" 'Before ending the implementation phase, run `ai/scripts/helpers/check_implementation_readiness.sh 1.1`.'
+  assert_contains "$prompt" 'If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
   assert_line_before "$prompt" "Phase contract (read first)" "Anti-regression checklist (max 8)"
   assert_line_before "$prompt" "Anti-regression checklist (max 8)" "Execution list (step plan \`## Plan (ordered)\`)"
   assert_line_before "$prompt" "Execution list (step plan \`## Plan (ordered)\`)" "Step-plan execution context"
@@ -303,6 +309,64 @@ test_ai_implementation_prompt_has_deterministic_structure() {
   assert_line_before "$prompt" "Codebase entrypoints (design references)" "Process pointers"
   assert_not_contains "$prompt" "== estimation summary =="
   assert_not_contains "$prompt" "== repo snapshot =="
+}
+
+test_implementation_readiness_helper_fails_on_unchecked_ordered_items() {
+  local repo_dir="$TMP_ROOT/repo-impl-readiness-ordered-unchecked"
+  setup_impl_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Plan (ordered)
+- [x] 1. demo A
+- [ ] 2. demo B
+## Functional Requirements (translated from design EARS)
+- [x] FR-1.1-001 The system SHALL support demo A. EARS[REQ-1]
+- [x] FR-1.1-002 The system SHALL support demo B. EARS[REQ-1]
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_implementation_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: implementation readiness helper should fail when ordered-plan checklist has unchecked items" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Implementation readiness failed for step 1.1."
+  assert_contains "$out" "All items in step plan '## Plan (ordered)' must be [x] before handing off implementation."
+}
+
+test_implementation_readiness_helper_fails_on_unchecked_functional_requirements() {
+  local repo_dir="$TMP_ROOT/repo-impl-readiness-fr-unchecked"
+  setup_impl_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Plan (ordered)
+- [x] 1. demo A
+- [x] 2. demo B
+## Functional Requirements (translated from design EARS)
+- [x] FR-1.1-001 The system SHALL support demo A. EARS[REQ-1]
+- [ ] FR-1.1-002 The system SHALL support demo B. EARS[REQ-1]
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_implementation_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: implementation readiness helper should fail when translated functional requirements are unchecked" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Implementation readiness failed for step 1.1."
+  assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before handing off implementation."
 }
 
 test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
@@ -592,8 +656,8 @@ EOF
   assert_contains "$prompt" "- [ ] 2. Implement part B [REQ-1]."
 }
 
-test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked() {
-  local repo_dir="$TMP_ROOT/repo-orch-impl-gate-fail"
+test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-orch-impl-ordered-unchecked"
   setup_orchestrator_repo "$repo_dir"
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
@@ -610,22 +674,12 @@ test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked() {
 - Status: done
 EOF
 
-  local status=0
-  local out=""
-  set +e
+  local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 2>&1)"
-  status=$?
-  set -e
-
-  if [[ "$status" -eq 0 ]]; then
-    echo "Assertion failed: implementation phase should fail when ordered-plan checklist has unchecked items" >&2
-    exit 1
-  fi
-  assert_contains "$out" "Implementation exit gate failed for step 1.1."
-  assert_contains "$out" "All items in step plan '## Plan (ordered)' must be [x] before finishing implementation phase."
+  assert_not_contains "$out" "Implementation exit gate failed for step 1.1."
 }
 
-test_orchestrator_implementation_gate_passes_when_all_ordered_items_checked() {
+test_orchestrator_implementation_runs_when_all_ordered_items_checked() {
   local repo_dir="$TMP_ROOT/repo-orch-impl-gate-pass"
   setup_orchestrator_repo "$repo_dir"
 
@@ -649,7 +703,7 @@ EOF
   )
 }
 
-test_orchestrator_implementation_gate_fails_when_functional_requirements_unchecked() {
+test_orchestrator_does_not_gate_implementation_when_functional_requirements_unchecked() {
   local repo_dir="$TMP_ROOT/repo-orch-impl-functional-incomplete"
   setup_orchestrator_repo "$repo_dir"
 
@@ -663,19 +717,9 @@ test_orchestrator_implementation_gate_fails_when_functional_requirements_uncheck
 - [ ] FR-1.1-002 The system SHALL support demo B. EARS[REQ-1]
 EOF
 
-  local status=0
-  local out=""
-  set +e
+  local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 2>&1)"
-  status=$?
-  set -e
-
-  if [[ "$status" -eq 0 ]]; then
-    echo "Assertion failed: implementation phase should fail when translated functional requirements are unchecked" >&2
-    exit 1
-  fi
-  assert_contains "$out" "Implementation exit gate failed for step 1.1."
-  assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before finishing implementation phase."
+  assert_not_contains "$out" "Implementation exit gate failed for step 1.1."
 }
 
 test_step_plan_template_enforces_functional_requirement_contract() {
@@ -918,13 +962,15 @@ test_orchestrator_post_review_requires_ai_audit_artifact() {
 }
 
 test_ai_implementation_prompt_has_deterministic_structure
+test_implementation_readiness_helper_fails_on_unchecked_ordered_items
+test_implementation_readiness_helper_fails_on_unchecked_functional_requirements
 test_ai_implementation_prompt_builds_deduped_anti_regression_checklist
 test_ai_implementation_prompt_caps_and_requirement_filtering
 test_ai_implementation_prompt_is_deterministic_and_compact
 test_ai_implementation_prompt_normalizes_plain_ordered_bullets
-test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked
-test_orchestrator_implementation_gate_passes_when_all_ordered_items_checked
-test_orchestrator_implementation_gate_fails_when_functional_requirements_unchecked
+test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked
+test_orchestrator_implementation_runs_when_all_ordered_items_checked
+test_orchestrator_does_not_gate_implementation_when_functional_requirements_unchecked
 test_step_plan_template_enforces_functional_requirement_contract
 test_process_doc_defines_evidence_reasoning_summary_gate
 test_process_doc_defines_review_brief_mode

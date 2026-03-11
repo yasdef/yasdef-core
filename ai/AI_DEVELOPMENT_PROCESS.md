@@ -168,12 +168,19 @@ Before step planning:
 #### 4.1) Implementation handoff constraints (required before Section 5)
 - Implementation reporting must map progress/evidence to both `## Plan (ordered)` bullets and translated functional requirements.
 - Do not run `overmind/implementation_plan.md` target-bullet proof-check in implementation; that proof-check is the first gate in Section 6.
-- Implementation phase completion is script-gated by orchestrator: before phase success, it validates that all ordered checklist items in `## Plan (ordered)` are `[x]`, and all translated functional requirement checklist items are `[x]`.
 - Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]`, all translated functional requirement checklist items are `[x]`, and the full step verification gate has passed.
+
+#### 4.2) Implementation Readiness Gate (required before Section 5)
+- Before emitting the implementation completion line, run `ai/scripts/helpers/check_implementation_readiness.sh <step>`.
+- If the Implementation Readiness Gate exits non-zero, do not emit the completion line. Tell the user what failed and present exactly two options: `1.` try to fix the reason and re-run the helper, `2.` finish the step immediately with failed status.
+- After presenting the Implementation Readiness Gate options, stop and wait for the user's reply. Do not choose option `1` or `2` without explicit user input.
+- If the user chooses `1`, continue implementation, fix the readiness issue, and re-run the Implementation Readiness Gate.
+- If the user chooses `2`, finish the step immediately with failed status.
+- Do not emit the implementation completion line unless the Implementation Readiness Gate later exits `0`.
 
 ### 5) User review (required before moving to the next step)
 Entry precondition:
-- This precondition is enforced before model execution by `ai/scripts/ai_user_review.sh`: the step plan exists, contains `## Plan (ordered)` and translated functional requirements, all ordered checklist items are marked `[x]`, all translated functional requirement checklist items are `[x]`, and the Section 4 full verification gate has passed.
+- Before prompt generation/model start, `ai/scripts/ai_user_review.sh` runs `ai/scripts/helpers/check_implementation_readiness.sh <step>` and fails fast if implementation was not finished correctly.
 - User review operates on ordered-plan completion state only; do not use `overmind/implementation_plan.md` target bullets as user_review phase-state gating.
 
 1. Before starting the user review loop, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.

@@ -101,6 +101,15 @@ create_user_review_branch_marker() {
   )
 }
 
+create_implementation_branch_marker() {
+  local repo_dir="$1"
+  local step="$2"
+  (
+    cd "$repo_dir"
+    git branch "step-$step-implementation"
+  )
+}
+
 write_design_and_plan_artifacts() {
   local repo_dir="$1"
   local step="$2"
@@ -282,7 +291,7 @@ test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_start
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (later-phase execution markers detected (1/2 implementation bullets checked))"
-  assert_contains "$out" "implementation: incomplete (ordered-plan checklist is not complete (1/2 checked))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "planning gate not checked"
 }
@@ -296,7 +305,7 @@ test_partial_markers_rerun_implementation() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: incomplete (ordered-plan checklist is not complete (1/2 checked))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
 }
 
@@ -306,9 +315,11 @@ test_resume_starts_at_user_review() {
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1"
   write_impl_plan "$repo_dir" 1 1 1 0
+  create_implementation_branch_marker "$repo_dir" "1.1"
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
   assert_contains "$out" "user_review: incomplete (missing user_review marker (expected branch step-1.1-user-review))"
   assert_contains "$out" "Selected start phase: user_review"
   assert_contains "$out" "Executed phases: user_review ai_audit post_review"
@@ -324,6 +335,7 @@ test_resume_starts_at_ai_audit_after_user_review_complete() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
   assert_contains "$out" "ai_audit: incomplete (missing ai/step_review_results/review_result-1.1.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
@@ -339,6 +351,7 @@ test_resume_starts_at_ai_audit_with_prefixed_gates() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
   assert_contains "$out" "ai_audit: incomplete (missing ai/step_review_results/review_result-1.1.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
@@ -424,7 +437,7 @@ test_resume_does_not_require_evidence_before_ai_audit() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (all ordered-plan checklist items are [x] and all functional requirements are [x] (2/2 bullets, 2/2 requirements))"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
@@ -438,7 +451,7 @@ test_resume_allows_implementation_when_ordered_plan_section_missing() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: invalid (step plan missing required section: Plan (ordered))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "Resume blocked:"
 }
@@ -452,7 +465,7 @@ test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: invalid (no checklist items found under step plan section 'Plan (ordered)')"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "Resume blocked:"
 }

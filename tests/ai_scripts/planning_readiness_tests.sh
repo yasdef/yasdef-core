@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
+IMPLEMENTATION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 AI_PLAN_SRC="$SOURCE_ROOT/ai/scripts/ai_plan.sh"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
 PROCESS_SRC="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
@@ -133,7 +134,10 @@ setup_impl_repo() {
     "$repo_dir/ai/step_plans" "$repo_dir/overmind"
   cp "$AI_IMPL_SRC" "$repo_dir/ai/scripts/ai_implementation.sh"
   cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" \
+    "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh" \
+    "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
@@ -390,7 +394,9 @@ test_implementation_prompt_includes_helper_contract() {
   run_impl "$repo_dir"
   local out
   out="$(cat "$repo_dir/ai/prompts/impl.prompt.txt")"
-  assert_contains "$out" 'Execution list (step plan `## Plan (ordered)`)' 
+  assert_contains "$out" 'Execution list (step plan `## Plan (ordered)`)'
+  assert_contains "$out" 'Before ending the implementation phase, run `ai/scripts/helpers/check_implementation_readiness.sh 1.1`.'
+  assert_contains "$out" 'If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
 }
 
 test_implementation_prompt_fails_fast_when_helper_fails() {

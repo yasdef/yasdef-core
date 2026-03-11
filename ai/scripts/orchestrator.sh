@@ -1086,12 +1086,6 @@ run_implementation_phase() {
     status=$?
   fi
 
-  if [[ "$status" -eq 0 ]]; then
-    if ! ensure_implementation_phase_completion_gate "$step"; then
-      status=1
-    fi
-  fi
-
   return "$status"
 }
 
@@ -1798,52 +1792,48 @@ evaluate_planning_phase() {
   fi
 }
 
+implementation_branch_exists_for_step() {
+  local step="$1"
+  local branch="step-$step-implementation"
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 1
+  fi
+  git -C "$ROOT" show-ref --verify --quiet "refs/heads/$branch"
+}
+
+is_implementation_complete_for_step() {
+  local step="$1"
+  local review_file="$ROOT/ai/step_review_results/review_result-$step.md"
+
+  if [[ -f "$review_file" ]]; then
+    return 0
+  fi
+
+  if user_review_branch_exists_for_step "$step"; then
+    return 0
+  fi
+
+  if implementation_branch_exists_for_step "$step"; then
+    return 0
+  fi
+
+  return 1
+}
+
 evaluate_implementation_phase() {
   local step="$1"
-  local ordered_counts="$2"
-  local ordered_state ordered_total ordered_checked ordered_unchecked
-  local functional_counts functional_state functional_total functional_done functional_unchecked
+  local step_plan="$ROOT/ai/step_plans/step-$step.md"
 
-  IFS='|' read -r ordered_state ordered_total ordered_checked ordered_unchecked <<<"$ordered_counts"
-  functional_counts="$(phase_eval_functional_requirements_counts "$step")"
-  IFS='|' read -r functional_state functional_total functional_done functional_unchecked <<<"$functional_counts"
-
-  if [[ "$ordered_state" == "missing_step_plan" ]]; then
+  if [[ ! -f "$step_plan" ]]; then
     phase_eval_set "implementation" "invalid" "missing ai/step_plans/step-$step.md"
     return 0
   fi
 
-  if [[ "$ordered_state" == "missing_section" ]]; then
-    phase_eval_set "implementation" "invalid" "step plan missing required section: Plan (ordered)"
-    return 0
+  if is_implementation_complete_for_step "$step"; then
+    phase_eval_set "implementation" "complete" "implementation marker detected (branch step-$step-implementation or later-phase artifact present)"
+  else
+    phase_eval_set "implementation" "incomplete" "missing implementation marker (expected branch step-$step-implementation)"
   fi
-
-  if [[ "$ordered_state" == "no_checklist_items" ]]; then
-    phase_eval_set "implementation" "invalid" "no checklist items found under step plan section 'Plan (ordered)'"
-    return 0
-  fi
-
-  if [[ "$functional_state" == "missing_section" ]]; then
-    phase_eval_set "implementation" "invalid" "step plan missing required section: Functional Requirements (translated from design EARS)"
-    return 0
-  fi
-
-  if [[ "$functional_state" == "no_items" ]]; then
-    phase_eval_set "implementation" "invalid" "no translated functional requirements found under step plan functional requirements section"
-    return 0
-  fi
-
-  if [[ "$ordered_checked" -eq "$ordered_total" && "$functional_done" -eq "$functional_total" ]]; then
-    phase_eval_set "implementation" "complete" "all ordered-plan checklist items are [x] and all functional requirements are [x] ($ordered_checked/$ordered_total bullets, $functional_done/$functional_total requirements)"
-    return 0
-  fi
-
-  if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
-    phase_eval_set "implementation" "incomplete" "ordered-plan checklist is not complete ($ordered_checked/$ordered_total checked)"
-    return 0
-  fi
-
-  phase_eval_set "implementation" "incomplete" "functional requirements checklist is not complete ($functional_done/$functional_total checked)"
 }
 
 user_review_branch_exists_for_step() {
@@ -1872,49 +1862,6 @@ is_user_review_complete_for_step() {
 
 evaluate_user_review_phase() {
   local step="$1"
-  local ordered_counts="$2"
-  local ordered_state ordered_total ordered_checked ordered_unchecked
-  local functional_counts functional_state functional_total functional_done functional_unchecked
-
-  IFS='|' read -r ordered_state ordered_total ordered_checked ordered_unchecked <<<"$ordered_counts"
-  functional_counts="$(phase_eval_functional_requirements_counts "$step")"
-  IFS='|' read -r functional_state functional_total functional_done functional_unchecked <<<"$functional_counts"
-
-  if [[ "$ordered_state" == "missing_step_plan" ]]; then
-    phase_eval_set "user_review" "invalid" "missing ai/step_plans/step-$step.md"
-    return 0
-  fi
-
-  if [[ "$ordered_state" == "missing_section" ]]; then
-    phase_eval_set "user_review" "invalid" "step plan missing required section: Plan (ordered)"
-    return 0
-  fi
-
-  if [[ "$ordered_state" == "no_checklist_items" ]]; then
-    phase_eval_set "user_review" "invalid" "no checklist items found under step plan section 'Plan (ordered)'"
-    return 0
-  fi
-
-  if [[ "$functional_state" == "missing_section" ]]; then
-    phase_eval_set "user_review" "invalid" "step plan missing required section: Functional Requirements (translated from design EARS)"
-    return 0
-  fi
-
-  if [[ "$functional_state" == "no_items" ]]; then
-    phase_eval_set "user_review" "invalid" "no translated functional requirements found under step plan functional requirements section"
-    return 0
-  fi
-
-  if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
-    phase_eval_set "user_review" "incomplete" "implementation phase is not complete based on ordered plan ($ordered_checked/$ordered_total checked)"
-    return 0
-  fi
-
-  if [[ "$functional_done" -ne "$functional_total" ]]; then
-    phase_eval_set "user_review" "incomplete" "implementation phase is not complete based on functional requirements ($functional_done/$functional_total checked)"
-    return 0
-  fi
-
   if is_user_review_complete_for_step "$step"; then
     phase_eval_set "user_review" "complete" "user_review marker detected (step branch or review artifact present)"
   else
@@ -1992,16 +1939,12 @@ evaluate_resume_phase_states() {
     die "Required file not found: $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")"
   fi
 
-  local counts="" ordered_counts="" ordered_state="" functional_counts="" functional_state=""
+  local counts=""
   counts="$(phase_eval_step_bullet_counts "$step")"
-  ordered_counts="$(phase_eval_ordered_plan_counts "$step")"
-  ordered_state="${ordered_counts%%|*}"
-  functional_counts="$(phase_eval_functional_requirements_counts "$step")"
-  functional_state="${functional_counts%%|*}"
   evaluate_design_phase "$step"
   evaluate_planning_phase "$step" "$counts"
-  evaluate_implementation_phase "$step" "$ordered_counts"
-  evaluate_user_review_phase "$step" "$ordered_counts"
+  evaluate_implementation_phase "$step"
+  evaluate_user_review_phase "$step"
   evaluate_ai_audit_phase "$step"
   evaluate_post_review_phase "$step" "$counts"
 

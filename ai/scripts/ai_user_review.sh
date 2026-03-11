@@ -9,6 +9,7 @@ BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
 AGENTS="$ROOT/AGENTS.md"
 USER_REVIEW="$ROOT/ai/user_review.md"
+IMPLEMENTATION_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 
 STEP=""
 OUT=""
@@ -29,8 +30,7 @@ Defaults:
   - If --out is omitted, writes to ai/prompts/user_review_prompts/<project>-step-<step>.user-review.prompt.txt.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-user-review from step-<step>-implementation.
-  - Hard gate (before prompt/model): step plan `## Plan (ordered)` must exist and every ordered item must be marked [x].
-  - Hard gate (before prompt/model): step plan `## Functional Requirements (translated from design EARS)` must exist and all FR checklist items must be `[x]`.
+  - Hard gate (before prompt/model): `ai/scripts/helpers/check_implementation_readiness.sh <step>` must pass.
 EOF
 }
 
@@ -362,55 +362,24 @@ list_unchecked_ordered_plan_items() {
 
 ensure_user_review_entry_gate() {
   local step="$1"
-  local ordered_section normalized_items unchecked
-  local functional_section functional_entries unchecked_fr
+  local readiness_output="" readiness_status=0
 
-  ordered_section="$(get_step_plan_section "## Plan (ordered)")"
-  if [[ -z "${ordered_section//[[:space:]]/}" ]]; then
+  if [[ ! -x "$IMPLEMENTATION_READINESS_HELPER" ]]; then
     echo "User review precheck failed for step $step." >&2
-    echo "Step plan gate requires section '## Plan (ordered)' in $STEP_PLAN." >&2
+    echo "Implementation readiness helper is missing or not executable: $IMPLEMENTATION_READINESS_HELPER" >&2
     exit 1
   fi
 
-  normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
-  if [[ -z "${normalized_items//[[:space:]]/}" ]]; then
-    echo "User review precheck failed for step $step." >&2
-    echo "No ordered plan checklist items were found under '## Plan (ordered)' in $STEP_PLAN." >&2
-    echo "Add ordered bullets and mark each item [x] before starting user review." >&2
-    exit 1
-  fi
+  set +e
+  readiness_output="$("$IMPLEMENTATION_READINESS_HELPER" "$step" 2>&1)"
+  readiness_status=$?
+  set -e
 
-  unchecked="$(list_unchecked_ordered_plan_items "$normalized_items")"
-  if [[ -n "$unchecked" ]]; then
+  if [[ "$readiness_status" -ne 0 ]]; then
     echo "User review precheck failed for step $step." >&2
-    echo "All items in step plan '## Plan (ordered)' must be [x] before starting user review." >&2
-    echo "Unchecked ordered-plan items (normalized):" >&2
-    printf '%s\n' "$unchecked" >&2
-    exit 1
-  fi
-
-  functional_section="$(get_step_plan_functional_requirements_section || true)"
-  if [[ -z "${functional_section//[[:space:]]/}" ]]; then
-    echo "User review precheck failed for step $step." >&2
-    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in $STEP_PLAN." >&2
-    exit 1
-  fi
-
-  functional_entries="$(list_functional_requirement_entries "$functional_section")"
-  if [[ -z "${functional_entries//[[:space:]]/}" ]]; then
-    echo "User review precheck failed for step $step." >&2
-    echo "No translated functional requirement entries were found in $STEP_PLAN." >&2
-    echo "Use canonical entries only: - [ ] FR-$step-001 The system SHALL ... EARS[REQ-...]." >&2
-    exit 1
-  fi
-
-  unchecked_fr="$(list_unchecked_functional_requirement_items "$functional_entries")"
-  if [[ -n "${unchecked_fr//[[:space:]]/}" ]]; then
-    echo "User review precheck failed for step $step." >&2
-    echo "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before starting user review." >&2
-    echo "Unchecked functional requirements:" >&2
-    printf '%s\n' "$unchecked_fr" >&2
-    exit 1
+    printf '%s\n' "$readiness_output" >&2
+    echo "Implementation was not finished correctly. Return to implementation, satisfy the Implementation Readiness Gate, and retry user_review." >&2
+    exit "$readiness_status"
   fi
 }
 
@@ -551,9 +520,9 @@ fi
 emit() {
   printf 'User review phase for Step %s\n' "$STEP"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
-  printf 'Entry gate already verified by script: all items in step plan `## Plan (ordered)` are [x].\n'
-  printf 'Entry gate already verified by script: all items in step plan `## Functional Requirements (translated from design EARS)` are [x].\n'
+  printf 'Entry gate already verified by script: `ai/scripts/helpers/check_implementation_readiness.sh %s` passed.\n' "$STEP"
   printf 'User review phase-state source is step plan `## Plan (ordered)` only.\n'
+  printf 'User review functional-requirement source is step plan `## Functional Requirements (translated from design EARS)`.\n'
   printf 'Do not start post-step audit/review in this phase.\n'
   printf 'When user review is fully complete, end your final response with this exact last line: "User review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'

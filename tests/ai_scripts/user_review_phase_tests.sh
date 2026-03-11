@@ -4,6 +4,7 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 USER_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/ai_user_review.sh"
+IMPLEMENTATION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -62,12 +63,14 @@ setup_repo() {
   local impl_checked="$2"
   local ordered_mode="$3"
 
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
     "$repo_dir/ai/step_plans" "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   cp "$USER_REVIEW_SRC" "$repo_dir/ai/scripts/ai_user_review.sh"
-  chmod +x "$repo_dir/ai/scripts/orchestrator.sh" "$repo_dir/ai/scripts/ai_user_review.sh"
+  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/orchestrator.sh" "$repo_dir/ai/scripts/ai_user_review.sh" \
+    "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
 
   cat >"$repo_dir/ai/scripts/ai_design.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -210,6 +213,7 @@ test_user_review_fails_fast_when_ordered_plan_unchecked() {
   assert_contains "$out" "User review precheck failed for step 1.1."
   assert_contains "$out" "Unchecked ordered-plan items (normalized):"
   assert_contains "$out" "- [ ] 1. Implement part A."
+  assert_contains "$out" "Implementation was not finished correctly."
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
@@ -230,6 +234,7 @@ test_user_review_normalizes_plain_ordered_bullets_to_unchecked() {
   fi
   assert_contains "$out" "Unchecked ordered-plan items (normalized):"
   assert_contains "$out" "- [ ] 1. Implement part A."
+  assert_contains "$out" "Implementation was not finished correctly."
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
@@ -282,6 +287,7 @@ test_user_review_prompt_uses_ordered_plan_state_only() {
 
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/user_review_prompts/test.prompt.txt")"
+  assert_contains "$prompt" 'Entry gate already verified by script: `ai/scripts/helpers/check_implementation_readiness.sh 1.1` passed.'
   assert_contains "$prompt" 'User review phase-state source is step plan `## Plan (ordered)` only.'
   assert_contains "$prompt" 'User review functional-requirement source is step plan `## Functional Requirements (translated from design EARS)`.'
   assert_not_contains "$prompt" "== overmind/implementation_plan.md"
@@ -312,7 +318,8 @@ EOF
     exit 1
   fi
   assert_contains "$out" "User review precheck failed for step 1.1."
-  assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before starting user review."
+  assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before handing off implementation."
+  assert_contains "$out" "Implementation was not finished correctly."
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 

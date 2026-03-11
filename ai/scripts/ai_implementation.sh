@@ -7,6 +7,7 @@ PLAN="$ROOT/overmind/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 AGENTS="$ROOT/AGENTS.md"
 PLANNING_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_planning_readiness.sh"
+IMPLEMENTATION_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 
 STEP=""
 OUT=""
@@ -457,6 +458,11 @@ if [[ "$PLANNING_READINESS_STATUS" -ne 0 ]]; then
   exit "$PLANNING_READINESS_STATUS"
 fi
 
+if [[ ! -x "$IMPLEMENTATION_READINESS_HELPER" ]]; then
+  echo "Implementation readiness helper not found or not executable: $IMPLEMENTATION_READINESS_HELPER" >&2
+  exit 1
+fi
+
 STEP_PLAN_ORDERED_PLAN_SECTION_RAW="$(get_step_plan_section "## Plan (ordered)")"
 STEP_PLAN_ORDERED_PLAN_SECTION="$(list_normalized_ordered_plan_items "$STEP_PLAN_ORDERED_PLAN_SECTION_RAW")"
 if [[ -z "$STEP_PLAN_ORDERED_PLAN_SECTION" ]]; then
@@ -586,8 +592,10 @@ emit() {
   printf '%s\n' '- Verification strategy: targeted checks as needed per bullet; run full AGENTS.md verification once after all ordered bullets are `[x]`, before Section 5/User Review.'
   printf '%s\n' '- Section 4 gate requirement: before Section 5, all translated functional requirement checklist lines must be `[x]` with supporting evidence/tests.'
   printf '%s\n' '- Completion protocol: report progress against ordered bullets only; do not use `overmind/implementation_plan.md` target bullets as implementation-phase gating.'
+  printf '%s\n' "- Before ending the implementation phase, run \`ai/scripts/helpers/check_implementation_readiness.sh $STEP\`."
+  printf '%s\n' '- If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
   printf '%s\n' '- The `implementation_plan.md` target-bullet proof-check runs first in ai_audit entry gate.'
-  printf '%s\n' '- End final response with: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  printf '%s\n' '- Only after the Implementation Readiness Gate is satisfied, end your final response with: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
   printf '\n'
 
   printf 'Anti-regression checklist (max 8)\n'
