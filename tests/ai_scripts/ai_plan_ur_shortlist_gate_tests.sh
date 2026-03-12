@@ -286,7 +286,8 @@ EOF
     echo "Assertion failed: expected deprecated sections to fail planning contract validation." >&2
     exit 1
   fi
-  assert_contains "$out" "Planning gate failed for step plan contract"
+  assert_contains "$out" "Planning gate failed for step plan contract in ai/step_plans/step-1.1.md"
+  assert_contains "$out" "the feature design may still contain \`## Target Bullets\`"
   assert_contains "$out" "deprecated section present: ## Target Bullets"
 }
 

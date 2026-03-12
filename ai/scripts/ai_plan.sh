@@ -418,7 +418,12 @@ validate_applicable_ur_shortlist_section() {
 
 fail_step_plan_contract_validation() {
   local reason="$1"
-  echo "Planning gate failed for step plan contract: $reason" >&2
+  local out_label="$OUT"
+  if [[ "$OUT" == "$ROOT/"* ]]; then
+    out_label="${OUT#"$ROOT"/}"
+  fi
+  echo "Planning gate failed for step plan contract in $out_label: $reason" >&2
+  echo "Note: this contract applies to the step plan artifact only; the feature design may still contain \`## Target Bullets\`." >&2
   echo "Contract requires:" >&2
   echo "- include section: ## Plan (ordered)" >&2
   echo "- include section after Plan: ## Functional Requirements (translated from design EARS)" >&2
