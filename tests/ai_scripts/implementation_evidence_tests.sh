@@ -371,6 +371,26 @@ EOF
   assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before handing off implementation."
 }
 
+test_ai_implementation_allows_non_executable_planning_helper() {
+  local repo_dir="$TMP_ROOT/repo-impl-planning-helper-no-exec"
+  setup_impl_repo "$repo_dir"
+  chmod -x "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl.prompt.txt --no-branch 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Assertion failed: ai_implementation should allow a readable planning helper without execute bit" >&2
+    echo "$out" >&2
+    exit 1
+  fi
+  assert_not_contains "$out" "Planning readiness helper not found or not readable:"
+}
+
 test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
   local repo_dir="$TMP_ROOT/repo-ai-impl-step-plan-shortlist"
   setup_impl_repo "$repo_dir"
@@ -1042,6 +1062,26 @@ test_post_review_fails_when_dispositions_are_insufficient() {
   assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
 }
 
+test_post_review_allows_non_executable_disposition_helper() {
+  local repo_dir="$TMP_ROOT/repo-post-review-helper-no-exec"
+  setup_post_review_repo "$repo_dir" "complete"
+  chmod -x "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Assertion failed: post_review should allow a readable ai_audit helper without execute bit" >&2
+    echo "$out" >&2
+    exit 1
+  fi
+  assert_not_contains "$out" "AI audit disposition helper is missing or not readable:"
+}
+
 test_process_doc_defines_review_brief_mode() {
   local process_doc="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
   local content
@@ -1136,6 +1176,7 @@ test_orchestrator_post_review_requires_ai_audit_artifact() {
 test_ai_implementation_prompt_has_deterministic_structure
 test_implementation_readiness_helper_fails_on_unchecked_ordered_items
 test_implementation_readiness_helper_fails_on_unchecked_functional_requirements
+test_ai_implementation_allows_non_executable_planning_helper
 test_ai_implementation_prompt_builds_deduped_anti_regression_checklist
 test_ai_implementation_prompt_caps_and_requirement_filtering
 test_ai_implementation_prompt_is_deterministic_and_compact
@@ -1152,6 +1193,7 @@ test_ai_audit_disposition_helper_fails_when_section_missing
 test_ai_audit_disposition_helper_fails_when_dispositions_are_insufficient
 test_post_review_fails_when_disposition_section_is_missing
 test_post_review_fails_when_dispositions_are_insufficient
+test_post_review_allows_non_executable_disposition_helper
 test_orchestrator_does_not_block_ai_audit_without_evidence
 test_orchestrator_blocks_ai_audit_when_user_review_incomplete
 test_orchestrator_post_review_requires_ai_audit_artifact

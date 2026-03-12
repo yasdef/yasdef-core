@@ -40,7 +40,13 @@ EOF
 
 enforce_ai_audit_disposition_readiness() {
   local helper_output=""
-  if helper_output="$("$AI_AUDIT_DISPOSITION_HELPER" "$STEP" 2>&1)"; then
+  if [[ ! -r "$AI_AUDIT_DISPOSITION_HELPER" ]]; then
+    echo "Post-review readiness failed for step $STEP." >&2
+    echo "AI audit disposition helper is missing or not readable: $AI_AUDIT_DISPOSITION_HELPER" >&2
+    exit 1
+  fi
+
+  if helper_output="$(bash "$AI_AUDIT_DISPOSITION_HELPER" "$STEP" 2>&1)"; then
     return 0
   fi
 

@@ -446,10 +446,15 @@ if [[ "$SKIP_BRANCH" -eq 0 ]]; then
   ensure_implementation_branch
 fi
 
+if [[ ! -r "$PLANNING_READINESS_HELPER" ]]; then
+  echo "Planning readiness helper not found or not readable: $PLANNING_READINESS_HELPER" >&2
+  exit 1
+fi
+
 PLANNING_READINESS_STATUS=0
 PLANNING_READINESS_OUTPUT=""
 set +e
-PLANNING_READINESS_OUTPUT="$("$PLANNING_READINESS_HELPER" "$STEP" 2>&1)"
+PLANNING_READINESS_OUTPUT="$(bash "$PLANNING_READINESS_HELPER" "$STEP" 2>&1)"
 PLANNING_READINESS_STATUS=$?
 set -e
 
@@ -458,8 +463,8 @@ if [[ "$PLANNING_READINESS_STATUS" -ne 0 ]]; then
   exit "$PLANNING_READINESS_STATUS"
 fi
 
-if [[ ! -x "$IMPLEMENTATION_READINESS_HELPER" ]]; then
-  echo "Implementation readiness helper not found or not executable: $IMPLEMENTATION_READINESS_HELPER" >&2
+if [[ ! -r "$IMPLEMENTATION_READINESS_HELPER" ]]; then
+  echo "Implementation readiness helper not found or not readable: $IMPLEMENTATION_READINESS_HELPER" >&2
   exit 1
 fi
 

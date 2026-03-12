@@ -364,14 +364,14 @@ ensure_user_review_entry_gate() {
   local step="$1"
   local readiness_output="" readiness_status=0
 
-  if [[ ! -x "$IMPLEMENTATION_READINESS_HELPER" ]]; then
+  if [[ ! -r "$IMPLEMENTATION_READINESS_HELPER" ]]; then
     echo "User review precheck failed for step $step." >&2
-    echo "Implementation readiness helper is missing or not executable: $IMPLEMENTATION_READINESS_HELPER" >&2
+    echo "Implementation readiness helper is missing or not readable: $IMPLEMENTATION_READINESS_HELPER" >&2
     exit 1
   fi
 
   set +e
-  readiness_output="$("$IMPLEMENTATION_READINESS_HELPER" "$step" 2>&1)"
+  readiness_output="$(bash "$IMPLEMENTATION_READINESS_HELPER" "$step" 2>&1)"
   readiness_status=$?
   set -e
 
