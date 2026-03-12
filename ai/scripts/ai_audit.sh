@@ -275,7 +275,7 @@ get_open_questions_section() {
 get_markdown_section_body() {
   local file="$1"
   local heading="$2"
-  awk '
+  awk -v heading="$heading" '
     $0 == heading { in_section=1; next }
     in_section && /^## / { exit }
     in_section { print }
@@ -390,6 +390,16 @@ get_git_last_commit() {
   git -C "$ROOT" log -1 --oneline 2>/dev/null
 }
 
+get_step_delta_file_list() {
+  local status
+  status="$(git -C "$ROOT" status --short --untracked-files=all 2>/dev/null || true)"
+  if [[ -z "$status" ]]; then
+    printf '%s' '- (none)'
+    return 0
+  fi
+  printf '%s\n' "$status"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --step)
@@ -496,27 +506,6 @@ if [[ -z "$OPEN_QUESTIONS_SECTION" ]]; then
 fi
 
 REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
-POST_STEP_AUDIT_SECTION="$(extract_process_section "### 6) Post-step ai_audit/review (required before moving to the next step)")"
-
-if [[ -z "$POST_STEP_AUDIT_SECTION" ]]; then
-  echo "Could not extract post-step audit section from $PROCESS." >&2
-  exit 1
-fi
-
-BRANCH_NAME="$(get_git_current_branch)"
-GIT_STATUS="$(get_git_status)"
-GIT_DIFF_NAME_STATUS="$(get_git_diff_name_status)"
-GIT_DIFF_STAT="$(get_git_diff_stat)"
-GIT_LAST_COMMIT="$(get_git_last_commit)"
-
-DESIGN_TARGET_BULLETS="$(get_target_bullets_from_design "$DESIGN_FILE")"
-if [[ -z "$DESIGN_TARGET_BULLETS" ]]; then
-  DESIGN_TARGET_BULLETS="- (missing in design artifact)"
-fi
-DESIGN_PROPOSAL_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Proposal / Design Details")"
-if [[ -z "$DESIGN_PROPOSAL_SECTION" ]]; then
-  DESIGN_PROPOSAL_SECTION="- (missing in design artifact)"
-fi
 DESIGN_RISKS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Risks and Mitigations")"
 if [[ -z "$DESIGN_RISKS_SECTION" ]]; then
   DESIGN_RISKS_SECTION="- (missing in design artifact)"
@@ -543,104 +532,52 @@ fi
 if [[ -z "$DESIGN_ADR_SECTION" ]]; then
   DESIGN_ADR_SECTION="- (missing in design artifact)"
 fi
-DESIGN_DECISIONS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Things to Decide (for final planning discussion)")"
-if [[ -z "$DESIGN_DECISIONS_SECTION" ]]; then
-  DESIGN_DECISIONS_SECTION="- None."
-fi
+STEP_DELTA_FILE_LIST="$(get_step_delta_file_list)"
+REVIEW_RESULT_PATH="$ROOT/ai/step_review_results/review_result-$STEP.md"
 
 emit() {
-  printf 'ai_audit phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
+  printf 'ai_audit phase for Step %s - %s\n' "$STEP" "$STEP_TITLE"
+  printf 'Follow `ai/AI_DEVELOPMENT_PROCESS.md` (Sections 6.0-6.4, Prompt governance) and `AGENTS.md` as the authoritative rules for this phase.\n'
+  printf 'Primary context is the inline audit context below.\n'
+  printf 'Read these artifacts directly from the repo:\n'
+  printf -- '- Step plan: %s\n' "$STEP_PLAN"
+  printf -- '- Feature design: %s\n' "$DESIGN_FILE"
+  printf -- '- Review result artifact: %s\n' "$REVIEW_RESULT_PATH"
+  printf 'Optional references (open only if needed):\n'
+  printf -- '- Implementation plan: %s\n' "$PLAN"
+  printf -- '- Requirements: %s\n' "$REQUIREMENTS"
+  printf -- '- Audit result template: %s\n' "$ROOT/ai/templates/audit_result_TEMPLATE.md"
+  printf -- '- Audit result example: %s\n' "$ROOT/ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md"
+  printf -- '- Blocker log: %s\n' "$BLOCKER_LOG"
+  printf -- '- Open questions: %s\n' "$OPEN_QUESTIONS"
+  printf -- '- Decisions: %s\n' "$ROOT/ai/decisions.md"
+  if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
+    printf -- '- Project constraints: %s\n' "$AGENTS"
+  fi
+  printf -- '- Disposition helper: %s\n' "$AI_AUDIT_DISPOSITION_HELPER"
   printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.\n'
-  printf 'TODO YASDEF handoff instruction: during this ai_audit, find canonical markers (`TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`) and for each of them follow Section 6.1 to convert TODOs into findings.\n'
-  printf 'Execution pattern: run Section 6.1 first (TODO-to-finding conversion), then run Section 6.2 as the main audit flow; for each finding, execute Section 6.3, then return to Section 6.2 and continue until all findings are dispositioned.\n'
-  printf 'Use step plan + feature design as primary execution context.\n'
-  printf 'Step plan artifact: %s\n' "$STEP_PLAN"
-  printf 'Feature design artifact: %s\n' "$DESIGN_FILE"
-  printf 'Use these artifacts together with the context pack below.\n'
-  printf 'Commit gate (required): before the completion line, run `git status --short`; if not clean, commit all review-branch changes (`git add -A && git commit -m "Step %s review completion"`), then verify `git status --short` is empty.\n' "$STEP"
   printf 'Before ending the ai_audit phase, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh %s`.\n' "$STEP"
   printf 'If that disposition check fails, do not emit the final completion line. Follow the AI Audit Disposition Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.\n'
   printf 'Extended completion-line gate: output the ai_audit completion line only after the commit gate is satisfied (clean working tree).\n'
   printf 'Only after the commit gate and disposition gate are satisfied, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
-  printf 'Context pack\n'
-  printf '== repo snapshot ==\n'
-  if [[ -n "$BRANCH_NAME" ]]; then
-    printf 'Branch: %s\n' "$BRANCH_NAME"
-  else
-    printf 'Branch: (unavailable)\n'
-  fi
-  if [[ -n "$GIT_LAST_COMMIT" ]]; then
-    printf 'Last commit: %s\n' "$GIT_LAST_COMMIT"
-  else
-    printf 'Last commit: (unavailable)\n'
-  fi
-  if [[ -n "$GIT_STATUS" ]]; then
-    printf 'Working tree (status --short):\n%s\n' "$GIT_STATUS"
-  else
-    printf 'Working tree (status --short): clean or unavailable\n'
-  fi
-  if [[ -n "$GIT_DIFF_NAME_STATUS" ]]; then
-    printf 'Uncommitted files (diff --name-status):\n%s\n' "$GIT_DIFF_NAME_STATUS"
-  else
-    printf 'Uncommitted files (diff --name-status): none or unavailable\n'
-  fi
-  if [[ -n "$GIT_DIFF_STAT" ]]; then
-    printf 'Uncommitted diff stat:\n%s\n' "$GIT_DIFF_STAT"
-  else
-    printf 'Uncommitted diff stat: none or unavailable\n'
-  fi
-  printf '\n'
-  printf '== overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
-  printf '%s\n\n' "$STEP_SECTION"
-  printf '== ai_audit entry proof-check target bullets (from overmind/implementation_plan.md) ==\n'
+  printf 'Inline audit context\n'
+  printf '== Step ==\n'
+  printf 'Step %s - %s\n\n' "$STEP" "$STEP_TITLE"
+  printf '== Target bullets (from overmind/implementation_plan.md) ==\n'
   printf '%s\n\n' "$TARGET_PROOF_BULLETS"
-  printf '== %s ==\n' "$STEP_PLAN"
-  cat "$STEP_PLAN"
-  printf '\n\n'
-  printf '== ai/step_designs/step-%s-design.md ==\n' "$STEP"
-  printf 'Read directly from repo (authoritative design artifact).\n'
-  printf 'Path: ai/step_designs/step-%s-design.md\n\n' "$STEP"
-  printf '== Design-extracted target bullets ==\n'
-  printf '%s\n\n' "$DESIGN_TARGET_BULLETS"
-  printf '== Design-extracted proposal/design details ==\n'
-  printf '%s\n\n' "$DESIGN_PROPOSAL_SECTION"
-  printf '== Design-extracted risks and mitigations ==\n'
-  printf '%s\n\n' "$DESIGN_RISKS_SECTION"
-  printf '== Design-extracted AGENTS constraints ==\n'
-  printf '%s\n\n' "$DESIGN_AGENTS_SECTION"
-  printf '== Design-extracted UR shortlist ==\n'
-  printf '%s\n\n' "$DESIGN_UR_SECTION"
-  printf '== Design-extracted ADR shortlist ==\n'
-  printf '%s\n\n' "$DESIGN_ADR_SECTION"
-  printf '== Design decisions to confirm ==\n'
-  printf '%s\n\n' "$DESIGN_DECISIONS_SECTION"
-  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4) ==\n'
-  printf '%s\n\n' "$POST_STEP_AUDIT_SECTION"
-  if [[ -f "$ROOT/ai/templates/audit_result_TEMPLATE.md" ]]; then
-    printf '== ai/templates/audit_result_TEMPLATE.md ==\n'
-    cat "$ROOT/ai/templates/audit_result_TEMPLATE.md"
-    printf '\n\n'
-  fi
-  if [[ -f "$ROOT/ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md" ]]; then
-    printf '== ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md ==\n'
-    cat "$ROOT/ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md"
-    printf '\n\n'
-  fi
-  printf '== overmind/reqirements_ears.md (linked requirements) ==\n'
+  printf '== Linked EARS requirement blocks ==\n'
   printf '%s\n\n' "$REQ_SECTION"
-  printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
-  printf '%s\n\n' "$BLOCKER_LOG_SECTION"
-  printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"
-  printf '%s\n\n' "$OPEN_QUESTIONS_SECTION"
-  printf '== ai/decisions.md ==\n'
-  printf 'Pointer-only by default; rely on design-extracted ADR shortlist above.\n'
-  printf 'Path: ai/decisions.md\n'
-  if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
-    printf '\n\n== AGENTS.md ==\n'
-    cat "$AGENTS"
-  fi
+  printf '== Design shortlist: Risks and mitigations ==\n'
+  printf '%s\n\n' "$DESIGN_RISKS_SECTION"
+  printf '== Design shortlist: AGENTS constraints ==\n'
+  printf '%s\n\n' "$DESIGN_AGENTS_SECTION"
+  printf '== Design shortlist: UR shortlist ==\n'
+  printf '%s\n\n' "$DESIGN_UR_SECTION"
+  printf '== Design shortlist: ADR shortlist ==\n'
+  printf '%s\n\n' "$DESIGN_ADR_SECTION"
+  printf '== Step delta file list ==\n'
+  printf '%s\n' "$STEP_DELTA_FILE_LIST"
 }
 
 if [[ -n "$OUT" ]]; then

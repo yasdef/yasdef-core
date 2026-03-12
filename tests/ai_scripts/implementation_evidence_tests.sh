@@ -239,9 +239,9 @@ EOF
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 Est. step total: 5 SP
-- [x] Plan and discuss the step (SP=1)
-- [x] Implement part A (SP=2)
-- [x] Implement part B (SP=1)
+- [x] Plan and discuss the step (SP=1) [REQ-1]
+- [x] Implement part A (SP=2) [REQ-1]
+- [x] Implement part B (SP=1) [REQ-1]
 - [ ] Review step implementation (SP=1)
 EOF
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
@@ -789,9 +789,9 @@ setup_ai_audit_prompt_repo() {
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 Est. step total: 5 SP
-- [x] Plan and discuss the step (SP=1)
-- [x] Implement part A (SP=2)
-- [x] Implement part B (SP=1)
+- [x] Plan and discuss the step (SP=1) [REQ-1]
+- [x] Implement part A (SP=2) [REQ-1]
+- [x] Implement part B (SP=1) [REQ-1]
 - [ ] Review step implementation (SP=1)
 EOF
 
@@ -816,6 +816,10 @@ EOF
 EOF
 
   cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+# Feature Design: preamble should not leak
+Date: 2099-01-01
+Designer model/session: preamble-should-not-leak
+
 ## Target Bullets
 - Implement part A
 - Implement part B
@@ -967,6 +971,8 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   local repo_dir="$TMP_ROOT/repo-ai-audit-prompt"
   setup_ai_audit_prompt_repo "$repo_dir"
 
+  echo "- changed during review" >>"$repo_dir/ai/open_questions.md"
+
   (
     cd "$repo_dir"
     ai/scripts/ai_audit.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/ai_audit_prompts/test.prompt.txt >/dev/null
@@ -974,14 +980,44 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
 
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/ai_audit_prompts/test.prompt.txt")"
-  assert_contains "$prompt" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4, Prompt governance) and AGENTS.md as the authoritative rules for this phase.'
+  assert_contains "$prompt" 'ai_audit phase for Step 1.1 - Demo'
+  assert_contains "$prompt" 'Follow `ai/AI_DEVELOPMENT_PROCESS.md` (Sections 6.0-6.4, Prompt governance) and `AGENTS.md` as the authoritative rules for this phase.'
+  assert_contains "$prompt" 'Primary context is the inline audit context below.'
+  assert_contains "$prompt" 'Read these artifacts directly from the repo:'
+  assert_contains "$prompt" '- Step plan: ai/step_plans/step-1.1.md'
+  assert_contains "$prompt" '- Feature design: ai/step_designs/step-1.1-design.md'
+  assert_contains "$prompt" '- Review result artifact: '
+  assert_contains "$prompt" 'Optional references (open only if needed):'
+  assert_contains "$prompt" '- Implementation plan: '
+  assert_contains "$prompt" '- Requirements: '
+  assert_contains "$prompt" '- Blocker log: '
+  assert_contains "$prompt" '- Open questions: '
+  assert_contains "$prompt" '- Decisions: '
   assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.'
-  assert_contains "$prompt" 'TODO YASDEF handoff instruction: during this ai_audit, find canonical markers (`TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`) and for each of them follow Section 6.1 to convert TODOs into findings.'
   assert_contains "$prompt" 'Before ending the ai_audit phase, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1`.'
   assert_contains "$prompt" 'If that disposition check fails, do not emit the final completion line. Follow the AI Audit Disposition Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
-  assert_contains "$prompt" "== ai_audit entry proof-check target bullets (from overmind/implementation_plan.md) =="
+  assert_contains "$prompt" 'Extended completion-line gate: output the ai_audit completion line only after the commit gate is satisfied (clean working tree).'
+  assert_contains "$prompt" 'Only after the commit gate and disposition gate are satisfied, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  assert_contains "$prompt" "== Target bullets (from overmind/implementation_plan.md) =="
   assert_contains "$prompt" "- Implement part A (SP=2)"
   assert_contains "$prompt" "- Implement part B (SP=1)"
+  assert_contains "$prompt" "== Linked EARS requirement blocks =="
+  assert_contains "$prompt" "### Requirement 1 Demo"
+  assert_contains "$prompt" "== Design shortlist: Risks and mitigations =="
+  assert_contains "$prompt" "- none"
+  assert_contains "$prompt" "== Design shortlist: AGENTS constraints =="
+  assert_contains "$prompt" "- follow constraints"
+  assert_contains "$prompt" "== Design shortlist: UR shortlist =="
+  assert_contains "$prompt" "- UR-1"
+  assert_contains "$prompt" "== Design shortlist: ADR shortlist =="
+  assert_contains "$prompt" "- ADR-1"
+  assert_contains "$prompt" "== Step delta file list =="
+  assert_contains "$prompt" " M ai/open_questions.md"
+  assert_not_contains "$prompt" "## Plan (ordered)"
+  assert_not_contains "$prompt" "== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4) =="
+  assert_not_contains "$prompt" 'Run the ai_audit flow in this exact order: Section 6.0 proof-check, Section 6.1 TODO scan, Section 6.2 audit review, Section 6.3 per-finding disposition, Section 6.4 disposition gate.'
+  assert_not_contains "$prompt" "# Feature Design: preamble should not leak"
+  assert_not_contains "$prompt" "Designer model/session: preamble-should-not-leak"
 }
 
 test_ai_audit_disposition_helper_fails_when_section_missing() {
