@@ -1781,11 +1781,14 @@ evaluate_design_phase() {
 evaluate_planning_phase() {
   local step="$1"
   local counts="$2"
-  local have_review review_checked impl_total impl_checked
+  local plan_checked have_review review_checked impl_total impl_checked
+  local step_plan="$ROOT/ai/step_plans/step-$step.md"
 
-  IFS='|' read -r _ _ have_review review_checked impl_total impl_checked <<<"$counts"
+  IFS='|' read -r _ plan_checked have_review review_checked impl_total impl_checked <<<"$counts"
 
-  if [[ "$impl_checked" -gt 0 || "$review_checked" -eq 1 ]]; then
+  if [[ "$plan_checked" -eq 1 && -f "$step_plan" ]]; then
+    phase_eval_set "planning" "complete" "planning markers detected (step plan present and implementation-plan planning gate closed)"
+  elif [[ "$impl_checked" -gt 0 || "$review_checked" -eq 1 ]]; then
     phase_eval_set "planning" "complete" "later-phase execution markers detected ($impl_checked/$impl_total implementation bullets checked)"
   else
     phase_eval_set "planning" "incomplete" "later-phase execution has not started yet"

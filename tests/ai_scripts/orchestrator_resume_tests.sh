@@ -341,6 +341,20 @@ EOF
   assert_not_contains "$out" "Resume blocked:"
 }
 
+test_resume_starts_at_implementation_when_planning_gate_closed() {
+  local repo_dir="$TMP_ROOT/repo-implementation-ready-after-planning"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 0 0 0
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "Selected start phase: implementation"
+}
+
 test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_started() {
   local repo_dir="$TMP_ROOT/repo-implementation-unchecked-planning-gate"
   mkdir -p "$repo_dir"
@@ -543,10 +557,11 @@ test_resume_allows_implementation_when_ordered_plan_section_missing() {
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1" "missing_section"
-  write_impl_plan "$repo_dir" 1 1 1 0
+  write_impl_plan "$repo_dir" 1 0 0 0
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
   assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "Resume blocked:"
@@ -557,10 +572,11 @@ test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items() {
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1" "no_checklist_items"
-  write_impl_plan "$repo_dir" 1 1 1 0
+  write_impl_plan "$repo_dir" 1 0 0 0
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
   assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "Resume blocked:"
@@ -569,6 +585,7 @@ test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items() {
 test_resume_starts_at_planning
 test_resume_starts_at_planning_when_design_sections_missing
 test_resume_starts_at_planning_when_step_plan_missing
+test_resume_starts_at_implementation_when_planning_gate_closed
 test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_started
 test_partial_markers_rerun_implementation
 test_resume_starts_at_user_review
