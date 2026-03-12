@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="$(basename "$ROOT")"
 HISTORY_FILE="$ROOT/ai/history.md"
+AI_AUDIT_DISPOSITION_HELPER="$ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
 STEP=""
 BASE_BRANCH=""
@@ -27,6 +28,7 @@ Defaults:
   - --review-branch defaults to step-<step>-review.
   - --implementation-branch defaults to step-<step>-implementation.
   - --history-out defaults to ai/history.md.
+  - Hard gate before history consolidation: `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>` must pass.
   - If uncommitted review changes exist, commits them first as a review-completion guard.
   - Then writes post-review history and commits remaining uncommitted changes on the current branch.
   - Keeps one consolidated history record per step with:
@@ -34,6 +36,18 @@ Defaults:
     - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
     - New classes added (new Java type files under src/main/java only; excludes ai/docs/scripts), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
 EOF
+}
+
+enforce_ai_audit_disposition_readiness() {
+  local helper_output=""
+  if helper_output="$("$AI_AUDIT_DISPOSITION_HELPER" "$STEP" 2>&1)"; then
+    return 0
+  fi
+
+  echo "Post-review readiness failed for step $STEP." >&2
+  printf '%s\n' "$helper_output" >&2
+  echo "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review." >&2
+  exit 1
 }
 
 require_option_arg() {
@@ -689,6 +703,8 @@ if [[ -z "$STEP" ]]; then
   echo "Could not determine step." >&2
   exit 1
 fi
+
+enforce_ai_audit_disposition_readiness
 
 if [[ -z "$REVIEW_BRANCH" ]]; then
   REVIEW_BRANCH="step-$STEP-review"

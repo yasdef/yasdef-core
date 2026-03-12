@@ -6,6 +6,8 @@ AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
 PLANNING_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 IMPLEMENTATION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 AI_AUDIT_SRC="$SOURCE_ROOT/ai/scripts/ai_audit.sh"
+AI_AUDIT_DISPOSITION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+POST_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/post_review.sh"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 
 TMP_ROOT="$(mktemp -d)"
@@ -752,14 +754,17 @@ test_process_doc_defines_evidence_reasoning_summary_gate() {
   assert_contains "$content" 'For every `PROVEN` bullet, include code refs, reachability, and test evidence/mapping.'
   assert_contains "$content" 'If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis.'
   assert_contains "$content" "#### 6.1) Analyse TODOs and convert them to findings (required second gate)"
+  assert_contains "$content" "#### 6.4) AI Audit Disposition Gate (required before completion and before post_review)"
+  assert_contains "$content" 'Before emitting the ai_audit completion line, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <current_step>`.'
 }
 
 setup_ai_audit_prompt_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
 
   cp "$AI_AUDIT_SRC" "$repo_dir/ai/scripts/ai_audit.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_audit.sh"
+  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_audit.sh" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
@@ -851,6 +856,93 @@ EOF
   )
 }
 
+write_review_result_fixture() {
+  local repo_dir="$1"
+  local mode="$2"
+
+  mkdir -p "$repo_dir/ai/step_review_results"
+  case "$mode" in
+    missing_disposition)
+      cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- (none)
+EOF
+      ;;
+    insufficient_dispositions)
+      cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- Follow-up branch cleanup is undocumented.
+
+## Medium
+- (none)
+
+## Low
+- (none)
+
+## Disposition (per issue)
+- **Accepted**: Track the validation gap in a follow-up step.
+EOF
+      ;;
+    complete)
+      cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- Follow-up branch cleanup is undocumented.
+
+## Medium
+- (none)
+
+## Low
+- (none)
+
+## Disposition (per issue)
+- **Accepted**: Track the validation gap in a follow-up step.
+- **Rejected**: Cleanup note is informational and does not require action.
+EOF
+      ;;
+    *)
+      echo "Unknown review fixture mode: $mode" >&2
+      exit 1
+      ;;
+  esac
+}
+
+setup_post_review_repo() {
+  local repo_dir="$1"
+  local review_mode="$2"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" \
+    "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
+
+  cp "$POST_REVIEW_SRC" "$repo_dir/ai/scripts/post_review.sh"
+  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+EOF
+
+  write_review_result_fixture "$repo_dir" "$review_mode"
+
+  (
+    cd "$repo_dir"
+    git init -q
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+    git add .
+    git commit -qm "seed"
+    git checkout -qb step-1.1-implementation
+    git checkout -qb step-1.1-review
+  )
+}
+
 test_ai_audit_prompt_requires_entry_proof_gate() {
   local repo_dir="$TMP_ROOT/repo-ai-audit-prompt"
   setup_ai_audit_prompt_repo "$repo_dir"
@@ -862,12 +954,92 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
 
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/ai_audit_prompts/test.prompt.txt")"
-  assert_contains "$prompt" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.3, Prompt governance) and AGENTS.md as the authoritative rules for this phase.'
-  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.3.'
+  assert_contains "$prompt" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4, Prompt governance) and AGENTS.md as the authoritative rules for this phase.'
+  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.'
   assert_contains "$prompt" 'TODO YASDEF handoff instruction: during this ai_audit, find canonical markers (`TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`) and for each of them follow Section 6.1 to convert TODOs into findings.'
+  assert_contains "$prompt" 'Before ending the ai_audit phase, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1`.'
+  assert_contains "$prompt" 'If that disposition check fails, do not emit the final completion line. Follow the AI Audit Disposition Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
   assert_contains "$prompt" "== ai_audit entry proof-check target bullets (from overmind/implementation_plan.md) =="
   assert_contains "$prompt" "- Implement part A (SP=2)"
   assert_contains "$prompt" "- Implement part B (SP=1)"
+}
+
+test_ai_audit_disposition_helper_fails_when_section_missing() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-disposition-helper-missing-section"
+  setup_post_review_repo "$repo_dir" "missing_disposition"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: ai_audit disposition helper should fail when disposition section is missing" >&2
+    exit 1
+  fi
+  assert_contains "$out" "AI audit disposition readiness failed for step 1.1."
+  assert_contains "$out" "Review artifact is missing required section '## Disposition (per issue)'."
+}
+
+test_ai_audit_disposition_helper_fails_when_dispositions_are_insufficient() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-disposition-helper-insufficient"
+  setup_post_review_repo "$repo_dir" "insufficient_dispositions"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: ai_audit disposition helper should fail when per-issue dispositions are incomplete" >&2
+    exit 1
+  fi
+  assert_contains "$out" "AI audit disposition readiness failed for step 1.1."
+  assert_contains "$out" "Review artifact lists 2 issue(s) but only 1 Accepted/Rejected disposition entry(ies)."
+}
+
+test_post_review_fails_when_disposition_section_is_missing() {
+  local repo_dir="$TMP_ROOT/repo-post-review-disposition-missing-section"
+  setup_post_review_repo "$repo_dir" "missing_disposition"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: post_review should fail when ai_audit disposition section is missing" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Post-review readiness failed for step 1.1."
+  assert_contains "$out" "Review artifact is missing required section '## Disposition (per issue)'."
+  assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
+}
+
+test_post_review_fails_when_dispositions_are_insufficient() {
+  local repo_dir="$TMP_ROOT/repo-post-review-disposition-insufficient"
+  setup_post_review_repo "$repo_dir" "insufficient_dispositions"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: post_review should fail when ai_audit per-issue dispositions are incomplete" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Post-review readiness failed for step 1.1."
+  assert_contains "$out" "Review artifact lists 2 issue(s) but only 1 Accepted/Rejected disposition entry(ies)."
+  assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
 }
 
 test_process_doc_defines_review_brief_mode() {
@@ -976,6 +1148,10 @@ test_process_doc_defines_evidence_reasoning_summary_gate
 test_process_doc_defines_review_brief_mode
 test_review_brief_golden_example_exists
 test_ai_audit_prompt_requires_entry_proof_gate
+test_ai_audit_disposition_helper_fails_when_section_missing
+test_ai_audit_disposition_helper_fails_when_dispositions_are_insufficient
+test_post_review_fails_when_disposition_section_is_missing
+test_post_review_fails_when_dispositions_are_insufficient
 test_orchestrator_does_not_block_ai_audit_without_evidence
 test_orchestrator_blocks_ai_audit_when_user_review_incomplete
 test_orchestrator_post_review_requires_ai_audit_artifact

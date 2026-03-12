@@ -256,7 +256,7 @@ Entry precondition:
 - If the "Review step implementation" bullet is complete but missing actuals, do not report this as a user-facing finding/issue. Instead, append a best-effort estimated `Actuals: ...` entry immediately in this phase and continue the audit.
 - Close the "Review step implementation" bullet once the post-step audit write-up is complete and every finding has an explicit disposition recorded (**Accepted** or **Rejected**) and any accepted items are captured as follow-up work (typically as a new step/bullet in `overmind/implementation_plan.md`, or as an item in `ai/open_questions.md`/`ai/blocker_log.md` if still unclear).
 - **Commit gate**: only when there are **no accepted unresolved findings** and the user confirms completion, commit all step changes on the current step/review branch and propose the commit commands. If any accepted follow-up work remains, do **not** propose commit commands in this phase. Do not merge to `main`/`master` in this phase.
-- Completion-line gate (ai_audit phase): output the exact ai_audit completion line (`ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after post-step audit write-up is complete and every finding has an explicit disposition (**Accepted** or **Rejected**) with accepted items captured as follow-up work.
+- Completion-line gate (ai_audit phase): output the exact ai_audit completion line (`ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after post-step audit write-up is complete, every finding has an explicit disposition (**Accepted** or **Rejected**) with accepted items captured as follow-up work, and the AI Audit Disposition Gate (Section 6.4) passes.
 
 #### 6.3) Per-finding issue disposition workflow
 - Run this subsection separately for each finding identified in Section 6.2.
@@ -269,6 +269,19 @@ Entry precondition:
      - Otherwise, add it as a new later step (e.g., `1.6` → `1.12`) if it’s larger or should be scheduled separately.
      - If the “what to do” is still unclear, add it as an item in `ai/open_questions.md` for an already-created step (so it is reviewed during that step’s planning bullet).
 4. Return to Section 6.2 and continue the audit. Repeat Section 6.3 for the next finding until all findings have explicit disposition.
+
+#### 6.4) AI Audit Disposition Gate (required before completion and before post_review)
+- Before emitting the ai_audit completion line, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <current_step>`.
+- The helper is the canonical validation for review disposition completeness:
+  - `ai/step_review_results/review_result-<current_step>.md` must exist.
+  - `## Disposition (per issue)` must exist.
+  - Count issues only from `## Critical`, `## High`, `## Medium`, and `## Low`, excluding `- (none)`.
+  - There must be at least one `- **Accepted**:` or `- **Rejected**:` entry for each counted issue.
+- If the helper fails:
+  - Do not output the ai_audit completion line.
+  - Return to `review_result-<current_step>.md`, finish the missing per-issue dispositions, and rerun the helper.
+- `post_review` must run the same helper before history consolidation or other post-review output updates.
+- If the helper fails in `post_review`, stop immediately, report that ai_audit dispositions are incomplete, and rerun post_review only after the review artifact passes the helper.
 
 ## Estimation Gates (required)
 - **Scale**: use SP values `{1, 2, 3, 5, 8}`. Keep estimates rough.

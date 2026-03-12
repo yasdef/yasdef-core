@@ -1877,29 +1877,7 @@ evaluate_ai_audit_phase() {
     return 0
   fi
 
-  if ! grep -Eq '^##[[:space:]]+Disposition \(per issue\)' "$review_file"; then
-    phase_eval_set "ai_audit" "invalid" "missing '## Disposition (per issue)' section"
-    return 0
-  fi
-
-  local issues_count dispositions_count
-  issues_count="$(awk '
-    BEGIN { in_issue=0; c=0 }
-    /^## (Critical|High|Medium|Low)[[:space:]]*$/ { in_issue=1; next }
-    /^## / { in_issue=0; next }
-    in_issue && /^- / {
-      if ($0 !~ /^- \(none\)/) c++
-    }
-    END { print c+0 }
-  ' "$review_file")"
-  dispositions_count="$(grep -Ec '^\s*-\s+\*\*(Accepted|Rejected)\*\*:' "$review_file" || true)"
-
-  if [[ "$issues_count" -gt 0 && "$dispositions_count" -lt "$issues_count" ]]; then
-    phase_eval_set "ai_audit" "invalid" "review dispositions incomplete ($dispositions_count/$issues_count)"
-    return 0
-  fi
-
-  phase_eval_set "ai_audit" "complete" "review artifact present with required disposition gate"
+  phase_eval_set "ai_audit" "complete" "review artifact present (disposition semantics enforced by ai_audit/post_review helper)"
 }
 
 evaluate_post_review_phase() {

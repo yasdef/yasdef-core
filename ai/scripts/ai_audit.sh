@@ -8,6 +8,7 @@ BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
 REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
+AI_AUDIT_DISPOSITION_HELPER="$ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
 STEP=""
 OUT=""
@@ -549,8 +550,8 @@ fi
 
 emit() {
   printf 'ai_audit phase for Step %s bullet: %s\n' "$STEP" "$BULLET"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.3, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
-  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.3.\n'
+  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4, Prompt governance) and AGENTS.md as the authoritative rules for this phase.\n'
+  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.\n'
   printf 'TODO YASDEF handoff instruction: during this ai_audit, find canonical markers (`TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`) and for each of them follow Section 6.1 to convert TODOs into findings.\n'
   printf 'Execution pattern: run Section 6.1 first (TODO-to-finding conversion), then run Section 6.2 as the main audit flow; for each finding, execute Section 6.3, then return to Section 6.2 and continue until all findings are dispositioned.\n'
   printf 'Use step plan + feature design as primary execution context.\n'
@@ -558,8 +559,10 @@ emit() {
   printf 'Feature design artifact: %s\n' "$DESIGN_FILE"
   printf 'Use these artifacts together with the context pack below.\n'
   printf 'Commit gate (required): before the completion line, run `git status --short`; if not clean, commit all review-branch changes (`git add -A && git commit -m "Step %s review completion"`), then verify `git status --short` is empty.\n' "$STEP"
+  printf 'Before ending the ai_audit phase, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh %s`.\n' "$STEP"
+  printf 'If that disposition check fails, do not emit the final completion line. Follow the AI Audit Disposition Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.\n'
   printf 'Extended completion-line gate: output the ai_audit completion line only after the commit gate is satisfied (clean working tree).\n'
-  printf 'When ai_audit phase is fully complete, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
+  printf 'Only after the commit gate and disposition gate are satisfied, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'
   printf '== repo snapshot ==\n'
@@ -613,7 +616,7 @@ emit() {
   printf '%s\n\n' "$DESIGN_ADR_SECTION"
   printf '== Design decisions to confirm ==\n'
   printf '%s\n\n' "$DESIGN_DECISIONS_SECTION"
-  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.3) ==\n'
+  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4) ==\n'
   printf '%s\n\n' "$POST_STEP_AUDIT_SECTION"
   if [[ -f "$ROOT/ai/templates/audit_result_TEMPLATE.md" ]]; then
     printf '== ai/templates/audit_result_TEMPLATE.md ==\n'

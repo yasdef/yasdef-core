@@ -227,6 +227,66 @@ Est. step total: 5 SP
 EOF
 }
 
+write_review_result() {
+  local repo_dir="$1"
+  local step="$2"
+  local mode="$3"
+
+  mkdir -p "$repo_dir/ai/step_review_results"
+  case "$mode" in
+    missing_disposition)
+      cat >"$repo_dir/ai/step_review_results/review_result-$step.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- (none)
+EOF
+      ;;
+    insufficient_dispositions)
+      cat >"$repo_dir/ai/step_review_results/review_result-$step.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- Cleanup path is not documented.
+
+## Medium
+- (none)
+
+## Low
+- (none)
+
+## Disposition (per issue)
+- **Accepted**: Track the validation gap in follow-up work.
+EOF
+      ;;
+    complete)
+      cat >"$repo_dir/ai/step_review_results/review_result-$step.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- Cleanup path is not documented.
+
+## Medium
+- (none)
+
+## Low
+- (none)
+
+## Disposition (per issue)
+- **Accepted**: Track the validation gap in follow-up work.
+- **Rejected**: Cleanup note is informational and does not require action.
+EOF
+      ;;
+    *)
+      echo "Unknown review result mode: $mode" >&2
+      exit 1
+      ;;
+  esac
+}
+
 test_resume_starts_at_planning() {
   local repo_dir="$TMP_ROOT/repo-planning"
   mkdir -p "$repo_dir"
@@ -357,6 +417,42 @@ test_resume_starts_at_ai_audit_with_prefixed_gates() {
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
 
+test_resume_starts_at_post_review_when_disposition_section_is_missing() {
+  local repo_dir="$TMP_ROOT/repo-post-review-missing-disposition-section"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+  create_user_review_branch_marker "$repo_dir" "1.1"
+  write_review_result "$repo_dir" "1.1" "missing_disposition"
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "ai_audit: complete (review artifact present (disposition semantics enforced by ai_audit/post_review helper))"
+  assert_contains "$out" "post_review: incomplete (review gate 'Review step implementation' is not [x])"
+  assert_contains "$out" "Selected start phase: post_review"
+  assert_contains "$out" "Executed phases: post_review"
+  assert_not_contains "$out" "missing '## Disposition (per issue)' section"
+}
+
+test_resume_starts_at_post_review_when_disposition_count_is_insufficient() {
+  local repo_dir="$TMP_ROOT/repo-post-review-insufficient-dispositions"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+  create_user_review_branch_marker "$repo_dir" "1.1"
+  write_review_result "$repo_dir" "1.1" "insufficient_dispositions"
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "ai_audit: complete (review artifact present (disposition semantics enforced by ai_audit/post_review helper))"
+  assert_contains "$out" "post_review: incomplete (review gate 'Review step implementation' is not [x])"
+  assert_contains "$out" "Selected start phase: post_review"
+  assert_contains "$out" "Executed phases: post_review"
+  assert_not_contains "$out" "review dispositions incomplete"
+}
+
 test_cli_validation() {
   local repo_dir="$TMP_ROOT/repo-cli-validation"
   mkdir -p "$repo_dir"
@@ -478,6 +574,8 @@ test_partial_markers_rerun_implementation
 test_resume_starts_at_user_review
 test_resume_starts_at_ai_audit_after_user_review_complete
 test_resume_starts_at_ai_audit_with_prefixed_gates
+test_resume_starts_at_post_review_when_disposition_section_is_missing
+test_resume_starts_at_post_review_when_disposition_count_is_insufficient
 test_resume_does_not_require_evidence_before_ai_audit
 test_resume_allows_implementation_when_ordered_plan_section_missing
 test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items
