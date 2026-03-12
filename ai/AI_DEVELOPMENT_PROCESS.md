@@ -230,10 +230,8 @@ Entry precondition:
 - If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis. Continue 6.1-6.3 only after the entry proof-check passes.
 
 #### 6.1) Analyse TODOs and convert them to findings (required second gate)
-- After Section 6.0 passes, scan the in-scope changed files for canonical markers: `TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`.
-- Convert every valid canonical marker into an explicit audit finding before continuing to deeper review.
-- Do not leave canonical TODO markers as informal notes; they must become tracked findings with blocker ID and source reference.
-- Non-canonical TODO-like markers are not auto-accepted; if relevant, rewrite them as explicit findings with clear rationale.
+- After Section 6.0 passes, scan the in-scope changed files for TODO markers: `//TODO <reason>`.
+- Convert every valid TODO marker into an explicit audit finding before continuing to deeper review.
 - All TODO-derived findings are then processed via Sections 6.2 and 6.3 like any other finding.
 
 #### 6.2) Audit review and findings
