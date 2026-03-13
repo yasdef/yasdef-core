@@ -776,6 +776,8 @@ test_process_doc_defines_evidence_reasoning_summary_gate() {
   assert_contains "$content" "#### 6.1) Analyse TODOs and convert them to findings (required second gate)"
   assert_contains "$content" "#### 6.4) AI Audit Disposition Gate (required before completion and before post_review)"
   assert_contains "$content" 'Before emitting the ai_audit completion line, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <current_step>`.'
+  assert_contains "$content" 'Treat Section 6 as a closure loop, not a single pass: after every user decision and every artifact update, re-check the ai_audit completion gates and keep iterating until they pass.'
+  assert_contains "$content" 'All bullets in the current step section of `overmind/implementation_plan.md` must be checklist bullets and marked `[x]` (including `Review step implementation`).'
 }
 
 setup_ai_audit_prompt_repo() {
@@ -942,6 +944,8 @@ EOF
 setup_post_review_repo() {
   local repo_dir="$1"
   local review_mode="$2"
+  local review_checked="${3:-1}"
+  local impl_checked="${4:-1}"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" \
     "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
 
@@ -949,8 +953,21 @@ setup_post_review_repo() {
   cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
   chmod +x "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
+  local review_box=" "
+  [[ "$review_checked" == "1" ]] && review_box="x"
+  local impl_box=" "
+  [[ "$impl_checked" == "1" ]] && impl_box="x"
+
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
+EOF
+
+  cat >"$repo_dir/overmind/implementation_plan.md" <<EOF
+### Step 1.1 Demo
+Est. step total: 5 SP
+- [x] Plan and discuss the step (SP=1)
+- [$impl_box] Implement part A (SP=2)
+- [$review_box] Review step implementation (SP=1)
 EOF
 
   write_review_result_fixture "$repo_dir" "$review_mode"
@@ -994,10 +1011,11 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   assert_contains "$prompt" '- Open questions: '
   assert_contains "$prompt" '- Decisions: '
   assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.'
-  assert_contains "$prompt" 'Before ending the ai_audit phase, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1`.'
-  assert_contains "$prompt" 'If that disposition check fails, do not emit the final completion line. Follow the AI Audit Disposition Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
-  assert_contains "$prompt" 'Extended completion-line gate: output the ai_audit completion line only after the commit gate is satisfied (clean working tree).'
-  assert_contains "$prompt" 'Only after the commit gate and disposition gate are satisfied, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  assert_contains "$prompt" 'Audit-loop rule: after each disposition or plan update, continue Sections 6.2-6.4 until every ai_audit gate passes; do not stop early because the user approved a follow-up bullet change.'
+  assert_contains "$prompt" 'Before ending the ai_audit phase, ensure all bullets in the current step section of `overmind/implementation_plan.md` are checklist bullets and marked `[x]`, then run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1`.'
+  assert_contains "$prompt" 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `overmind/implementation_plan.md`, then rerun the helper.'
+  assert_contains "$prompt" 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `overmind/implementation_plan.md`, the readiness helper passes, and the commit gate is satisfied (clean working tree).'
+  assert_contains "$prompt" 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
   assert_contains "$prompt" "== Target bullets (from overmind/implementation_plan.md) =="
   assert_contains "$prompt" "- Implement part A (SP=2)"
   assert_contains "$prompt" "- Implement part B (SP=1)"
@@ -1058,6 +1076,46 @@ test_ai_audit_disposition_helper_fails_when_dispositions_are_insufficient() {
   assert_contains "$out" "Review artifact lists 2 issue(s) but only 1 Accepted/Rejected disposition entry(ies)."
 }
 
+test_ai_audit_disposition_helper_fails_when_review_gate_is_open() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-disposition-helper-review-open"
+  setup_post_review_repo "$repo_dir" "complete" 0
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: ai_audit disposition helper should fail when the implementation-plan review gate is still open" >&2
+    exit 1
+  fi
+  assert_contains "$out" "AI audit disposition readiness failed for step 1.1."
+  assert_contains "$out" "Current step review gate in overmind/implementation_plan.md is not [x]."
+  assert_contains "$out" "Mark 'Review step implementation' complete before handing off ai_audit."
+}
+
+test_ai_audit_disposition_helper_fails_when_non_review_bullet_is_open() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-disposition-helper-non-review-open"
+  setup_post_review_repo "$repo_dir" "complete" 1 0
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: ai_audit disposition helper should fail when a non-review current-step checklist bullet is unchecked" >&2
+    exit 1
+  fi
+  assert_contains "$out" "AI audit disposition readiness failed for step 1.1."
+  assert_contains "$out" "Current step has 1 unchecked checklist bullet(s) in overmind/implementation_plan.md."
+  assert_contains "$out" "Mark all current-step checklist bullets [x] before handing off ai_audit."
+}
+
 test_post_review_fails_when_disposition_section_is_missing() {
   local repo_dir="$TMP_ROOT/repo-post-review-disposition-missing-section"
   setup_post_review_repo "$repo_dir" "missing_disposition"
@@ -1095,6 +1153,46 @@ test_post_review_fails_when_dispositions_are_insufficient() {
   fi
   assert_contains "$out" "Post-review readiness failed for step 1.1."
   assert_contains "$out" "Review artifact lists 2 issue(s) but only 1 Accepted/Rejected disposition entry(ies)."
+  assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
+}
+
+test_post_review_fails_when_review_gate_is_open() {
+  local repo_dir="$TMP_ROOT/repo-post-review-review-gate-open"
+  setup_post_review_repo "$repo_dir" "complete" 0
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: post_review should fail while the implementation-plan review gate is still open" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Post-review readiness failed for step 1.1."
+  assert_contains "$out" "Current step review gate in overmind/implementation_plan.md is not [x]."
+  assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
+}
+
+test_post_review_fails_when_non_review_bullet_is_open() {
+  local repo_dir="$TMP_ROOT/repo-post-review-non-review-open"
+  setup_post_review_repo "$repo_dir" "complete" 1 0
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: post_review should fail while any current-step checklist bullet is still open" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Post-review readiness failed for step 1.1."
+  assert_contains "$out" "Current step has 1 unchecked checklist bullet(s) in overmind/implementation_plan.md."
   assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
 }
 
@@ -1227,8 +1325,12 @@ test_review_brief_golden_example_exists
 test_ai_audit_prompt_requires_entry_proof_gate
 test_ai_audit_disposition_helper_fails_when_section_missing
 test_ai_audit_disposition_helper_fails_when_dispositions_are_insufficient
+test_ai_audit_disposition_helper_fails_when_review_gate_is_open
+test_ai_audit_disposition_helper_fails_when_non_review_bullet_is_open
 test_post_review_fails_when_disposition_section_is_missing
 test_post_review_fails_when_dispositions_are_insufficient
+test_post_review_fails_when_review_gate_is_open
+test_post_review_fails_when_non_review_bullet_is_open
 test_post_review_allows_non_executable_disposition_helper
 test_orchestrator_does_not_block_ai_audit_without_evidence
 test_orchestrator_blocks_ai_audit_when_user_review_incomplete
