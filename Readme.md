@@ -14,10 +14,6 @@ This approach can be expressed in a few sentences:
 
 ## Ouick start
 
-### Quick start - coordinator
-
-### Quick start - worker
-
 0. Read this carefully:
 - ⚠️ This is pre-alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project!
 - ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that.
@@ -28,14 +24,22 @@ This approach can be expressed in a few sentences:
 2. Make the bash scripts in `ai/scripts` executable:
   `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_user_review.sh ai/scripts/ai_audit.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh ai/scripts/init_worker.sh`
 
-3. You need to provide `overmind/implementation_plan.md` in the required format.
+3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
 
-4. If you run Worker standalone without Coordinator and don't have `overmind/implementation_plan.md`, ask your model to generate it based on your requirements. You can find prompts in the "Helpers" block below.
+4. Run `/overmind/bootstrap_overmind.sh` from main branch it'll create overmind branch and list of workers. If coordinator `overmind` is unavailable, the worker scripts will fail fast with: `no orchestrator detected, unable to proceed`
 
-5. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
-  Script tests are canonical under `tests/ai_scripts/` (not under `ai/`).
+5. Run `ai/init_worker.sh` to register your worker in list of workers, you'll see the changes in `overmind` branch and unique id file in `/ai` folder in `main` branch
 
-6. Run the orchestrator:
+6. You need to provide `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` in `overmind` branch with the required format (you can have it in maser but it wont be used by ai, because all worker jobs started from `overmind` branch). If you don't have `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`, ask your model to generate it based on your requirements. You can find prompts in the "Helpers" block below.
+
+7. In `overmind/implementation_plan.md`, only steps with your unique id, which you get in p.5 will be available for you. You can add them manually with `#### Assigned:`. You can assign to you worker any number of steps. Examile of `implementation_plan.md` with assigned step:
+```
+### Step 1.9 Some cool feature here
+#### Assigned: 7d88ab4d-be02-4bb2-9c92-d8c8d0c8591a
+/some plan bullets/
+```
+
+8. Run the orchestrator:
   `bash ai/scripts/orchestrator.sh` and follow the instructions.
   Use debug mode to keep per-step artifacts:
   `bash ai/scripts/orchestrator.sh --debug --phase design -- --step 1.3`
@@ -46,17 +50,6 @@ This approach can be expressed in a few sentences:
 
 7. OPTIONAL — allow your AI CLI to work with git (except merge to `main`/`master`) to avoid repeated permission prompts.
   `bash ai/scripts/orchestrator.sh --dry-run`
-
-8. OPTIONAL — bootstrap local Overmind coordination branch + registry scaffold.
-  `bash overmind/bootstrap_overmind.sh`
-
-9. OPTIONAL — initialize worker registration against coordinator `overmind`.
-  `bash ai/scripts/init_worker.sh`
-  Successful run behavior:
-  - `overmind/worker_registry.yaml` is updated/committed/pushed on branch `overmind` (shared coordination state).
-  - `ai/<uuid>_dont_touch.txt` is persisted/committed on local `master` (worker-local identity).
-  If coordinator `overmind` is unavailable, the script fails fast with:
-  `no orchestrator detected, unable to proceed`
 
 
 ## Why we need yet another SDD framework?
