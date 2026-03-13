@@ -197,13 +197,24 @@ V-0.0.5
 - CRP-036 — Orchestrator Resume Based on Ordered Plan State
 - CRP-039 — Planning Gate: Step Plan Must Declare Applicable UR Shortlist (improve how ai works with previous user review items)
 
-V-0.1.0 (current)
+V-0.1.0
+
 - first wave (worker POC) features implemented
 - reduce token consumption about 25-30%
 - CRP-037 — Implementation Prompt Slimming (Rule De-dup)
 - CRP-038 — Deterministic Concise Implementation Prompt From Step Plan + Design
 - CRP-041 — UR Hygiene: Enforce Template Schema + De-dup on Update
 - CRP-042 — Optional Feature-Rich Design/Planning Mode
+
+V-0.1.1 (current)
+- CRP-044 — Worker Init Script for Overmind Registration (worker now can register in orchestrator with unique id)
+- CRP-045 — Split Worker Identity Persistence (`master`) From Registry Coordination (`overmind`)
+- CRP-046 — UUID-Scoped Step Selection From `overmind` Git Branch
+- CRP-047 — Phase Denial Must Stop Downstream Prompts (improve phase stop/resume logic)
+- CRP-048 — ai_audit TODO Marker Processing Into Findings (now you can add TODO and they will be converted to folowing tasks by AI)
+- CRP-050 — Remove Target Bullets From Step Plans (now plan, implementation and user_review steps operates with internat complex plan and set od FRs, design and ai_audit phases translate EARS and high-level plan to and from this inter-step plan/FRs)
+- CRP-051 — In-Phase Readiness Gates (significanly improved betwen-phases sanity check logic, extract logic from orchestrator to hooks, 2-times check when finish one phase and when start following one)
+
 
 2. known problems/to-do's:
 - only codex cli supported
