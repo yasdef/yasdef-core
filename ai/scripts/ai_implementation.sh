@@ -5,8 +5,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="$(basename "$ROOT")"
 PLAN="$ROOT/overmind/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
-REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
+PLANNING_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_planning_readiness.sh"
+IMPLEMENTATION_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 
 STEP=""
 OUT=""
@@ -197,69 +198,19 @@ get_step_plan_section() {
   get_markdown_section_body "$STEP_PLAN" "$heading"
 }
 
-extract_tagged_requirements_from_step_plan() {
-  grep -oE '\[(REQ|NFR)-[0-9]+(\.[0-9]+)?\]' "$STEP_PLAN" \
-    | tr -d '[]' \
-    | awk '!seen[$0]++' || true
-}
-
-extract_req_section() {
-  local id="$1"
-  awk -v id="$id" '
-    BEGIN { id_re = id; gsub(/\./, "\\.", id_re) }
-    $0 ~ "^### Requirement "id_re"([^0-9.]|$)" { in_section=1 }
-    in_section && /^### / && $0 !~ "^### Requirement "id_re"([^0-9.]|$)" { exit }
-    in_section { print }
-  ' "$REQUIREMENTS"
-}
-
-extract_nfr_section() {
-  local id="$1"
-  awk -v id="$id" '
-    BEGIN { id_re = id; gsub(/\./, "\\.", id_re) }
-    $0 ~ "^### NFR "id_re"([^0-9.]|$)" { in_section=1 }
-    in_section && /^### / && $0 !~ "^### NFR "id_re"([^0-9.]|$)" { exit }
-    in_section { print }
-  ' "$REQUIREMENTS"
-}
-
-get_requirements_section_by_tags() {
-  local tags="$1"
-  if [[ -z "$tags" ]]; then
-    echo "No [REQ-x] or [NFR-x] tags found in step plan."
+get_step_plan_functional_requirements_section() {
+  local section
+  section="$(get_step_plan_section "## Functional Requirements (translated from design EARS)")"
+  if [[ -n "${section//[[:space:]]/}" ]]; then
+    printf '%s' "$section"
     return 0
   fi
-
-  local output=""
-  local tag type id section fallback_id
-  while IFS= read -r tag; do
-    [[ -z "$tag" ]] && continue
-    type="${tag%%-*}"
-    id="${tag#*-}"
-    section=""
-
-    if [[ "$type" == "REQ" ]]; then
-      section="$(extract_req_section "$id")"
-      if [[ -z "$section" && "$id" == *.* ]]; then
-        fallback_id="${id%%.*}"
-        section="$(extract_req_section "$fallback_id")"
-      fi
-    else
-      section="$(extract_nfr_section "$id")"
-      if [[ -z "$section" && "$id" == *.* ]]; then
-        fallback_id="${id%%.*}"
-        section="$(extract_nfr_section "$fallback_id")"
-      fi
-    fi
-
-    if [[ -n "$section" ]]; then
-      output+="$section"$'\n\n'
-    else
-      output+="${type}-${id} not found in overmind/reqirements_ears.md"$'\n\n'
-    fi
-  done <<<"$tags"
-
-  printf '%s' "$output"
+  section="$(get_step_plan_section "## Functional Requirements")"
+  if [[ -n "${section//[[:space:]]/}" ]]; then
+    printf '%s' "$section"
+    return 0
+  fi
+  return 1
 }
 
 extract_accepted_decisions() {
@@ -485,12 +436,6 @@ if [[ -z "$OUT" ]]; then
   OUT="$ROOT/ai/prompts/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"
 fi
 
-if [[ ! -f "$STEP_PLAN" ]]; then
-  echo "Step plan not found at $STEP_PLAN." >&2
-  echo "Run ai/scripts/ai_plan.sh --step $STEP --out $STEP_PLAN first." >&2
-  exit 1
-fi
-
 if [[ ! -f "$DESIGN_FILE" ]]; then
   echo "Feature design not found at $DESIGN_FILE." >&2
   echo "Run ai/scripts/ai_design.sh --step $STEP first." >&2
@@ -499,6 +444,28 @@ fi
 
 if [[ "$SKIP_BRANCH" -eq 0 ]]; then
   ensure_implementation_branch
+fi
+
+if [[ ! -r "$PLANNING_READINESS_HELPER" ]]; then
+  echo "Planning readiness helper not found or not readable: $PLANNING_READINESS_HELPER" >&2
+  exit 1
+fi
+
+PLANNING_READINESS_STATUS=0
+PLANNING_READINESS_OUTPUT=""
+set +e
+PLANNING_READINESS_OUTPUT="$(bash "$PLANNING_READINESS_HELPER" "$STEP" 2>&1)"
+PLANNING_READINESS_STATUS=$?
+set -e
+
+if [[ "$PLANNING_READINESS_STATUS" -ne 0 ]]; then
+  printf '%s\n' "$PLANNING_READINESS_OUTPUT" >&2
+  exit "$PLANNING_READINESS_STATUS"
+fi
+
+if [[ ! -r "$IMPLEMENTATION_READINESS_HELPER" ]]; then
+  echo "Implementation readiness helper not found or not readable: $IMPLEMENTATION_READINESS_HELPER" >&2
+  exit 1
 fi
 
 STEP_PLAN_ORDERED_PLAN_SECTION_RAW="$(get_step_plan_section "## Plan (ordered)")"
@@ -610,10 +577,9 @@ if [[ -z "$DESIGN_UR_RULES_SECTION" ]]; then
   DESIGN_UR_RULES_SECTION="- None."
 fi
 
-STEP_PLAN_TAGS="$(extract_tagged_requirements_from_step_plan)"
-REQ_SECTION="$(get_requirements_section_by_tags "$STEP_PLAN_TAGS")"
-if [[ -z "$REQ_SECTION" ]]; then
-  REQ_SECTION="No matching requirement sections found."
+STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION="$(get_step_plan_functional_requirements_section || true)"
+if [[ -z "$STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION" ]]; then
+  STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION="- (missing in step plan; add translated functional requirements before implementation closure)"
 fi
 
 ANTI_REGRESSION_CHECKLIST="$(build_anti_regression_checklist "$STEP_PLAN_UR_SHORTLIST_SECTION" "$DESIGN_UR_RULES_SECTION")"
@@ -625,11 +591,16 @@ emit() {
   printf '%s\n' '- Authoritative rules: ai/AI_DEVELOPMENT_PROCESS.md (Sections 3-4, verification gates, Definition of Done, prompt governance).'
   printf '%s\n' '- Artifact precedence: step plan (`ai/step_plans/step-<N>.md`) is primary execution source; feature design (`ai/step_designs/step-<N>-design.md`) supplies scope/design constraints.'
   printf '%s\n' '- Execution state machine: step plan `## Plan (ordered)` only; preserve order and checkbox semantics.'
+  printf '%s\n' '- Execution requirements: implement against step-plan `## Functional Requirements (translated from design EARS)` and keep requirement-to-plan linkage intact.'
   printf '%s\n' '- Update `ai/step_plans/step-<N>.md` checklist state during implementation: mark each ordered bullet `[x]` only when that bullet is proven complete.'
+  printf '%s\n' '- Update `ai/step_plans/step-<N>.md` functional requirement checklist: mark each FR line `[x]` only when implemented and verified; keep `[ ]` otherwise.'
   printf '%s\n' '- Verification strategy: targeted checks as needed per bullet; run full AGENTS.md verification once after all ordered bullets are `[x]`, before Section 5/User Review.'
+  printf '%s\n' '- Section 4 gate requirement: before Section 5, all translated functional requirement checklist lines must be `[x]` with supporting evidence/tests.'
   printf '%s\n' '- Completion protocol: report progress against ordered bullets only; do not use `overmind/implementation_plan.md` target bullets as implementation-phase gating.'
+  printf '%s\n' "- Before ending the implementation phase, run \`ai/scripts/helpers/check_implementation_readiness.sh $STEP\`."
+  printf '%s\n' '- If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
   printf '%s\n' '- The `implementation_plan.md` target-bullet proof-check runs first in ai_audit entry gate.'
-  printf '%s\n' '- End final response with: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  printf '%s\n' '- Only after the Implementation Readiness Gate is satisfied, end your final response with: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
   printf '\n'
 
   printf 'Anti-regression checklist (max 8)\n'
@@ -640,6 +611,8 @@ emit() {
   printf '%s\n\n' "$STEP_PLAN_ORDERED_PLAN_SECTION"
 
   printf 'Step-plan execution context\n'
+  printf '## Functional Requirements (translated from design EARS)\n'
+  printf '%s\n\n' "$STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION"
   printf '## Applicable UR Shortlist\n'
   printf '%s\n\n' "$STEP_PLAN_UR_SHORTLIST_SECTION"
   printf '## Implementation Notes / Constraints\n'
@@ -676,18 +649,6 @@ emit() {
   printf 'Codebase entrypoints (design references)\n'
   printf '## References in Current Codebase\n'
   printf '%s\n\n' "$DESIGN_REFERENCES_SECTION"
-
-  printf 'Linked requirements (overmind/reqirements_ears.md excerpts for step tags)\n'
-  printf 'Requirement tags collected from step plan:\n'
-  if [[ -n "$STEP_PLAN_TAGS" ]]; then
-    while IFS= read -r tag; do
-      [[ -n "$tag" ]] && printf -- '- %s\n' "$tag"
-    done <<<"$STEP_PLAN_TAGS"
-  else
-    printf -- '- (none)\n'
-  fi
-  printf '\n'
-  printf '%s\n' "$REQ_SECTION"
 
   printf 'Process pointers\n'
   printf -- '- Process rules: %s\n' "$PROCESS"

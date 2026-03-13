@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_DESIGN_SRC="$SOURCE_ROOT/ai/scripts/ai_design.sh"
+HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_design_readiness.sh"
 PROCESS_SRC="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 TEMPLATE_SRC="$SOURCE_ROOT/ai/templates/feature_design_TEMPLATE.md"
 
@@ -31,14 +32,41 @@ assert_not_contains() {
   fi
 }
 
+assert_not_equal() {
+  local a="$1"
+  local b="$2"
+  if [[ "$a" == "$b" ]]; then
+    echo "Assertion failed: values must differ" >&2
+    exit 1
+  fi
+}
+
+assert_order() {
+  local haystack="$1"
+  local first="$2"
+  local second="$3"
+  local first_line second_line
+  first_line="$(printf '%s\n' "$haystack" | nl -ba | grep -F "$first" | head -n 1 | awk '{print $1}')"
+  second_line="$(printf '%s\n' "$haystack" | nl -ba | grep -F "$second" | head -n 1 | awk '{print $1}')"
+  if [[ -z "$first_line" || -z "$second_line" || "$first_line" -ge "$second_line" ]]; then
+    echo "Assertion failed: expected first marker before second marker" >&2
+    echo "First: $first" >&2
+    echo "Second: $second" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 setup_repo() {
   local repo_dir="$1"
 
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/templates" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/templates" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
   cp "$AI_DESIGN_SRC" "$repo_dir/ai/scripts/ai_design.sh"
+  cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_design_readiness.sh"
   cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
   cp "$TEMPLATE_SRC" "$repo_dir/ai/templates/feature_design_TEMPLATE.md"
-  chmod +x "$repo_dir/ai/scripts/ai_design.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/helpers/check_design_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
@@ -118,7 +146,54 @@ test_overmind_paths_are_used() {
   assert_contains "$out" "### Requirement 1 Demo"
 }
 
+test_design_prompt_includes_readiness_contract() {
+  local repo_dir="$TMP_ROOT/repo-design-readiness-contract"
+  setup_repo "$repo_dir"
+
+  local out
+  out="$(run_design "$repo_dir")"
+  assert_contains "$out" 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh ai/step_designs/step-1.1-design.md`.'
+  assert_contains "$out" 'If the readiness check fails, do not emit the final completion line yet.'
+  assert_contains "$out" 'ask exactly two options: `1.` continue iterating and re-check, `2.` force the design phase done and proceed.'
+  assert_contains "$out" 'If option `2` is chosen, record that forced-done outcome in the design artifact before using the completion line.'
+  assert_order "$out" 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh ai/step_designs/step-1.1-design.md`.' 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+}
+
+test_design_readiness_helper_exit_codes() {
+  local repo_dir="$TMP_ROOT/repo-design-readiness-helper"
+  setup_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_designs/ready.md" <<'EOF'
+## Goal
+- Ready.
+## In Scope
+- Ready.
+## Out of Scope
+- Ready.
+EOF
+
+  local ready_out
+  ready_out="$(cd "$repo_dir" && ai/scripts/helpers/check_design_readiness.sh ai/step_designs/ready.md)"
+  assert_contains "$ready_out" "Design readiness check passed: ai/step_designs/ready.md"
+
+  cat >"$repo_dir/ai/step_designs/not-ready.md" <<'EOF'
+## Goal
+- Missing scope sections.
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_design_readiness.sh ai/step_designs/not-ready.md 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "Design readiness failed: missing required sections: In Scope Out of Scope"
+}
+
 test_feature_rich_mode_block_is_opt_in
 test_overmind_paths_are_used
+test_design_prompt_includes_readiness_contract
+test_design_readiness_helper_exit_codes
 
 echo "All ai_design feature-rich mode tests passed."

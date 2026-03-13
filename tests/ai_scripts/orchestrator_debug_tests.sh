@@ -107,10 +107,15 @@ EOF
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 - 1. demo
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL execute demo behavior.
+- Plan Links: 1
+- Verification: demo
+- Status: done
 EOF
 }
 

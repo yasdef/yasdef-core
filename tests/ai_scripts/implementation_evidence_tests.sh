@@ -3,7 +3,11 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
+PLANNING_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
+IMPLEMENTATION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 AI_AUDIT_SRC="$SOURCE_ROOT/ai/scripts/ai_audit.sh"
+AI_AUDIT_DISPOSITION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+POST_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/post_review.sh"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 
 TMP_ROOT="$(mktemp -d)"
@@ -25,6 +29,17 @@ assert_not_contains() {
   local needle="$2"
   if [[ "$haystack" == *"$needle"* ]]; then
     echo "Assertion failed: expected output to not contain: $needle" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
+assert_not_heading() {
+  local haystack="$1"
+  local heading="$2"
+  if printf '%s\n' "$haystack" | grep -Eq "^##[[:space:]]+${heading}([[:space:]]|$)"; then
+    echo "Assertion failed: expected output to not contain heading: ## $heading" >&2
     echo "Actual output:" >&2
     echo "$haystack" >&2
     exit 1
@@ -53,10 +68,14 @@ assert_line_before() {
 setup_impl_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/templates" "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
+    "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/templates" "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
 
   cp "$AI_IMPL_SRC" "$repo_dir/ai/scripts/ai_implementation.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh"
+  cp "$PLANNING_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" \
+    "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh" \
+    "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
@@ -69,11 +88,21 @@ EOF
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- [ ] Implement part A [REQ-1] [NFR-2]
-- [ ] Implement part B [REQ-1]
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A behavior.
+- Plan Links: 1
+- Verification: Add/update tests.
+- Status: pending
+### FR-1.1-02
+- Source EARS Block: NFR-2
+- Requirement: The system SHALL enforce non-functional constraint for part B path.
+- Plan Links: 2
+- Verification: Add/update tests.
+- Status: done
 ## Applicable UR Shortlist
 - UR-0100 - Validate JWT auth boundary handling.
 - UR-0101 - Keep endpoint contract assertions stable.
@@ -210,17 +239,22 @@ EOF
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 Est. step total: 5 SP
-- [x] Plan and discuss the step (SP=1)
-- [x] Implement part A (SP=2)
-- [x] Implement part B (SP=1)
+- [x] Plan and discuss the step (SP=1) [REQ-1]
+- [x] Implement part A (SP=2) [REQ-1]
+- [x] Implement part B (SP=1) [REQ-1]
 - [ ] Review step implementation (SP=1)
 EOF
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 - 1. demo
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL support demo behavior.
+- Plan Links: 1
+- Verification: demo
+- Status: done
 EOF
   cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
@@ -260,20 +294,101 @@ test_ai_implementation_prompt_has_deterministic_structure() {
   assert_contains "$prompt" "Scope contract (design)"
   assert_contains "$prompt" "Key design details (excerpt)"
   assert_contains "$prompt" "Codebase entrypoints (design references)"
-  assert_contains "$prompt" "Linked requirements (overmind/reqirements_ears.md excerpts for step tags)"
+  assert_contains "$prompt" "## Functional Requirements (translated from design EARS)"
+  assert_contains "$prompt" "### FR-1.1-01"
   assert_contains "$prompt" "- [ ] 1. Implement part A [REQ-1] [NFR-2]."
   assert_contains "$prompt" "- [x] 2. Implement part B [REQ-1]."
   assert_contains "$prompt" "## Applicable UR Shortlist"
   assert_contains "$prompt" "UR-0100 - Validate JWT auth boundary handling."
+  assert_contains "$prompt" 'Before ending the implementation phase, run `ai/scripts/helpers/check_implementation_readiness.sh 1.1`.'
+  assert_contains "$prompt" 'If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
   assert_line_before "$prompt" "Phase contract (read first)" "Anti-regression checklist (max 8)"
   assert_line_before "$prompt" "Anti-regression checklist (max 8)" "Execution list (step plan \`## Plan (ordered)\`)"
   assert_line_before "$prompt" "Execution list (step plan \`## Plan (ordered)\`)" "Step-plan execution context"
   assert_line_before "$prompt" "Step-plan execution context" "Scope contract (design)"
   assert_line_before "$prompt" "Scope contract (design)" "Key design details (excerpt)"
   assert_line_before "$prompt" "Key design details (excerpt)" "Codebase entrypoints (design references)"
-  assert_line_before "$prompt" "Codebase entrypoints (design references)" "Linked requirements (overmind/reqirements_ears.md excerpts for step tags)"
+  assert_line_before "$prompt" "Codebase entrypoints (design references)" "Process pointers"
   assert_not_contains "$prompt" "== estimation summary =="
   assert_not_contains "$prompt" "== repo snapshot =="
+}
+
+test_implementation_readiness_helper_fails_on_unchecked_ordered_items() {
+  local repo_dir="$TMP_ROOT/repo-impl-readiness-ordered-unchecked"
+  setup_impl_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Plan (ordered)
+- [x] 1. demo A
+- [ ] 2. demo B
+## Functional Requirements (translated from design EARS)
+- [x] FR-1.1-001 The system SHALL support demo A. EARS[REQ-1]
+- [x] FR-1.1-002 The system SHALL support demo B. EARS[REQ-1]
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_implementation_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: implementation readiness helper should fail when ordered-plan checklist has unchecked items" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Implementation readiness failed for step 1.1."
+  assert_contains "$out" "All items in step plan '## Plan (ordered)' must be [x] before handing off implementation."
+}
+
+test_implementation_readiness_helper_fails_on_unchecked_functional_requirements() {
+  local repo_dir="$TMP_ROOT/repo-impl-readiness-fr-unchecked"
+  setup_impl_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Plan (ordered)
+- [x] 1. demo A
+- [x] 2. demo B
+## Functional Requirements (translated from design EARS)
+- [x] FR-1.1-001 The system SHALL support demo A. EARS[REQ-1]
+- [ ] FR-1.1-002 The system SHALL support demo B. EARS[REQ-1]
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_implementation_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: implementation readiness helper should fail when translated functional requirements are unchecked" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Implementation readiness failed for step 1.1."
+  assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before handing off implementation."
+}
+
+test_ai_implementation_allows_non_executable_planning_helper() {
+  local repo_dir="$TMP_ROOT/repo-impl-planning-helper-no-exec"
+  setup_impl_repo "$repo_dir"
+  chmod -x "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl.prompt.txt --no-branch 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Assertion failed: ai_implementation should allow a readable planning helper without execute bit" >&2
+    echo "$out" >&2
+    exit 1
+  fi
+  assert_not_contains "$out" "Planning readiness helper not found or not readable:"
 }
 
 test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
@@ -282,11 +397,21 @@ test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- Implement part A
-- Implement part B
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A behavior.
+- Plan Links: 1
+- Verification: Add/update tests.
+- Status: pending
+### FR-1.1-02
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part B behavior.
+- Plan Links: 2
+- Verification: Add/update tests.
+- Status: pending
 ## Applicable UR Shortlist
 - UR-0001 - Step-plan rule one.
 - UR-0002 - Step-plan rule two.
@@ -366,10 +491,15 @@ test_ai_implementation_prompt_caps_and_requirement_filtering() {
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- [ ] Implement part A [REQ-1] [NFR-2]
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A behavior.
+- Plan Links: 1
+- Verification: test-1
+- Status: pending
 ## Applicable UR Shortlist
 - UR-0001 - one
 ## Plan (ordered)
@@ -475,9 +605,9 @@ EOF
   assert_not_contains "$prompt" "proposal-21-should-not-appear"
   assert_contains "$prompt" "drisk-10"
   assert_not_contains "$prompt" "drisk-11-should-not-appear"
-  assert_contains "$prompt" "### Requirement 1 Demo"
-  assert_contains "$prompt" "### NFR 2 Demo NFR"
-  assert_not_contains "$prompt" "### Requirement 2 Non-target"
+  assert_contains "$prompt" "## Functional Requirements (translated from design EARS)"
+  assert_contains "$prompt" "### FR-1.1-01"
+  assert_contains "$prompt" "Source EARS Block: REQ-1"
 }
 
 test_ai_implementation_prompt_is_deterministic_and_compact() {
@@ -511,10 +641,15 @@ test_ai_implementation_prompt_normalizes_plain_ordered_bullets() {
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- [ ] Implement part A [REQ-1]
 ## Design Anchor (scope source of truth)
 - ai/step_designs/step-1.1-design.md
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A behavior.
+- Plan Links: 1, 2
+- Verification: Add/update tests.
+- Status: pending
 ## Applicable UR Shortlist
 - None.
 ## Plan (ordered)
@@ -543,51 +678,91 @@ EOF
   assert_contains "$prompt" "- [ ] 2. Implement part B [REQ-1]."
 }
 
-test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked() {
-  local repo_dir="$TMP_ROOT/repo-orch-impl-gate-fail"
+test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-orch-impl-ordered-unchecked"
   setup_orchestrator_repo "$repo_dir"
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 - [x] 1. demo A
 - [ ] 2. demo B
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL support demo A and B.
+- Plan Links: 1, 2
+- Verification: demo
+- Status: done
 EOF
 
-  local status=0
-  local out=""
-  set +e
+  local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 2>&1)"
-  status=$?
-  set -e
-
-  if [[ "$status" -eq 0 ]]; then
-    echo "Assertion failed: implementation phase should fail when ordered-plan checklist has unchecked items" >&2
-    exit 1
-  fi
-  assert_contains "$out" "Implementation exit gate failed for step 1.1."
-  assert_contains "$out" "All items in step plan '## Plan (ordered)' must be [x] before finishing implementation phase."
+  assert_not_contains "$out" "Implementation exit gate failed for step 1.1."
 }
 
-test_orchestrator_implementation_gate_passes_when_all_ordered_items_checked() {
+test_orchestrator_implementation_runs_when_all_ordered_items_checked() {
   local repo_dir="$TMP_ROOT/repo-orch-impl-gate-pass"
   setup_orchestrator_repo "$repo_dir"
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 - [x] 1. demo A
 - [x] 2. demo B
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL support demo A and B.
+- Plan Links: 1, 2
+- Verification: demo
+- Status: done
 EOF
 
   (
     cd "$repo_dir"
     ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 >/tmp/orch-impl-gate-pass.out 2>/tmp/orch-impl-gate-pass.err
   )
+}
+
+test_orchestrator_does_not_gate_implementation_when_functional_requirements_unchecked() {
+  local repo_dir="$TMP_ROOT/repo-orch-impl-functional-incomplete"
+  setup_orchestrator_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Plan (ordered)
+- [x] 1. demo A
+- [x] 2. demo B
+## Functional Requirements (translated from design EARS)
+- [x] FR-1.1-001 The system SHALL support demo A. EARS[REQ-1]
+- [ ] FR-1.1-002 The system SHALL support demo B. EARS[REQ-1]
+EOF
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 2>&1)"
+  assert_not_contains "$out" "Implementation exit gate failed for step 1.1."
+}
+
+test_step_plan_template_enforces_functional_requirement_contract() {
+  local template="$SOURCE_ROOT/ai/templates/step_plan_TEMPLATE.md"
+  local golden="$SOURCE_ROOT/ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md"
+  local template_content golden_content
+
+  template_content="$(cat "$template")"
+  golden_content="$(cat "$golden")"
+
+  assert_not_heading "$template_content" "Target Bullets"
+  assert_not_heading "$template_content" "Requirement Tags"
+  assert_contains "$template_content" "## Functional Requirements (translated from design EARS)"
+  assert_contains "$template_content" "- [ ] FR-<step-id>-001 The system SHALL"
+  assert_contains "$template_content" "EARS[REQ-<id>]"
+
+  assert_not_heading "$golden_content" "Target Bullets"
+  assert_not_heading "$golden_content" "Requirement Tags"
+  assert_contains "$golden_content" "## Functional Requirements (translated from design EARS)"
+  assert_contains "$golden_content" "- [x] FR-1.6b-001 The system SHALL"
+  assert_contains "$golden_content" "EARS[REQ-12.1]"
 }
 
 test_process_doc_defines_evidence_reasoning_summary_gate() {
@@ -599,35 +774,52 @@ test_process_doc_defines_evidence_reasoning_summary_gate() {
   assert_contains "$content" 'For every `PROVEN` bullet, include code refs, reachability, and test evidence/mapping.'
   assert_contains "$content" 'If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis.'
   assert_contains "$content" "#### 6.1) Analyse TODOs and convert them to findings (required second gate)"
+  assert_contains "$content" "#### 6.4) AI Audit Disposition Gate (required before completion and before post_review)"
+  assert_contains "$content" 'Before emitting the ai_audit completion line, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <current_step>`.'
 }
 
 setup_ai_audit_prompt_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
 
   cp "$AI_AUDIT_SRC" "$repo_dir/ai/scripts/ai_audit.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_audit.sh"
+  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_audit.sh" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 Est. step total: 5 SP
-- [x] Plan and discuss the step (SP=1)
-- [x] Implement part A (SP=2)
-- [x] Implement part B (SP=1)
+- [x] Plan and discuss the step (SP=1) [REQ-1]
+- [x] Implement part A (SP=2) [REQ-1]
+- [x] Implement part B (SP=1) [REQ-1]
 - [ ] Review step implementation (SP=1)
 EOF
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- Implement part A
-- Implement part B
 ## Plan (ordered)
 - [x] 1. Implement part A.
 - [x] 2. Implement part B.
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part A.
+- Plan Links: 1
+- Verification: demo
+- Status: done
+### FR-1.1-02
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL implement part B.
+- Plan Links: 2
+- Verification: demo
+- Status: done
 EOF
 
   cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+# Feature Design: preamble should not leak
+Date: 2099-01-01
+Designer model/session: preamble-should-not-leak
+
 ## Target Bullets
 - Implement part A
 - Implement part B
@@ -688,9 +880,98 @@ EOF
   )
 }
 
+write_review_result_fixture() {
+  local repo_dir="$1"
+  local mode="$2"
+
+  mkdir -p "$repo_dir/ai/step_review_results"
+  case "$mode" in
+    missing_disposition)
+      cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- (none)
+EOF
+      ;;
+    insufficient_dispositions)
+      cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- Follow-up branch cleanup is undocumented.
+
+## Medium
+- (none)
+
+## Low
+- (none)
+
+## Disposition (per issue)
+- **Accepted**: Track the validation gap in a follow-up step.
+EOF
+      ;;
+    complete)
+      cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- Follow-up branch cleanup is undocumented.
+
+## Medium
+- (none)
+
+## Low
+- (none)
+
+## Disposition (per issue)
+- **Accepted**: Track the validation gap in a follow-up step.
+- **Rejected**: Cleanup note is informational and does not require action.
+EOF
+      ;;
+    *)
+      echo "Unknown review fixture mode: $mode" >&2
+      exit 1
+      ;;
+  esac
+}
+
+setup_post_review_repo() {
+  local repo_dir="$1"
+  local review_mode="$2"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" \
+    "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
+
+  cp "$POST_REVIEW_SRC" "$repo_dir/ai/scripts/post_review.sh"
+  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+EOF
+
+  write_review_result_fixture "$repo_dir" "$review_mode"
+
+  (
+    cd "$repo_dir"
+    git init -q
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+    git add .
+    git commit -qm "seed"
+    git checkout -qb step-1.1-implementation
+    git checkout -qb step-1.1-review
+  )
+}
+
 test_ai_audit_prompt_requires_entry_proof_gate() {
   local repo_dir="$TMP_ROOT/repo-ai-audit-prompt"
   setup_ai_audit_prompt_repo "$repo_dir"
+
+  echo "- changed during review" >>"$repo_dir/ai/open_questions.md"
 
   (
     cd "$repo_dir"
@@ -699,12 +980,142 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
 
   local prompt
   prompt="$(cat "$repo_dir/ai/prompts/ai_audit_prompts/test.prompt.txt")"
-  assert_contains "$prompt" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.3, Prompt governance) and AGENTS.md as the authoritative rules for this phase.'
-  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.3.'
-  assert_contains "$prompt" 'TODO YASDEF handoff instruction: during this ai_audit, find canonical markers (`TODO YASDEF [BLK-<id>] [phase:user_review|ai_audit]: <reason>`) and for each of them follow Section 6.1 to convert TODOs into findings.'
-  assert_contains "$prompt" "== ai_audit entry proof-check target bullets (from overmind/implementation_plan.md) =="
+  assert_contains "$prompt" 'ai_audit phase for Step 1.1 - Demo'
+  assert_contains "$prompt" 'Follow `ai/AI_DEVELOPMENT_PROCESS.md` (Sections 6.0-6.4, Prompt governance) and `AGENTS.md` as the authoritative rules for this phase.'
+  assert_contains "$prompt" 'Primary context is the inline audit context below.'
+  assert_contains "$prompt" 'Read these artifacts directly from the repo:'
+  assert_contains "$prompt" '- Step plan: ai/step_plans/step-1.1.md'
+  assert_contains "$prompt" '- Feature design: ai/step_designs/step-1.1-design.md'
+  assert_contains "$prompt" '- Review result artifact: '
+  assert_contains "$prompt" 'Optional references (open only if needed):'
+  assert_contains "$prompt" '- Implementation plan: '
+  assert_contains "$prompt" '- Requirements: '
+  assert_contains "$prompt" '- Blocker log: '
+  assert_contains "$prompt" '- Open questions: '
+  assert_contains "$prompt" '- Decisions: '
+  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.'
+  assert_contains "$prompt" 'Before ending the ai_audit phase, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1`.'
+  assert_contains "$prompt" 'If that disposition check fails, do not emit the final completion line. Follow the AI Audit Disposition Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
+  assert_contains "$prompt" 'Extended completion-line gate: output the ai_audit completion line only after the commit gate is satisfied (clean working tree).'
+  assert_contains "$prompt" 'Only after the commit gate and disposition gate are satisfied, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  assert_contains "$prompt" "== Target bullets (from overmind/implementation_plan.md) =="
   assert_contains "$prompt" "- Implement part A (SP=2)"
   assert_contains "$prompt" "- Implement part B (SP=1)"
+  assert_contains "$prompt" "== Linked EARS requirement blocks =="
+  assert_contains "$prompt" "### Requirement 1 Demo"
+  assert_contains "$prompt" "== Design shortlist: Risks and mitigations =="
+  assert_contains "$prompt" "- none"
+  assert_contains "$prompt" "== Design shortlist: AGENTS constraints =="
+  assert_contains "$prompt" "- follow constraints"
+  assert_contains "$prompt" "== Design shortlist: UR shortlist =="
+  assert_contains "$prompt" "- UR-1"
+  assert_contains "$prompt" "== Design shortlist: ADR shortlist =="
+  assert_contains "$prompt" "- ADR-1"
+  assert_contains "$prompt" "== Step delta file list =="
+  assert_contains "$prompt" " M ai/open_questions.md"
+  assert_not_contains "$prompt" "## Plan (ordered)"
+  assert_not_contains "$prompt" "== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4) =="
+  assert_not_contains "$prompt" 'Run the ai_audit flow in this exact order: Section 6.0 proof-check, Section 6.1 TODO scan, Section 6.2 audit review, Section 6.3 per-finding disposition, Section 6.4 disposition gate.'
+  assert_not_contains "$prompt" "# Feature Design: preamble should not leak"
+  assert_not_contains "$prompt" "Designer model/session: preamble-should-not-leak"
+}
+
+test_ai_audit_disposition_helper_fails_when_section_missing() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-disposition-helper-missing-section"
+  setup_post_review_repo "$repo_dir" "missing_disposition"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: ai_audit disposition helper should fail when disposition section is missing" >&2
+    exit 1
+  fi
+  assert_contains "$out" "AI audit disposition readiness failed for step 1.1."
+  assert_contains "$out" "Review artifact is missing required section '## Disposition (per issue)'."
+}
+
+test_ai_audit_disposition_helper_fails_when_dispositions_are_insufficient() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-disposition-helper-insufficient"
+  setup_post_review_repo "$repo_dir" "insufficient_dispositions"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: ai_audit disposition helper should fail when per-issue dispositions are incomplete" >&2
+    exit 1
+  fi
+  assert_contains "$out" "AI audit disposition readiness failed for step 1.1."
+  assert_contains "$out" "Review artifact lists 2 issue(s) but only 1 Accepted/Rejected disposition entry(ies)."
+}
+
+test_post_review_fails_when_disposition_section_is_missing() {
+  local repo_dir="$TMP_ROOT/repo-post-review-disposition-missing-section"
+  setup_post_review_repo "$repo_dir" "missing_disposition"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: post_review should fail when ai_audit disposition section is missing" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Post-review readiness failed for step 1.1."
+  assert_contains "$out" "Review artifact is missing required section '## Disposition (per issue)'."
+  assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
+}
+
+test_post_review_fails_when_dispositions_are_insufficient() {
+  local repo_dir="$TMP_ROOT/repo-post-review-disposition-insufficient"
+  setup_post_review_repo "$repo_dir" "insufficient_dispositions"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: post_review should fail when ai_audit per-issue dispositions are incomplete" >&2
+    exit 1
+  fi
+  assert_contains "$out" "Post-review readiness failed for step 1.1."
+  assert_contains "$out" "Review artifact lists 2 issue(s) but only 1 Accepted/Rejected disposition entry(ies)."
+  assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
+}
+
+test_post_review_allows_non_executable_disposition_helper() {
+  local repo_dir="$TMP_ROOT/repo-post-review-helper-no-exec"
+  setup_post_review_repo "$repo_dir" "complete"
+  chmod -x "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Assertion failed: post_review should allow a readable ai_audit helper without execute bit" >&2
+    echo "$out" >&2
+    exit 1
+  fi
+  assert_not_contains "$out" "AI audit disposition helper is missing or not readable:"
 }
 
 test_process_doc_defines_review_brief_mode() {
@@ -799,16 +1210,26 @@ test_orchestrator_post_review_requires_ai_audit_artifact() {
 }
 
 test_ai_implementation_prompt_has_deterministic_structure
+test_implementation_readiness_helper_fails_on_unchecked_ordered_items
+test_implementation_readiness_helper_fails_on_unchecked_functional_requirements
+test_ai_implementation_allows_non_executable_planning_helper
 test_ai_implementation_prompt_builds_deduped_anti_regression_checklist
 test_ai_implementation_prompt_caps_and_requirement_filtering
 test_ai_implementation_prompt_is_deterministic_and_compact
 test_ai_implementation_prompt_normalizes_plain_ordered_bullets
-test_orchestrator_implementation_gate_fails_when_ordered_items_unchecked
-test_orchestrator_implementation_gate_passes_when_all_ordered_items_checked
+test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked
+test_orchestrator_implementation_runs_when_all_ordered_items_checked
+test_orchestrator_does_not_gate_implementation_when_functional_requirements_unchecked
+test_step_plan_template_enforces_functional_requirement_contract
 test_process_doc_defines_evidence_reasoning_summary_gate
 test_process_doc_defines_review_brief_mode
 test_review_brief_golden_example_exists
 test_ai_audit_prompt_requires_entry_proof_gate
+test_ai_audit_disposition_helper_fails_when_section_missing
+test_ai_audit_disposition_helper_fails_when_dispositions_are_insufficient
+test_post_review_fails_when_disposition_section_is_missing
+test_post_review_fails_when_dispositions_are_insufficient
+test_post_review_allows_non_executable_disposition_helper
 test_orchestrator_does_not_block_ai_audit_without_evidence
 test_orchestrator_blocks_ai_audit_when_user_review_incomplete
 test_orchestrator_post_review_requires_ai_audit_artifact

@@ -7,9 +7,9 @@ PLAN="$ROOT/overmind/implementation_plan.md"
 PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
-REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
 USER_REVIEW="$ROOT/ai/user_review.md"
+IMPLEMENTATION_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 
 STEP=""
 OUT=""
@@ -30,7 +30,7 @@ Defaults:
   - If --out is omitted, writes to ai/prompts/user_review_prompts/<project>-step-<step>.user-review.prompt.txt.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-user-review from step-<step>-implementation.
-  - Hard gate (before prompt/model): step plan `## Plan (ordered)` must exist and every ordered item must be marked [x].
+  - Hard gate (before prompt/model): `ai/scripts/helpers/check_implementation_readiness.sh <step>` must pass.
 EOF
 }
 
@@ -276,42 +276,38 @@ get_design_adr_heading() {
   return 1
 }
 
-extract_requirement_section() {
-  local req="$1"
-  awk -v req="$req" '
-    BEGIN { req_re = req; gsub(/\./, "\\.", req_re) }
-    $0 ~ "^### Requirement "req_re" " { in_req=1 }
-    in_req && $0 ~ "^### Requirement " && $0 !~ "^### Requirement "req_re" " { exit }
-    in_req { print }
-  ' "$REQUIREMENTS"
-}
-
-get_requirements_section() {
-  local step_section="$1"
-  local reqs
-  reqs="$(printf '%s\n' "$step_section" | grep -oE "\\[REQ-[0-9]+(\\.[0-9]+)?\\]" | tr -d '[]' | sed 's/^REQ-//' | sort -u)"
-  if [[ -z "$reqs" ]]; then
-    echo "No requirement tags found. Add [REQ-<number>] to step bullets to include spec sections."
+get_step_plan_functional_requirements_section() {
+  local section
+  section="$(get_step_plan_section "## Functional Requirements (translated from design EARS)")"
+  if [[ -n "${section//[[:space:]]/}" ]]; then
+    printf '%s' "$section"
     return 0
   fi
+  section="$(get_step_plan_section "## Functional Requirements")"
+  if [[ -n "${section//[[:space:]]/}" ]]; then
+    printf '%s' "$section"
+    return 0
+  fi
+  return 1
+}
 
-  local output=""
-  local req
-  while IFS= read -r req; do
-    [[ -z "$req" ]] && continue
-    local section
-    section="$(extract_requirement_section "$req")"
-    if [[ -z "$section" && "$req" == *.* ]]; then
-      section="$(extract_requirement_section "${req%%.*}")"
-    fi
-    if [[ -n "$section" ]]; then
-      output+="$section"$'\n\n'
-    else
-      output+="Requirement $req not found in overmind/reqirements_ears.md"$'\n\n'
-    fi
-  done <<<"$reqs"
+list_functional_requirement_entries() {
+  local section="$1"
+  # Strict canonical format only:
+  # - [ ] FR-<id> The system SHALL ... EARS[...]
+  # - [x] FR-<id> The system SHALL ... EARS[...]
+  printf '%s\n' "$section" | sed -nE 's/^[[:space:]]*(-[[:space:]]+\[[xX[:space:]]\][[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?)$/\1/p'
+}
 
-  printf '%s' "$output"
+list_unchecked_functional_requirement_items() {
+  local items="$1"
+  local line
+  while IFS= read -r line; do
+    [[ -z "${line//[[:space:]]/}" ]] && continue
+    if [[ ! "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
+      printf '%s\n' "$line"
+    fi
+  done <<<"$items"
 }
 
 extract_process_user_review_section() {
@@ -366,30 +362,24 @@ list_unchecked_ordered_plan_items() {
 
 ensure_user_review_entry_gate() {
   local step="$1"
-  local ordered_section normalized_items unchecked
+  local readiness_output="" readiness_status=0
 
-  ordered_section="$(get_step_plan_section "## Plan (ordered)")"
-  if [[ -z "${ordered_section//[[:space:]]/}" ]]; then
+  if [[ ! -r "$IMPLEMENTATION_READINESS_HELPER" ]]; then
     echo "User review precheck failed for step $step." >&2
-    echo "Step plan gate requires section '## Plan (ordered)' in $STEP_PLAN." >&2
+    echo "Implementation readiness helper is missing or not readable: $IMPLEMENTATION_READINESS_HELPER" >&2
     exit 1
   fi
 
-  normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
-  if [[ -z "${normalized_items//[[:space:]]/}" ]]; then
-    echo "User review precheck failed for step $step." >&2
-    echo "No ordered plan checklist items were found under '## Plan (ordered)' in $STEP_PLAN." >&2
-    echo "Add ordered bullets and mark each item [x] before starting user review." >&2
-    exit 1
-  fi
+  set +e
+  readiness_output="$(bash "$IMPLEMENTATION_READINESS_HELPER" "$step" 2>&1)"
+  readiness_status=$?
+  set -e
 
-  unchecked="$(list_unchecked_ordered_plan_items "$normalized_items")"
-  if [[ -n "$unchecked" ]]; then
+  if [[ "$readiness_status" -ne 0 ]]; then
     echo "User review precheck failed for step $step." >&2
-    echo "All items in step plan '## Plan (ordered)' must be [x] before starting user review." >&2
-    echo "Unchecked ordered-plan items (normalized):" >&2
-    printf '%s\n' "$unchecked" >&2
-    exit 1
+    printf '%s\n' "$readiness_output" >&2
+    echo "Implementation was not finished correctly. Return to implementation, satisfy the Implementation Readiness Gate, and retry user_review." >&2
+    exit "$readiness_status"
   fi
 }
 
@@ -490,14 +480,13 @@ if [[ -z "$USER_REVIEW_PROCESS_SECTION" ]]; then
   exit 1
 fi
 
-STEP_PLAN_TARGET_BULLETS_SECTION="$(get_step_plan_section "## Target Bullets")"
-if [[ -z "$STEP_PLAN_TARGET_BULLETS_SECTION" ]]; then
-  STEP_PLAN_TARGET_BULLETS_SECTION="- (missing in step plan)"
-fi
-
 STEP_PLAN_ORDERED_PLAN_SECTION="$(get_step_plan_section "## Plan (ordered)")"
 if [[ -z "$STEP_PLAN_ORDERED_PLAN_SECTION" ]]; then
   STEP_PLAN_ORDERED_PLAN_SECTION="- (missing in step plan)"
+fi
+STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION="$(get_step_plan_functional_requirements_section || true)"
+if [[ -z "$STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION" ]]; then
+  STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION="- (missing in step plan)"
 fi
 
 DESIGN_PROPOSAL_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Proposal / Design Details")"
@@ -531,14 +520,17 @@ fi
 emit() {
   printf 'User review phase for Step %s\n' "$STEP"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
-  printf 'Entry gate already verified by script: all items in step plan `## Plan (ordered)` are [x].\n'
+  printf 'Entry gate already verified by script: `ai/scripts/helpers/check_implementation_readiness.sh %s` passed.\n' "$STEP"
   printf 'User review phase-state source is step plan `## Plan (ordered)` only.\n'
+  printf 'User review functional-requirement source is step plan `## Functional Requirements (translated from design EARS)`.\n'
   printf 'Do not start post-step audit/review in this phase.\n'
   printf 'When user review is fully complete, end your final response with this exact last line: "User review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'
   printf '== %s (%s) ==\n' "$STEP_PLAN" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_PLAN_ORDERED_PLAN_SECTION"
+  printf '== translated functional requirements (from step plan) ==\n'
+  printf '%s\n\n' "$STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION"
   printf '== ai/step_designs/step-%s-design.md (key excerpts) ==\n' "$STEP"
   printf 'Proposal / Design Details:\n%s\n\n' "$DESIGN_PROPOSAL_SECTION"
   printf 'Risks and Mitigations:\n%s\n\n' "$DESIGN_RISKS_SECTION"

@@ -104,20 +104,18 @@ Date: 2026-02-27
 Planner model/session: test
 Execution model/session (intended): test
 
-## Target Bullets
-- Implement the feature endpoint.
-
 ## Design Anchor (scope source of truth)
 - Feature design: \`ai/step_designs/step-1.1-design.md\`
-
-## Requirement Tags
-- REQ-1
+- Requirement-translation source: \`## Selected EARS Requirements (for planning translation)\`
 
 ## Applicable UR Shortlist
 $shortlist
 
 ## Plan (ordered)
-- 1. Implement endpoint.
+- [ ] 1. Implement endpoint.
+
+## Functional Requirements (translated from design EARS)
+- [ ] FR-1.1-001 The system SHALL implement the feature endpoint behavior deterministically. EARS[REQ-1]
 
 ## Implementation Notes / Constraints
 - Follow AGENTS.md.
@@ -144,17 +142,15 @@ Date: 2026-02-27
 Planner model/session: test
 Execution model/session (intended): test
 
-## Target Bullets
-- Implement the feature endpoint.
-
 ## Design Anchor (scope source of truth)
 - Feature design: `ai/step_designs/step-1.1-design.md`
-
-## Requirement Tags
-- REQ-1
+- Requirement-translation source: `## Selected EARS Requirements (for planning translation)`
 
 ## Plan (ordered)
-- 1. Implement endpoint.
+- [ ] 1. Implement endpoint.
+
+## Functional Requirements (translated from design EARS)
+- [ ] FR-1.1-001 The system SHALL implement the feature endpoint behavior deterministically. EARS[REQ-1]
 EOF
 }
 
@@ -259,10 +255,47 @@ test_ur_cap_overflow_is_rejected() {
   assert_contains "$out" "too many UR IDs (9). Prioritize to 8 or fewer IDs."
 }
 
+test_deprecated_step_plan_sections_are_rejected() {
+  local repo_dir="$TMP_ROOT/repo-deprecated-sections"
+  setup_repo "$repo_dir"
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+Date: 2026-02-27
+Planner model/session: test
+Execution model/session (intended): test
+
+## Target Bullets
+- Implement the feature endpoint.
+
+## Requirement Tags
+- REQ-1
+
+## Applicable UR Shortlist
+- None.
+
+## Plan (ordered)
+- 1. Implement endpoint.
+EOF
+
+  local result status out
+  result="$(run_plan_capture "$repo_dir")"
+  status="$(printf '%s' "$result" | sed -n '1p')"
+  out="$(printf '%s' "$result" | sed -n '2,$p')"
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: expected deprecated sections to fail planning contract validation." >&2
+    exit 1
+  fi
+  assert_contains "$out" "Planning gate failed for step plan contract in ai/step_plans/step-1.1.md"
+  assert_contains "$out" "the feature design may still contain \`## Target Bullets\`"
+  assert_contains "$out" "deprecated section present: ## Target Bullets"
+}
+
 test_missing_shortlist_section_fails_fast
 test_canonical_none_is_accepted
 test_curated_ur_ids_are_accepted
 test_non_canonical_content_is_rejected
 test_ur_cap_overflow_is_rejected
+test_deprecated_step_plan_sections_are_rejected
 
 echo "All ai_plan UR shortlist gate tests passed."

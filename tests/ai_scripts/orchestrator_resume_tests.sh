@@ -101,13 +101,35 @@ create_user_review_branch_marker() {
   )
 }
 
+create_implementation_branch_marker() {
+  local repo_dir="$1"
+  local step="$2"
+  (
+    cd "$repo_dir"
+    git branch "step-$step-implementation"
+  )
+}
+
 write_design_and_plan_artifacts() {
   local repo_dir="$1"
   local step="$2"
   local ordered_mode="${3:-all_checked}"
+  local design_mode="${4:-complete}"
 
   local ordered_block=""
   local include_ordered_section=1
+  local functional_block='### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL complete demo A.
+- Plan Links: 1
+- Verification: demo
+- Status: done
+### FR-1.1-02
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL complete demo B.
+- Plan Links: 2
+- Verification: demo
+- Status: done'
   case "$ordered_mode" in
     all_checked)
       ordered_block='- [x] 1. demo A
@@ -133,7 +155,9 @@ write_design_and_plan_artifacts() {
       ;;
   esac
 
-  cat >"$repo_dir/ai/step_designs/step-$step-design.md" <<'EOF'
+  case "$design_mode" in
+    complete)
+      cat >"$repo_dir/ai/step_designs/step-$step-design.md" <<'EOF'
 ## Goal
 test
 ## In Scope
@@ -141,19 +165,36 @@ test
 ## Out of Scope
 test
 EOF
+      ;;
+    missing_sections)
+      cat >"$repo_dir/ai/step_designs/step-$step-design.md" <<'EOF'
+## Goal
+test
+EOF
+      ;;
+    *)
+      echo "Unknown design_mode: $design_mode" >&2
+      exit 1
+      ;;
+  esac
   if [[ "$include_ordered_section" -eq 1 ]]; then
     cat >"$repo_dir/ai/step_plans/step-$step.md" <<EOF
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
 ## Plan (ordered)
 $ordered_block
+## Functional Requirements (translated from design EARS)
+$functional_block
 EOF
   else
     cat >"$repo_dir/ai/step_plans/step-$step.md" <<'EOF'
 # Step Plan: 1.1 - Demo
-## Target Bullets
-- demo
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL complete demo A.
+- Plan Links: 1
+- Verification: demo
+- Status: done
 EOF
   fi
 }
@@ -186,6 +227,66 @@ Est. step total: 5 SP
 EOF
 }
 
+write_review_result() {
+  local repo_dir="$1"
+  local step="$2"
+  local mode="$3"
+
+  mkdir -p "$repo_dir/ai/step_review_results"
+  case "$mode" in
+    missing_disposition)
+      cat >"$repo_dir/ai/step_review_results/review_result-$step.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- (none)
+EOF
+      ;;
+    insufficient_dispositions)
+      cat >"$repo_dir/ai/step_review_results/review_result-$step.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- Cleanup path is not documented.
+
+## Medium
+- (none)
+
+## Low
+- (none)
+
+## Disposition (per issue)
+- **Accepted**: Track the validation gap in follow-up work.
+EOF
+      ;;
+    complete)
+      cat >"$repo_dir/ai/step_review_results/review_result-$step.md" <<'EOF'
+## Critical
+- Missing null validation on review handoff.
+
+## High
+- Cleanup path is not documented.
+
+## Medium
+- (none)
+
+## Low
+- (none)
+
+## Disposition (per issue)
+- **Accepted**: Track the validation gap in follow-up work.
+- **Rejected**: Cleanup note is informational and does not require action.
+EOF
+      ;;
+    *)
+      echo "Unknown review result mode: $mode" >&2
+      exit 1
+      ;;
+  esac
+}
+
 test_resume_starts_at_planning() {
   local repo_dir="$TMP_ROOT/repo-planning"
   mkdir -p "$repo_dir"
@@ -197,6 +298,20 @@ test_resume_starts_at_planning() {
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "Selected start phase: planning"
   assert_contains "$out" "Executed phases: planning implementation user_review ai_audit post_review"
+}
+
+test_resume_starts_at_planning_when_design_sections_missing() {
+  local repo_dir="$TMP_ROOT/repo-planning-missing-design-sections"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1" "all_checked" "missing_sections"
+  write_impl_plan "$repo_dir" 0 0 0 0
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "design: complete (design artifact present)"
+  assert_contains "$out" "Selected start phase: planning"
+  assert_not_contains "$out" "missing required sections"
 }
 
 test_resume_starts_at_planning_when_step_plan_missing() {
@@ -220,8 +335,39 @@ EOF
   status=$?
   set -e
   assert_not_equal "$status" "0"
-  assert_not_contains "$out" "Resume blocked: missing ai/step_plans/step-1.1.md; create the step plan before using --resume."
-  assert_contains "$out" "Step plan not found:"
+  assert_contains "$out" "planning: incomplete (later-phase execution has not started yet)"
+  assert_contains "$out" "implementation: invalid (missing ai/step_plans/step-1.1.md)"
+  assert_contains "$out" "Selected start phase: planning"
+  assert_not_contains "$out" "Resume blocked:"
+}
+
+test_resume_starts_at_implementation_when_planning_gate_closed() {
+  local repo_dir="$TMP_ROOT/repo-implementation-ready-after-planning"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 0 0 0
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "Selected start phase: implementation"
+}
+
+test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_started() {
+  local repo_dir="$TMP_ROOT/repo-implementation-unchecked-planning-gate"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1" "partial"
+  write_impl_plan "$repo_dir" 0 1 0 0
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "planning: complete (later-phase execution markers detected (1/2 implementation bullets checked))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "Selected start phase: implementation"
+  assert_not_contains "$out" "planning gate not checked"
 }
 
 test_partial_markers_rerun_implementation() {
@@ -233,7 +379,7 @@ test_partial_markers_rerun_implementation() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: incomplete (ordered-plan checklist is not complete (1/2 checked))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
 }
 
@@ -243,9 +389,11 @@ test_resume_starts_at_user_review() {
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1"
   write_impl_plan "$repo_dir" 1 1 1 0
+  create_implementation_branch_marker "$repo_dir" "1.1"
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
   assert_contains "$out" "user_review: incomplete (missing user_review marker (expected branch step-1.1-user-review))"
   assert_contains "$out" "Selected start phase: user_review"
   assert_contains "$out" "Executed phases: user_review ai_audit post_review"
@@ -261,6 +409,7 @@ test_resume_starts_at_ai_audit_after_user_review_complete() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
   assert_contains "$out" "ai_audit: incomplete (missing ai/step_review_results/review_result-1.1.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
@@ -276,9 +425,46 @@ test_resume_starts_at_ai_audit_with_prefixed_gates() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
   assert_contains "$out" "ai_audit: incomplete (missing ai/step_review_results/review_result-1.1.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
+}
+
+test_resume_starts_at_post_review_when_disposition_section_is_missing() {
+  local repo_dir="$TMP_ROOT/repo-post-review-missing-disposition-section"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+  create_user_review_branch_marker "$repo_dir" "1.1"
+  write_review_result "$repo_dir" "1.1" "missing_disposition"
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "ai_audit: complete (review artifact present (disposition semantics enforced by ai_audit/post_review helper))"
+  assert_contains "$out" "post_review: incomplete (review gate 'Review step implementation' is not [x])"
+  assert_contains "$out" "Selected start phase: post_review"
+  assert_contains "$out" "Executed phases: post_review"
+  assert_not_contains "$out" "missing '## Disposition (per issue)' section"
+}
+
+test_resume_starts_at_post_review_when_disposition_count_is_insufficient() {
+  local repo_dir="$TMP_ROOT/repo-post-review-insufficient-dispositions"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+  create_user_review_branch_marker "$repo_dir" "1.1"
+  write_review_result "$repo_dir" "1.1" "insufficient_dispositions"
+
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "ai_audit: complete (review artifact present (disposition semantics enforced by ai_audit/post_review helper))"
+  assert_contains "$out" "post_review: incomplete (review gate 'Review step implementation' is not [x])"
+  assert_contains "$out" "Selected start phase: post_review"
+  assert_contains "$out" "Executed phases: post_review"
+  assert_not_contains "$out" "review dispositions incomplete"
 }
 
 test_cli_validation() {
@@ -361,60 +547,55 @@ test_resume_does_not_require_evidence_before_ai_audit() {
 
   local out
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (all ordered-plan checklist items are [x] (2/2 checked))"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
 
-test_resume_blocks_when_ordered_plan_section_missing() {
+test_resume_allows_implementation_when_ordered_plan_section_missing() {
   local repo_dir="$TMP_ROOT/repo-missing-ordered-section"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1" "missing_section"
-  write_impl_plan "$repo_dir" 1 1 1 0
+  write_impl_plan "$repo_dir" 1 0 0 0
 
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
-  status=$?
-  set -e
-  assert_not_equal "$status" "0"
-  assert_contains "$out" "implementation: invalid (step plan missing required section: Plan (ordered))"
-  assert_contains "$out" "Selected start phase: none (resume blocked by invalid phase state)"
-  assert_contains "$out" "Block reason: step plan is missing required section '## Plan (ordered)'"
-  assert_contains "$out" "Resume blocked: step plan is missing required section '## Plan (ordered)'"
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "Selected start phase: implementation"
+  assert_not_contains "$out" "Resume blocked:"
 }
 
-test_resume_blocks_when_ordered_plan_has_no_checklist_items() {
+test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items() {
   local repo_dir="$TMP_ROOT/repo-no-ordered-checklist-items"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   write_design_and_plan_artifacts "$repo_dir" "1.1" "no_checklist_items"
-  write_impl_plan "$repo_dir" 1 1 1 0
+  write_impl_plan "$repo_dir" 1 0 0 0
 
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
-  status=$?
-  set -e
-  assert_not_equal "$status" "0"
-  assert_contains "$out" "implementation: invalid (no checklist items found under step plan section 'Plan (ordered)')"
-  assert_contains "$out" "Selected start phase: none (resume blocked by invalid phase state)"
-  assert_contains "$out" "Block reason: step plan '## Plan (ordered)' has no checklist-parsable items"
-  assert_contains "$out" "Resume blocked: step plan '## Plan (ordered)' has no checklist-parsable items"
+  local out
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "Selected start phase: implementation"
+  assert_not_contains "$out" "Resume blocked:"
 }
 
 test_resume_starts_at_planning
+test_resume_starts_at_planning_when_design_sections_missing
 test_resume_starts_at_planning_when_step_plan_missing
+test_resume_starts_at_implementation_when_planning_gate_closed
+test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_started
 test_partial_markers_rerun_implementation
 test_resume_starts_at_user_review
 test_resume_starts_at_ai_audit_after_user_review_complete
 test_resume_starts_at_ai_audit_with_prefixed_gates
+test_resume_starts_at_post_review_when_disposition_section_is_missing
+test_resume_starts_at_post_review_when_disposition_count_is_insufficient
 test_resume_does_not_require_evidence_before_ai_audit
-test_resume_blocks_when_ordered_plan_section_missing
-test_resume_blocks_when_ordered_plan_has_no_checklist_items
+test_resume_allows_implementation_when_ordered_plan_section_missing
+test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items
 test_review_phase_is_rejected
 test_cli_validation
 test_missing_step_error

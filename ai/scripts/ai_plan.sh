@@ -8,8 +8,8 @@ PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 DECISIONS="$ROOT/ai/decisions.md"
 BLOCKER_LOG="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
-REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
 AGENTS="$ROOT/AGENTS.md"
+PLANNING_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 STEP_PLAN_TEMPLATE="$ROOT/ai/templates/step_plan_TEMPLATE.md"
 STEP_PLAN_GOLDEN="$ROOT/ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md"
 
@@ -230,6 +230,23 @@ get_design_things_to_decide_heading() {
   return 1
 }
 
+get_design_selected_ears_heading() {
+  local file="$1"
+  if grep -Fq "## Selected EARS Requirements (for planning translation)" "$file"; then
+    printf '## Selected EARS Requirements (for planning translation)'
+    return 0
+  fi
+  if grep -Fq "## Selected EARS Requirements" "$file"; then
+    printf '## Selected EARS Requirements'
+    return 0
+  fi
+  if grep -Fq "## Linked Requirements (EARS excerpts)" "$file"; then
+    printf '## Linked Requirements (EARS excerpts)'
+    return 0
+  fi
+  return 1
+}
+
 open_questions_has_any() {
   local section="$1"
   printf '%s\n' "$section" | awk '
@@ -252,54 +269,6 @@ list_accepted_adrs() {
     /^- \*\*Status\*\*: / { status=$0; sub(/^- \*\*Status\*\*: /, "", status); next }
     END { flush() }
   ' "$DECISIONS"
-}
-
-extract_requirement_section() {
-  local req="$1"
-  awk -v req="$req" '
-    BEGIN { req_re = req; gsub(/\./, "\\.", req_re) }
-    $0 ~ "^### Requirement "req_re" " { in_req=1 }
-    in_req && $0 ~ "^### Requirement " && $0 !~ "^### Requirement "req_re" " { exit }
-    in_req { print }
-  ' "$REQUIREMENTS"
-}
-
-get_requirements_section() {
-  local step_section="$1"
-  local reqs
-  reqs="$(printf '%s\n' "$step_section" | grep -oE "\\[REQ-[0-9]+(\\.[0-9]+)?\\]" | tr -d '[]' | sed 's/^REQ-//' | sort -u)"
-  if [[ -z "$reqs" ]]; then
-    echo "No requirement tags found. Add [REQ-<number>] to step bullets to include spec sections."
-    return 0
-  fi
-
-  local output=""
-  local req
-  while IFS= read -r req; do
-    [[ -z "$req" ]] && continue
-    local section
-    section="$(extract_requirement_section "$req")"
-    if [[ -z "$section" && "$req" == *.* ]]; then
-      section="$(extract_requirement_section "${req%%.*}")"
-    fi
-    if [[ -n "$section" ]]; then
-      output+="$section"$'\n\n'
-    else
-      output+="Requirement $req not found in overmind/reqirements_ears.md"$'\n\n'
-    fi
-  done <<<"$reqs"
-
-  printf '%s' "$output"
-}
-
-get_requirement_tags() {
-  local step_section="$1"
-  local req_tags
-  req_tags="$(printf '%s\n' "$step_section" | grep -oE "\\[REQ-[0-9]+(\\.[0-9]+)?\\]" || true)"
-  if [[ -z "$req_tags" ]]; then
-    return 0
-  fi
-  printf '%s\n' "$req_tags" | tr -d '[]' | sort -u
 }
 
 get_process_planning_sections() {
@@ -364,12 +333,6 @@ ensure_planning_branch() {
 write_step_plan_from_template() {
   local date
   date="$(date +%Y-%m-%d)"
-  local req_lines
-  if [[ -n "$REQ_TAGS" ]]; then
-    req_lines="$(printf '%s\n' "$REQ_TAGS" | sed 's/^/- /')"
-  else
-    req_lines="- (none)"
-  fi
 
   local body
   if ! body="$(extract_step_plan_template_body)"; then
@@ -377,7 +340,6 @@ write_step_plan_from_template() {
     exit 1
   fi
 
-  local in_req_tags=0
   while IFS= read -r line; do
     case "$line" in
       "# Step Plan: <step> - <step title>")
@@ -385,25 +347,6 @@ write_step_plan_from_template() {
         ;;
       "Date: <YYYY-MM-DD>")
         printf 'Date: %s\n' "$date"
-        ;;
-      "- <bullet text>")
-        if [[ -n "$TARGET_BULLETS" ]]; then
-          printf '%s\n' "$TARGET_BULLETS"
-        else
-          printf '%s\n' "- (missing; extract from feature design)"
-        fi
-        ;;
-      "## Requirement Tags")
-        printf '%s\n' "$line"
-        in_req_tags=1
-        ;;
-      "- <REQ tags from overmind/implementation_plan.md (or (none))>")
-        if [[ "$in_req_tags" -eq 1 ]]; then
-          printf '%s\n' "$req_lines"
-          in_req_tags=0
-        else
-          printf '%s\n' "$line"
-        fi
         ;;
       *)
         printf '%s\n' "$line"
@@ -470,6 +413,43 @@ validate_applicable_ur_shortlist_section() {
 
   if [[ "$ur_count" -gt 8 ]]; then
     fail_ur_shortlist_validation "too many UR IDs ($ur_count). Prioritize to 8 or fewer IDs."
+  fi
+}
+
+fail_step_plan_contract_validation() {
+  local reason="$1"
+  local out_label="$OUT"
+  if [[ "$OUT" == "$ROOT/"* ]]; then
+    out_label="${OUT#"$ROOT"/}"
+  fi
+  echo "Planning gate failed for step plan contract in $out_label: $reason" >&2
+  echo "Note: this contract applies to the step plan artifact only; the feature design may still contain \`## Target Bullets\`." >&2
+  echo "Contract requires:" >&2
+  echo "- include section: ## Plan (ordered)" >&2
+  echo "- include section after Plan: ## Functional Requirements (translated from design EARS)" >&2
+  echo "- do not include section: ## Target Bullets" >&2
+  echo "- do not include section: ## Requirement Tags" >&2
+  exit 1
+}
+
+validate_step_plan_structure_contract() {
+  if grep -Eq '^##[[:space:]]+Target Bullets([[:space:]]|$)' "$OUT"; then
+    fail_step_plan_contract_validation "deprecated section present: ## Target Bullets"
+  fi
+  if grep -Eq '^##[[:space:]]+Requirement Tags([[:space:]]|$)' "$OUT"; then
+    fail_step_plan_contract_validation "deprecated section present: ## Requirement Tags"
+  fi
+  if ! grep -Eq '^##[[:space:]]+Plan \(ordered\)[[:space:]]*$' "$OUT"; then
+    fail_step_plan_contract_validation "missing required section: ## Plan (ordered)"
+  fi
+  if ! grep -Eq '^##[[:space:]]+Functional Requirements( \(translated from design EARS\))?[[:space:]]*$' "$OUT"; then
+    fail_step_plan_contract_validation "missing required section: ## Functional Requirements (translated from design EARS)"
+  fi
+  local plan_line fr_line
+  plan_line="$(grep -nE '^##[[:space:]]+Plan \(ordered\)[[:space:]]*$' "$OUT" | head -n 1 | cut -d: -f1)"
+  fr_line="$(grep -nE '^##[[:space:]]+Functional Requirements( \(translated from design EARS\))?[[:space:]]*$' "$OUT" | head -n 1 | cut -d: -f1)"
+  if [[ -n "$plan_line" && -n "$fr_line" && "$fr_line" -le "$plan_line" ]]; then
+    fail_step_plan_contract_validation "section order invalid: Functional Requirements must appear after Plan (ordered)"
   fi
 }
 
@@ -602,8 +582,6 @@ if open_questions_has_any "$OPEN_QUESTIONS_SECTION"; then
   OPEN_QUESTIONS_HAS_ANY=1
 fi
 
-REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
-REQ_TAGS="$(get_requirement_tags "$STEP_SECTION")"
 DESIGN_AGENTS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints")"
 if [[ -z "$DESIGN_AGENTS_SECTION" ]]; then
   DESIGN_AGENTS_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
@@ -632,12 +610,21 @@ fi
 if [[ -z "$DESIGN_THINGS_TO_DECIDE_SECTION" ]]; then
   DESIGN_THINGS_TO_DECIDE_SECTION="- (empty in design artifact; derive plan-critical decisions from design trade-offs/risks as needed)"
 fi
+if DESIGN_EARS_HEADING="$(get_design_selected_ears_heading "$DESIGN_FILE")"; then
+  DESIGN_EARS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_EARS_HEADING")"
+else
+  DESIGN_EARS_SECTION="- (missing in design artifact; add \`## Selected EARS Requirements (for planning translation)\` before planning closure)"
+fi
+if [[ -z "$DESIGN_EARS_SECTION" ]]; then
+  DESIGN_EARS_SECTION="- (empty in design artifact; select concrete EARS blocks for translation before planning closure)"
+fi
 
 mkdir -p "$(dirname "$OUT")"
 if [[ ! -f "$OUT" ]]; then
   write_step_plan_from_template
 fi
 validate_applicable_ur_shortlist_section
+validate_step_plan_structure_contract
 
 emit() {
   local out_label
@@ -665,13 +652,16 @@ emit() {
   printf 'Do not mark planning complete while any gate is unresolved; continue planning discussion and update artifacts until all gates pass.\n'
   printf 'Use the feature design artifact as the primary input and convert it into an execution-focused step plan.\n'
   printf 'Execution scope must come from design target bullets (excluding planning/review bullets).\n'
+  printf 'Step-plan execution contract must include both `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)`, with Functional Requirements after Plan.\n'
   printf 'Derive non-negotiable invariants from design-extracted ADR shortlist + AGENTS constraints.\n'
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     printf 'Feature-rich design/planning mode: ENABLED (planning-only add-on).\n'
     printf 'Derive up to 5 optional hardening candidates from design risks/trade-offs and record each in `## Decisions Needed` as `Accepted` or `Deferred` with rationale.\n'
     printf 'If any optional item materially changes implementation path and remains unresolved, ask one explicit two-option prompt (`1.` recommended, `2.` alternative) before planning closure.\n'
   fi
-  printf 'When planning phase is fully complete, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
+  printf 'Before ending the planning phase, run `%s %s`.\n' "${PLANNING_READINESS_HELPER#"$ROOT"/}" "$STEP"
+  printf 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.\n'
+  printf 'Only after the Planning Readiness Gate is satisfied, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Commit gate: when you commit planning artifacts, include both the step plan and the feature design artifact (do not commit only %s).\n' "$out_label"
   printf 'Minimum commit set (if changed): %s, %s\n' "$out_label" "$design_label"
   printf 'Write/update the step plan at: %s\n' "$OUT"
@@ -691,6 +681,8 @@ emit() {
   printf '\n\n'
   printf '== Design-extracted target bullets ==\n'
   printf '%s\n\n' "$TARGET_BULLETS"
+  printf '== Design-selected EARS requirements (source for plan translation) ==\n'
+  printf '%s\n\n' "$DESIGN_EARS_SECTION"
   printf '== Design-extracted AGENTS constraints ==\n'
   printf '%s\n\n' "$DESIGN_AGENTS_SECTION"
   printf '== Design-extracted user review rules ==\n'
@@ -707,8 +699,9 @@ emit() {
     printf 'Read directly from repo as example reference.\n'
     printf 'Path: ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md\n\n'
   fi
-  printf '== overmind/reqirements_ears.md (linked requirements) ==\n'
-  printf '%s\n\n' "$REQ_SECTION"
+  printf '== overmind/reqirements_ears.md ==\n'
+  printf 'Pointer-only by default. Translate from the design-selected EARS section above into plan functional requirements.\n'
+  printf 'Path: overmind/reqirements_ears.md\n\n'
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
   printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"

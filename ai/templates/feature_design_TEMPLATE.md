@@ -17,6 +17,9 @@ Designer model/session: <fill>
 ## Target Bullets (excluding planning/review)
 - <target bullets from step (excluding planning/review)>
 
+## Selected EARS Requirements (for planning translation)
+- <selected EARS requirement excerpts used to translate step-plan functional requirements>
+
 ## Goal
 - <one-sentence outcome>
 

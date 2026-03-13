@@ -166,7 +166,7 @@ get_requirements_section() {
   local reqs
   reqs="$(printf '%s\n' "$step_section" | grep -oE "\\[REQ-[0-9]+(\\.[0-9]+)?\\]" | tr -d '[]' | sed 's/^REQ-//' | sort -u)"
   if [[ -z "$reqs" ]]; then
-    echo "No requirement tags found. Add [REQ-<number>] to step bullets to include spec sections."
+    echo "No REQ tags found in step bullets. Select EARS blocks manually in design `## Selected EARS Requirements (for planning translation)`."
     return 0
   fi
 
@@ -263,6 +263,13 @@ write_design_from_template() {
           printf '%s\n' "$TARGET_BULLETS"
         else
           printf -- '- (none found; verify overmind/implementation_plan.md step bullets)\n'
+        fi
+        ;;
+      "- <selected EARS requirement excerpts used to translate step-plan functional requirements>")
+        if [[ -n "$REQ_SECTION" ]]; then
+          printf '%s\n' "$REQ_SECTION"
+        else
+          printf -- '- (none found; add selected EARS blocks from overmind/reqirements_ears.md)\n'
         fi
         ;;
       *)
@@ -438,6 +445,10 @@ emit() {
     printf 'Each optional bullet must state default decision intent (`Accepted` or `Deferred`) and why.\n'
     printf 'Keep required scope boundaries unchanged unless an optional item is explicitly accepted.\n'
   fi
+  printf 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh %s`.\n' "$design_label"
+  printf 'If the readiness check fails, do not emit the final completion line yet. Either continue iterating and re-run the check, or ask exactly two options: `1.` continue iterating and re-check, `2.` force the design phase done and proceed.\n'
+  printf 'If option `2` is chosen, record that forced-done outcome in the design artifact before using the completion line.\n'
+  printf 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'
   printf '== overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
@@ -450,7 +461,7 @@ emit() {
     cat "$DESIGN_GOLDEN"
     printf '\n\n'
   fi
-  printf '== overmind/reqirements_ears.md (linked requirements) ==\n'
+  printf '== overmind/reqirements_ears.md (selected EARS candidates for design translation) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"

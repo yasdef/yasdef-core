@@ -8,6 +8,11 @@ Designer model/session: gpt-5.3-codex, session=<fill>
 - [ ] Add idempotency enforcement for market close command. (SP=3) [REQ-12.1]
 - [ ] Add integration test coverage for duplicate idempotency behaviors. (SP=1) [REQ-12.1]
 
+## Selected EARS Requirements (for planning translation)
+### Requirement 12.1 Close command idempotency
+- The system SHALL reject duplicate `Idempotency-Key` submissions for close command without applying duplicate writes.
+- The system SHALL return deterministic conflict semantics for duplicate replay.
+
 ## Goal
 - Make close command exactly-once across retries.
 
