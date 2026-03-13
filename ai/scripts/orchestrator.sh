@@ -595,6 +595,12 @@ run_planning_phase() {
 run_design_phase() {
   load_model_config "design"
 
+  local explicit_step=""
+  explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
+  if [[ -z "$explicit_step" ]]; then
+    ensure_synced_overmind_for_step_selection
+  fi
+
   local step design_prompt_out
   step="$(resolve_step_for_phase_from_args "design" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")" || return 1
   design_prompt_out="$(resolve_prompt_output_path "design" "$step")"
@@ -741,6 +747,7 @@ resolve_overmind_remote_name() {
 
 ensure_synced_overmind_for_step_selection() {
   local remote=""
+  local master_branch="master"
 
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     die "Step selection requires a git repository."
@@ -754,6 +761,14 @@ ensure_synced_overmind_for_step_selection() {
     if ! git -C "$ROOT" checkout overmind >/dev/null 2>&1; then
       die "Failed to checkout local Git branch 'overmind' for step selection."
     fi
+  fi
+
+  if ! git -C "$ROOT" show-ref --verify --quiet "refs/heads/$master_branch"; then
+    die "Step selection requires local Git branch '$master_branch' to merge into 'overmind'."
+  fi
+
+  if ! git -C "$ROOT" merge --no-edit "$master_branch" >/dev/null 2>&1; then
+    die "Failed to merge local Git branch '$master_branch' into 'overmind'. Resolve merge conflicts and rerun."
   fi
 
   remote="$(resolve_overmind_remote_name)"

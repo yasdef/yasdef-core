@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="$(basename "$ROOT")"
 HISTORY_FILE="$ROOT/ai/history.md"
 AI_AUDIT_DISPOSITION_HELPER="$ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+OVERMIND_BRANCH="overmind"
+IMPLEMENTATION_PLAN_REL_PATH="overmind/implementation_plan.md"
 
 STEP=""
 BASE_BRANCH=""
@@ -31,6 +33,7 @@ Defaults:
   - Hard gate before history consolidation: `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>` must pass.
   - If uncommitted review changes exist, commits them first as a review-completion guard.
   - Then writes post-review history and commits remaining uncommitted changes on the current branch.
+  - Then syncs only `overmind/implementation_plan.md` from the review branch into local `overmind` branch and commits it there (if changed).
   - Keeps one consolidated history record per step with:
     - Aggregated token usage + per-phase subsection (design/planning/implementation/user_review/ai_audit).
     - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
@@ -649,6 +652,54 @@ commit_pending_review_changes_guard() {
   printf 'Committed pending review-phase changes on branch %s before post-review metrics/history.\n' "$(get_current_branch)"
 }
 
+sync_implementation_plan_to_overmind_branch() {
+  local source_branch="$1"
+  local step="$2"
+  local title="$3"
+  local switched_to_overmind=0
+  local file_status=""
+  local commit_message=""
+
+  if ! git -C "$ROOT" show-ref --verify --quiet "refs/heads/$OVERMIND_BRANCH"; then
+    echo "Required branch '$OVERMIND_BRANCH' is missing." >&2
+    echo "Create local branch '$OVERMIND_BRANCH' and rerun post-review." >&2
+    exit 1
+  fi
+
+  if ! git -C "$ROOT" cat-file -e "$source_branch:$IMPLEMENTATION_PLAN_REL_PATH" 2>/dev/null; then
+    echo "Source file '$IMPLEMENTATION_PLAN_REL_PATH' not found on branch '$source_branch'." >&2
+    exit 1
+  fi
+
+  cleanup_sync_branch() {
+    if [[ "$switched_to_overmind" -eq 1 ]]; then
+      git -C "$ROOT" checkout "$source_branch" >/dev/null 2>&1 || true
+    fi
+  }
+  trap cleanup_sync_branch RETURN
+
+  git -C "$ROOT" checkout "$OVERMIND_BRANCH" >/dev/null
+  switched_to_overmind=1
+
+  git -C "$ROOT" checkout "$source_branch" -- "$IMPLEMENTATION_PLAN_REL_PATH"
+  file_status="$(git -C "$ROOT" status --porcelain --untracked-files=all -- "$IMPLEMENTATION_PLAN_REL_PATH")"
+  if [[ -z "$file_status" ]]; then
+    printf 'No changes to sync for %s on branch %s.\n' "$IMPLEMENTATION_PLAN_REL_PATH" "$OVERMIND_BRANCH"
+  else
+    git -C "$ROOT" add "$IMPLEMENTATION_PLAN_REL_PATH"
+    commit_message="Post-review sync: step $step implementation plan"
+    if [[ -n "$title" ]]; then
+      commit_message="$commit_message - $title"
+    fi
+    git -C "$ROOT" commit -m "$commit_message"
+    printf 'Synced %s from %s into branch %s.\n' "$IMPLEMENTATION_PLAN_REL_PATH" "$source_branch" "$OVERMIND_BRANCH"
+  fi
+
+  git -C "$ROOT" checkout "$source_branch" >/dev/null
+  switched_to_overmind=0
+  trap - RETURN
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --step)
@@ -727,6 +778,7 @@ fi
 ensure_commit_ref_exists "$BASE_BRANCH"
 ensure_commit_ref_exists "$REVIEW_BRANCH"
 ensure_commit_ref_exists "$IMPLEMENTATION_BRANCH"
+ensure_commit_ref_exists "$OVERMIND_BRANCH"
 ensure_current_branch_matches_review_branch
 resolve_metrics_refs
 trap cleanup_metrics_snapshot EXIT
@@ -798,6 +850,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf 'base: %s\n' "$BASE_BRANCH"
   printf 'review: %s\n' "$REVIEW_BRANCH"
   printf 'implementation: %s\n' "$IMPLEMENTATION_BRANCH"
+  printf 'overmind: %s\n' "$OVERMIND_BRANCH"
   printf 'metrics range: %s..%s (%s)\n' "$METRICS_FROM_REF" "$METRICS_TO_REF" "$METRICS_DIRECTION_NOTE"
   printf 'current branch: %s\n' "$dry_run_branch"
   printf 'uncommitted changes present: %s\n' "$dry_run_changes"
@@ -828,6 +881,7 @@ append_consolidated_entry \
   "$USER_REVIEW_USAGE" \
   "$AI_AUDIT_USAGE"
 commit_uncommitted_changes "$STEP_NUM" "$STEP_TITLE"
+sync_implementation_plan_to_overmind_branch "$REVIEW_BRANCH" "$STEP_NUM" "$STEP_TITLE"
 
 printf 'Post-review history updated for step %s.\n' "$STEP_NUM"
 printf 'Metrics diff: %s..%s (%s)\n' "$METRICS_FROM_REF" "$METRICS_TO_REF" "$METRICS_DIRECTION_NOTE"

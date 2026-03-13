@@ -979,6 +979,7 @@ EOF
     git config user.email "test@example.com"
     git add .
     git commit -qm "seed"
+    git branch overmind
     git checkout -qb step-1.1-implementation
     git checkout -qb step-1.1-review
   )
@@ -1216,6 +1217,53 @@ test_post_review_allows_non_executable_disposition_helper() {
   assert_not_contains "$out" "AI audit disposition helper is missing or not readable:"
 }
 
+test_post_review_syncs_implementation_plan_to_overmind_branch() {
+  local repo_dir="$TMP_ROOT/repo-post-review-overmind-sync"
+  setup_post_review_repo "$repo_dir" "complete"
+
+  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+### Step 1.1 Demo
+Est. step total: 6 SP
+- [x] Plan and discuss the step (SP=1)
+- [x] Implement part A (SP=2)
+- [x] Review step implementation (SP=1)
+- [x] Audit closure marker (SP=2)
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Assertion failed: post_review should sync implementation plan into overmind branch" >&2
+    echo "$out" >&2
+    exit 1
+  fi
+
+  local current_branch
+  current_branch="$(git -C "$repo_dir" branch --show-current)"
+  if [[ "$current_branch" != "step-1.1-review" ]]; then
+    echo "Assertion failed: post_review should return to review branch, got '$current_branch'" >&2
+    exit 1
+  fi
+
+  local review_plan overmind_plan overmind_head_files
+  review_plan="$(git -C "$repo_dir" show step-1.1-review:overmind/implementation_plan.md)"
+  overmind_plan="$(git -C "$repo_dir" show overmind:overmind/implementation_plan.md)"
+  if [[ "$review_plan" != "$overmind_plan" ]]; then
+    echo "Assertion failed: overmind implementation plan must match review branch after sync" >&2
+    exit 1
+  fi
+  assert_contains "$overmind_plan" "Audit closure marker"
+
+  overmind_head_files="$(git -C "$repo_dir" show --name-only --pretty=format: refs/heads/overmind --)"
+  assert_contains "$overmind_head_files" "overmind/implementation_plan.md"
+  assert_not_contains "$overmind_head_files" "ai/history.md"
+}
+
 test_process_doc_defines_review_brief_mode() {
   local process_doc="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
   local content
@@ -1332,6 +1380,7 @@ test_post_review_fails_when_dispositions_are_insufficient
 test_post_review_fails_when_review_gate_is_open
 test_post_review_fails_when_non_review_bullet_is_open
 test_post_review_allows_non_executable_disposition_helper
+test_post_review_syncs_implementation_plan_to_overmind_branch
 test_orchestrator_does_not_block_ai_audit_without_evidence
 test_orchestrator_blocks_ai_audit_when_user_review_incomplete
 test_orchestrator_post_review_requires_ai_audit_artifact
