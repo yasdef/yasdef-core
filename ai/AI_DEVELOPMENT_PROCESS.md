@@ -83,10 +83,13 @@ Before step planning:
   - Do not include `## Requirement Tags` in step plans.
   - Require `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)` (in that order).
 - Functional-requirement translation contract (Design -> Plan):
-  - Each translated functional requirement maps to exactly one selected EARS block from design.
-  - Each selected EARS block must map to at least one translated functional requirement.
-  - Each translated requirement must use implementation-specific, testable `SHALL` language.
-  - Each translated requirement must be captured as a checklist line (`- [ ]` / `- [x]`) with FR id, SHALL statement, and one or more `EARS[...]` references.
+  - Planning translates the design-selected EARS into plain step-plan FRs. Design keeps the EARS source context; implementation and user_review operate on FRs only.
+  - Resolve planning decisions that change runtime behavior before translating design EARS into final FR wording.
+  - Each translated functional requirement maps to exactly one selected EARS source item from design, and each selected EARS source item maps to at least one translated functional requirement.
+  - If one selected EARS source item contains multiple independent `SHALL` outcomes, split them into multiple FRs unless the behavior is inseparable for verification.
+  - Each translated requirement must be self-contained, implementation-specific, testable, and use one `SHALL` statement only.
+  - Do not make FR meaning depend on `## Decisions Needed`, `## Architecture / Helper Flow`, or `## Implementation Notes / Constraints`; encode accepted outcomes directly in the FR text.
+  - Keep internal execution mechanics (transactions, validators, repositories, lock ordering, and similar details) out of FRs unless a mechanic is the only concise way to state a non-negotiable observable invariant; prefer writing the invariant as externally testable behavior and record the mechanics in architecture/constraints instead.
 - Canonical translated functional requirement template (required in step plan):
   - `- [ ] FR-<step-id>-<nnn> The system SHALL ... EARS[REQ-...]`
 - The plan must include an "Implementation Notes" or "Constraints" section that explicitly references `AGENTS.md` and `ai/AI_DEVELOPMENT_PROCESS.md`.

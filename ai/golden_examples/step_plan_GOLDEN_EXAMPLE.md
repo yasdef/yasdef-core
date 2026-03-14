@@ -24,10 +24,12 @@ Execution model/session (intended): gpt-5.3-codex (executor), session=<fill>
 - [x] 3. Introduce rebuild persistence primitives: projection-target table truncation, ordered ledger batch read by `event_seq ASC`, and checkpoint CRUD for `projection_checkpoints`.
 
 ## Functional Requirements (translated from design EARS)
+- FR bullets stay behavior-focused; execution mechanics belong in `## Architecture / Helper Flow`.
 - [x] FR-1.6b-001 The system SHALL reject duplicate close-command `Idempotency-Key` submissions with a stable conflict error and no second write. EARS[REQ-12.1]
 - [x] FR-1.6b-002 The system SHALL return the same conflict semantics for duplicate key replay across retries. EARS[REQ-12.1]
 
 ## Architecture / Helper Flow
+- Execution mechanics live here: transaction scope, validator order, and write flow.
 - Resource → Service (`@Transactional`) → Validator (side-effect free) → Ledger append + projection update (same tx).
 
 ## Implementation Notes / Constraints

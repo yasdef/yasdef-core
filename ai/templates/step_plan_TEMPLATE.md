@@ -30,6 +30,7 @@ Execution model/session (intended): <fill>
 - [ ] FR-<step-id>-001 The system SHALL <implementation-specific, testable behavior>. EARS[REQ-<id>]
 
 ## Architecture / Helper Flow
+- Put execution mechanics here when they matter for implementation invariants (for example transaction scope, validator order, repository boundaries, lock ordering).
 - <overview of helper/service design and call flow>
 
 ## Implementation Notes / Constraints
