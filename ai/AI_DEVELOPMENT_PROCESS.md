@@ -60,8 +60,20 @@ Before step planning:
 - Include only relevant constraints from `AGENTS.md` and relevant insights from `ai/user_review.md` (do not dump all rules).
 - Shortlist only relevant accepted ADRs from `ai/decisions.md` and capture them in the design artifact (do not dump all ADRs).
 - In this phase, do not finalize durable decisions and do not update `ai/decisions.md`; capture candidate decisions under "Things to Decide" in the design artifact for final planning discussion.
+- In feature design, perform `#### Missing discussion points gates` before handoff to planning and add all meaningful unresolved findings to `## Things to Decide (for final planning discussion)`.
 - Design decision quality gate: make "Things to Decide" entries concrete and action-driving (decision-shaped, not generic questions), with mutually exclusive options and explicit trade-offs so planning can present clear `1`/`2` choices.
 - Design decision depth gate: for non-trivial scope, capture at least 1-3 plan-critical "Things to Decide" items. If there are truly no plan-critical choices, explicitly record `- None.` with short rationale.
+#### Missing discussion points gates
+- Before design handoff, run a lightweight missing-discussion-points ambiguity scan focused on planning-relevant gaps.
+- Use this structured taxonomy when scanning:
+  - Scope boundaries and exclusions (what is in/out, assumptions, sequencing impact).
+  - External interfaces and dependencies (APIs/contracts, compatibility, upstream/downstream assumptions).
+  - Data and state lifecycle (schema/data shape, transitions, persistence/migration/backfill concerns).
+  - Failure, recovery, and rollback behavior (error handling, retries/idempotency, partial-failure strategy).
+  - Operational and quality constraints (performance/security/observability/compliance expectations).
+  - Verification strategy (what must be proved in planning/implementation/tests before closure).
+- Normalize all planning-relevant unresolved findings into design `## Things to Decide (for final planning discussion)`; each item must be concrete, decision-ready, and mutually exclusive so planning can use the existing two-option prompt contract.
+- If no meaningful planning-relevant unresolved findings remain, record `- None.` with short rationale in that section.
 - Track unresolved questions/unknowns in `ai/open_questions.md` when they need explicit follow-up in planning.
 - Design is a hard gate: planning must not run without `ai/step_designs/step-<step>-design.md`.
 - Implementation prompts must use this design artifact plus the step plan as primary context inputs.
@@ -120,6 +132,7 @@ Before step planning:
 - Decision prompt scope gate: do not auto-select unresolved design decisions in planning. Require explicit user choice unless the same decision was already explicitly provided by the user for the current step.
 - Decision prompt actionability gate: keep the two options mutually exclusive and actionable, and explicitly allow the user to reply with only `1` or `2`.
 - Decision-depth quality gate: if design unresolved decisions are empty but a plan-critical trade-off still exists in prerequisites/risks/tests/docs, ask one explicit two-option confirmation prompt before closing planning; if no plan-critical trade-offs remain, explicitly record that no additional decision prompt is required.
+- Missing-discussion-points closure gate: apply `#### Missing discussion points gates` from Section 1 as a planning closure check; do not close planning if any meaningful unresolved design discussion point was skipped without an explicit recorded outcome.
 - UR-shortlist quality gate: do not close planning if `## Applicable UR Shortlist` is missing, uses non-canonical content, or includes more than 8 UR IDs.
 - If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
 - Planning Readiness Gate: before emitting the planning completion line, run `ai/scripts/helpers/check_planning_readiness.sh <step>`.
