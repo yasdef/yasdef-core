@@ -276,6 +276,25 @@ EOF
   )
 }
 
+set_single_phase_model() {
+  local repo_dir="$1"
+  local phase="$2"
+  cat >"$repo_dir/ai/setup/models.md" <<EOF
+$phase | echo | mock-model
+EOF
+}
+
+seed_review_result_artifact() {
+  local repo_dir="$1"
+  local step="$2"
+  mkdir -p "$repo_dir/ai/step_review_results"
+  cat >"$repo_dir/ai/step_review_results/review_result-$step.md" <<EOF
+# Review Result: Step $step
+## Disposition (per issue)
+- None.
+EOF
+}
+
 test_ai_implementation_prompt_has_deterministic_structure() {
   local repo_dir="$TMP_ROOT/repo-ai-impl"
   setup_impl_repo "$repo_dir"
@@ -681,6 +700,7 @@ EOF
 test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked() {
   local repo_dir="$TMP_ROOT/repo-orch-impl-ordered-unchecked"
   setup_orchestrator_repo "$repo_dir"
+  seed_review_result_artifact "$repo_dir" "1.1"
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
@@ -697,13 +717,18 @@ test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked() {
 EOF
 
   local out
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 2>&1)"
+  out="$(
+    cd "$repo_dir" &&
+    set_single_phase_model "$repo_dir" "implementation" &&
+    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+  )"
   assert_not_contains "$out" "Implementation exit gate failed for step 1.1."
 }
 
 test_orchestrator_implementation_runs_when_all_ordered_items_checked() {
   local repo_dir="$TMP_ROOT/repo-orch-impl-gate-pass"
   setup_orchestrator_repo "$repo_dir"
+  seed_review_result_artifact "$repo_dir" "1.1"
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
@@ -721,13 +746,15 @@ EOF
 
   (
     cd "$repo_dir"
-    ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 >/tmp/orch-impl-gate-pass.out 2>/tmp/orch-impl-gate-pass.err
+    set_single_phase_model "$repo_dir" "implementation"
+    ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-impl-gate-pass.out 2>/tmp/orch-impl-gate-pass.err
   )
 }
 
 test_orchestrator_does_not_gate_implementation_when_functional_requirements_unchecked() {
   local repo_dir="$TMP_ROOT/repo-orch-impl-functional-incomplete"
   setup_orchestrator_repo "$repo_dir"
+  seed_review_result_artifact "$repo_dir" "1.1"
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
@@ -740,7 +767,11 @@ test_orchestrator_does_not_gate_implementation_when_functional_requirements_unch
 EOF
 
   local out
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase implementation -- --step 1.1 2>&1)"
+  out="$(
+    cd "$repo_dir" &&
+    set_single_phase_model "$repo_dir" "implementation" &&
+    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+  )"
   assert_not_contains "$out" "Implementation exit gate failed for step 1.1."
 }
 
@@ -1294,11 +1325,16 @@ test_review_brief_golden_example_exists() {
 test_orchestrator_does_not_block_ai_audit_without_evidence() {
   local repo_dir="$TMP_ROOT/repo-orch-review-no-evidence-gate"
   setup_orchestrator_repo "$repo_dir"
+  seed_review_result_artifact "$repo_dir" "1.1"
 
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase ai_audit -- --step 1.1 2>&1)"
+  out="$(
+    cd "$repo_dir" &&
+    set_single_phase_model "$repo_dir" "ai_audit" &&
+    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+  )"
   status=$?
   set -e
 
@@ -1326,7 +1362,11 @@ test_orchestrator_blocks_ai_audit_when_user_review_incomplete() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase ai_audit -- --step 1.1 2>&1)"
+  out="$(
+    cd "$repo_dir" &&
+    set_single_phase_model "$repo_dir" "ai_audit" &&
+    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+  )"
   status=$?
   set -e
 
@@ -1344,7 +1384,11 @@ test_orchestrator_post_review_requires_ai_audit_artifact() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase post_review -- --step 1.1 2>&1)"
+  out="$(
+    cd "$repo_dir" &&
+    set_single_phase_model "$repo_dir" "post_review" &&
+    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+  )"
   status=$?
   set -e
 

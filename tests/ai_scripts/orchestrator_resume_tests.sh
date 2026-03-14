@@ -467,40 +467,6 @@ test_resume_starts_at_post_review_when_disposition_count_is_insufficient() {
   assert_not_contains "$out" "review dispositions incomplete"
 }
 
-test_cli_validation() {
-  local repo_dir="$TMP_ROOT/repo-cli-validation"
-  mkdir -p "$repo_dir"
-  setup_repo "$repo_dir"
-  write_impl_plan "$repo_dir" 0 0 0 0
-
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --phase ai_audit --dry-run 2>&1)"
-  status=$?
-  set -e
-  assert_not_equal "$status" "0"
-  assert_contains "$out" "--resume cannot be combined with explicit --phase"
-}
-
-test_review_phase_is_rejected() {
-  local repo_dir="$TMP_ROOT/repo-review-rejected"
-  mkdir -p "$repo_dir"
-  setup_repo "$repo_dir"
-  write_design_and_plan_artifacts "$repo_dir" "1.1"
-  write_impl_plan "$repo_dir" 1 1 1 0
-  create_user_review_branch_marker "$repo_dir" "1.1"
-
-  local status=0
-  local out
-  set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase review --dry-run -- --step 1.1 2>&1)"
-  status=$?
-  set -e
-  assert_not_equal "$status" "0"
-  assert_contains "$out" "Unsupported phase: review"
-}
-
 test_missing_step_error() {
   local repo_dir="$TMP_ROOT/repo-missing-step"
   mkdir -p "$repo_dir"
@@ -596,8 +562,6 @@ test_resume_starts_at_post_review_when_disposition_count_is_insufficient
 test_resume_does_not_require_evidence_before_ai_audit
 test_resume_allows_implementation_when_ordered_plan_section_missing
 test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items
-test_review_phase_is_rejected
-test_cli_validation
 test_missing_step_error
 test_dry_run_is_deterministic
 

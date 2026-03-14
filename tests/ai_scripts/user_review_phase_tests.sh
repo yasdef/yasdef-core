@@ -64,7 +64,7 @@ setup_repo() {
   local ordered_mode="$3"
 
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/step_plans" "$repo_dir/overmind"
+    "$repo_dir/ai/step_plans" "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   cp "$USER_REVIEW_SRC" "$repo_dir/ai/scripts/ai_user_review.sh"
@@ -102,11 +102,7 @@ EOF
     "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/fake_model.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
-design | ai/scripts/fake_model.sh | mock-model
-planning | ai/scripts/fake_model.sh | mock-model
-implementation | ai/scripts/fake_model.sh | mock-model
 user_review | ai/scripts/fake_model.sh | mock-model
-ai_audit | ai/scripts/fake_model.sh | mock-model
 EOF
 
   local impl_box=" "
@@ -155,6 +151,12 @@ EOF
 - demo
 EOF
 
+  cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+# Review Result: Step 1.1
+## Disposition (per issue)
+- None.
+EOF
+
   cat >"$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md" <<'EOF'
 ### 5) User review (required before moving to the next step)
 1. Ask user for feedback.
@@ -201,7 +203,7 @@ test_user_review_fails_fast_when_ordered_plan_unchecked() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh -- --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -224,7 +226,7 @@ test_user_review_normalizes_plain_ordered_bullets_to_unchecked() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh -- --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -244,7 +246,7 @@ test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked() {
 
   (
     cd "$repo_dir"
-    ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 >/tmp/user-review-tests.out 2>/tmp/user-review-tests.err
+    ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/user-review-tests.out 2>/tmp/user-review-tests.err
   )
 
   assert_file_exists "$repo_dir/model-ran.flag"
@@ -264,7 +266,7 @@ test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh -- --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -309,7 +311,7 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh -- --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -346,7 +348,7 @@ EOF
 
   local status=0
   set +e
-  (cd "$repo_dir" && ai/scripts/orchestrator.sh --phase user_review -- --step 1.1 >/tmp/user-review-invalid-ur.out 2>/tmp/user-review-invalid-ur.err)
+  (cd "$repo_dir" && ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/user-review-invalid-ur.out 2>/tmp/user-review-invalid-ur.err)
   status=$?
   set -e
 

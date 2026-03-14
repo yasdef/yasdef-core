@@ -117,6 +117,20 @@ EOF
 - Verification: demo
 - Status: done
 EOF
+
+  cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+# Review Result: Step 1.1
+## Disposition (per issue)
+- None.
+EOF
+}
+
+set_single_phase_model() {
+  local repo_dir="$1"
+  local phase="$2"
+  cat >"$repo_dir/ai/setup/models.md" <<EOF
+$phase | ai/scripts/fake_model.sh | mock-model
+EOF
 }
 
 run_non_debug_design_writes_latest_only() {
@@ -126,7 +140,8 @@ run_non_debug_design_writes_latest_only() {
 
   (
     cd "$repo_dir"
-    PROMPT_MARKER=first MODEL_MARKER=first ai/scripts/orchestrator.sh --phase design -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    set_single_phase_model "$repo_dir" "design"
+    PROMPT_MARKER=first MODEL_MARKER=first ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
   local latest_prompt="$repo_dir/ai/prompts/design_prompts/repo-non-debug-latest-design-prompt.txt"
@@ -144,7 +159,8 @@ run_debug_design_writes_step_specific() {
 
   (
     cd "$repo_dir"
-    PROMPT_MARKER=debug MODEL_MARKER=debug ai/scripts/orchestrator.sh --debug --phase design -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    set_single_phase_model "$repo_dir" "design"
+    PROMPT_MARKER=debug MODEL_MARKER=debug ai/scripts/orchestrator.sh --debug -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
   local step_prompt="$repo_dir/ai/prompts/design_prompts/repo-debug-step-1.1.design.prompt.txt"
@@ -162,7 +178,8 @@ run_latest_overwrite_and_legacy_preserved() {
 
   (
     cd "$repo_dir"
-    PROMPT_MARKER=seed MODEL_MARKER=seed ai/scripts/orchestrator.sh --debug --phase design -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    set_single_phase_model "$repo_dir" "design"
+    PROMPT_MARKER=seed MODEL_MARKER=seed ai/scripts/orchestrator.sh --debug -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
   local step_prompt="$repo_dir/ai/prompts/design_prompts/repo-overwrite-step-1.1.design.prompt.txt"
@@ -171,8 +188,9 @@ run_latest_overwrite_and_legacy_preserved() {
 
   (
     cd "$repo_dir"
-    PROMPT_MARKER=first MODEL_MARKER=first ai/scripts/orchestrator.sh --phase design -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
-    PROMPT_MARKER=second MODEL_MARKER=second ai/scripts/orchestrator.sh --phase design -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    set_single_phase_model "$repo_dir" "design"
+    PROMPT_MARKER=first MODEL_MARKER=first ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    PROMPT_MARKER=second MODEL_MARKER=second ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
   local latest_prompt="$repo_dir/ai/prompts/design_prompts/repo-overwrite-latest-design-prompt.txt"
@@ -195,7 +213,8 @@ run_user_review_dry_run_reports_prompt_and_log_paths() {
   local out
   out="$(
     cd "$repo_dir" &&
-    PROMPT_MARKER=ur MODEL_MARKER=ur ai/scripts/orchestrator.sh --dry-run --phase user_review
+    set_single_phase_model "$repo_dir" "user_review" &&
+    PROMPT_MARKER=ur MODEL_MARKER=ur ai/scripts/orchestrator.sh --dry-run
   )"
 
   local latest_prompt="$repo_dir/ai/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
@@ -212,7 +231,8 @@ run_ai_audit_dry_run_reports_prompt_and_log_paths() {
   local out
   out="$(
     cd "$repo_dir" &&
-    PROMPT_MARKER=audit MODEL_MARKER=audit ai/scripts/orchestrator.sh --dry-run --phase ai_audit
+    set_single_phase_model "$repo_dir" "ai_audit" &&
+    PROMPT_MARKER=audit MODEL_MARKER=audit ai/scripts/orchestrator.sh --dry-run
   )"
 
   local latest_prompt="$repo_dir/ai/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
@@ -238,42 +258,48 @@ run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
   local out_design
   out_design="$(
     cd "$repo_dir" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase design -- --step 1.1
+    set_single_phase_model "$repo_dir" "design" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning -- --step 1.1
   )"
   assert_contains "$out_design" "--feature-rich-design-planning"
 
   local out_planning
   out_planning="$(
     cd "$repo_dir" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase planning -- --step 1.1
+    set_single_phase_model "$repo_dir" "planning" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning -- --step 1.1
   )"
   assert_contains "$out_planning" "--feature-rich-design-planning"
 
   local out_implementation
   out_implementation="$(
     cd "$repo_dir" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase implementation
+    set_single_phase_model "$repo_dir" "implementation" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
   )"
   assert_not_contains "$out_implementation" "--feature-rich-design-planning"
 
   local out_user_review
   out_user_review="$(
     cd "$repo_dir" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase user_review
+    set_single_phase_model "$repo_dir" "user_review" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
   )"
   assert_not_contains "$out_user_review" "--feature-rich-design-planning"
 
   local out_ai_audit
   out_ai_audit="$(
     cd "$repo_dir" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase ai_audit
+    set_single_phase_model "$repo_dir" "ai_audit" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
   )"
   assert_not_contains "$out_ai_audit" "--feature-rich-design-planning"
 
   local out_post_review
   out_post_review="$(
     cd "$repo_dir" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning --phase post_review
+    set_single_phase_model "$repo_dir" "post_review" &&
+    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
   )"
   assert_not_contains "$out_post_review" "--feature-rich-design-planning"
 }

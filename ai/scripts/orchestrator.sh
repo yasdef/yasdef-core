@@ -48,7 +48,6 @@ RAN_AI_AUDIT=0
 RAN_POST_REVIEW=0
 RESUME_STEP=""
 RESUME_MODE=0
-EXPLICIT_PHASE_INPUT=0
 RESUME_START_PHASE=""
 RESUME_ALL_DONE=0
 RESUME_BLOCKED=0
@@ -61,7 +60,7 @@ CANONICAL_PHASES=(design planning implementation user_review ai_audit post_revie
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/orchestrator.sh [--phase design|planning|implementation|user_review|ai_audit|post_review] [--resume <step>] [--debug] [--feature-rich-design-planning] [--dry-run] [--help] [-- <ai_plan.sh args>]
+Usage: ai/scripts/orchestrator.sh [--resume <step>] [--debug] [--feature-rich-design-planning] [--dry-run] [--help] [-- <phase-script args>]
 
 Default behavior:
   - Runs all phases in ai/setup/models.md, in order, then runs post_review.
@@ -72,7 +71,6 @@ Default behavior:
   - ai_audit runs ai/scripts/ai_audit.sh for the latest step plan (post-step audit prompt), then runs the ai_audit model command.
   - post_review runs ai/scripts/post_review.sh for the latest step plan and appends post-review metrics to ai/history.md.
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
-  - --resume is mutually exclusive with explicit --phase.
   - --debug enables per-step/per-phase artifact files for logs and prompts.
   - --feature-rich-design-planning enables an opt-in richer contract for design/planning prompts only.
   - --feature-rich-design-planning does not change implementation/user_review/ai_audit/post_review behavior.
@@ -84,16 +82,12 @@ Default behavior:
 
 Examples:
   ai/scripts/orchestrator.sh
-  ai/scripts/orchestrator.sh --phase design -- --step 1.3
-  ai/scripts/orchestrator.sh --phase planning -- --step 1.3 --out ai/tmp/step-1.3.md
-  ai/scripts/orchestrator.sh --phase implementation
-  ai/scripts/orchestrator.sh --phase user_review
-  ai/scripts/orchestrator.sh --phase ai_audit
-  ai/scripts/orchestrator.sh --phase post_review
+  ai/scripts/orchestrator.sh -- --step 1.3
+  ai/scripts/orchestrator.sh -- --step 1.3 --out ai/tmp/step-1.3.md
   ai/scripts/orchestrator.sh --resume 1.3
   ai/scripts/orchestrator.sh --resume 1.3 --dry-run
-  ai/scripts/orchestrator.sh --feature-rich-design-planning --phase design -- --step 1.3
-  ai/scripts/orchestrator.sh --debug --phase design -- --step 1.3
+  ai/scripts/orchestrator.sh --feature-rich-design-planning -- --step 1.3
+  ai/scripts/orchestrator.sh --debug -- --step 1.3
   ai/scripts/orchestrator.sh --dry-run
 EOF
 }
@@ -1188,7 +1182,7 @@ run_ai_audit_phase() {
 
   if [[ "$DRY_RUN" -eq 0 ]] && ! is_user_review_complete_for_step "$step"; then
     echo "Cannot start ai_audit for step $step: user_review phase is incomplete." >&2
-    echo "Run: ai/scripts/orchestrator.sh --phase user_review -- --step $step" >&2
+    echo "Run: ai/scripts/orchestrator.sh --resume $step" >&2
     exit 1
   fi
 
@@ -1253,7 +1247,7 @@ run_post_review_phase() {
     local review_artifact="$ROOT/ai/step_review_results/review_result-$step.md"
     if [[ ! -f "$review_artifact" ]]; then
       echo "Cannot start post_review for step $step: ai_audit phase is incomplete." >&2
-      echo "Run: ai/scripts/orchestrator.sh --phase ai_audit -- --step $step" >&2
+      echo "Run: ai/scripts/orchestrator.sh --resume $step" >&2
       exit 1
     fi
   fi
@@ -1632,7 +1626,7 @@ ensure_implementation_phase_completion_gate() {
   local ordered_counts ordered_state ordered_total ordered_checked
   local functional_counts functional_state functional_total functional_done
   local rerun_cmd
-  rerun_cmd="ai/scripts/orchestrator.sh --phase implementation -- --step $step"
+  rerun_cmd="ai/scripts/orchestrator.sh --resume $step"
   ordered_counts="$(phase_eval_ordered_plan_counts "$step")"
   IFS='|' read -r ordered_state ordered_total ordered_checked _ <<<"$ordered_counts"
   functional_counts="$(phase_eval_functional_requirements_counts "$step")"
@@ -2034,14 +2028,14 @@ print_resume_dry_run_report() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --phase)
-      if [[ -z "${2:-}" ]]; then
-        echo "--phase requires a value." >&2
-        usage >&2
-        exit 1
+      if [[ $# -gt 1 && "${2:-}" != --* ]]; then
+        shift 2
+      else
+        shift
       fi
-      REQUESTED_PHASES+=("$(canonicalize_phase_name "$2")")
-      EXPLICIT_PHASE_INPUT=1
-      shift 2
+      ;;
+    --phase=*)
+      shift
       ;;
     --resume)
       if [[ -z "${2:-}" ]]; then
@@ -2091,10 +2085,6 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
-if [[ "$RESUME_MODE" -eq 1 && "$EXPLICIT_PHASE_INPUT" -eq 1 ]]; then
-  die "Invalid arguments: --resume cannot be combined with explicit --phase selection."
-fi
 
 if [[ "$RESUME_MODE" -eq 1 ]]; then
   if [[ ! -f "$IMPLEMENTATION_PLAN_FILE" ]]; then
@@ -2160,12 +2150,12 @@ if [[ "$DRY_RUN" -eq 0 && "$RAN_AI_AUDIT" -eq 1 ]]; then
   if [[ "$RAN_POST_REVIEW" -eq 0 ]]; then
     if [[ -n "$step" ]]; then
       echo "ai_audit phase completed for step $step." >&2
-      echo "Run post_review phase:" >&2
-      echo "  ai/scripts/orchestrator.sh --phase post_review -- --step $step" >&2
+      echo "Run to continue this step:" >&2
+      echo "  ai/scripts/orchestrator.sh --resume $step" >&2
     else
       echo "ai_audit phase completed." >&2
-      echo "Run post_review phase:" >&2
-      echo "  ai/scripts/orchestrator.sh --phase post_review" >&2
+      echo "Run to continue this step:" >&2
+      echo "  ai/scripts/orchestrator.sh" >&2
     fi
   else
     if [[ -n "$step" ]]; then

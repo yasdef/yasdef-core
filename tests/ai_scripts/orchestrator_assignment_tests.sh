@@ -48,7 +48,7 @@ assert_equal() {
 
 setup_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_plans" "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   chmod +x "$repo_dir/ai/scripts/orchestrator.sh"
@@ -56,6 +56,14 @@ setup_repo() {
   cat >"$repo_dir/ai/setup/models.md" <<'MODELS'
 design | echo | mock-model
 MODELS
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan: 1.1 - Demo
+## Plan (ordered)
+- [x] 1. demo
+## Functional Requirements (translated from design EARS)
+- [x] FR-1.1-001 The system SHALL execute demo behavior. EARS[REQ-1]
+EOF
 
   (
     cd "$repo_dir"
@@ -136,7 +144,7 @@ test_assigned_step_selection_uses_worker_uuid_and_switches_to_overmind() {
   add_master_worker_id_file "$repo_dir" "$worker_id"
 
   local out
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run --phase design 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
 
   assert_contains "$out" "dry-run log: ai/logs/repo-assigned-selection-design-2-2-log"
   assert_not_contains "$out" "design-1-1-log"
@@ -165,7 +173,7 @@ test_fails_when_local_overmind_branch_missing() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run --phase design 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -189,7 +197,7 @@ test_fails_when_remote_overmind_branch_missing() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run --phase design 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -238,7 +246,7 @@ test_fails_when_remote_sync_ff_only_fails() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run --phase design 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -262,7 +270,7 @@ test_fails_when_worker_id_file_missing() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run --phase design 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -288,7 +296,7 @@ test_fails_when_no_steps_assigned_to_worker() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run --phase design 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -313,7 +321,7 @@ test_assigned_steps_without_free_bullets_reports_no_work() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run --phase design 2>&1)"
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
 

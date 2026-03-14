@@ -42,7 +42,7 @@ This approach can be expressed in a few sentences:
 8. Run the orchestrator:
   `bash ai/scripts/orchestrator.sh` and follow the instructions.
   Use debug mode to keep per-step artifacts:
-  `bash ai/scripts/orchestrator.sh --debug --phase design -- --step 1.3`
+  `bash ai/scripts/orchestrator.sh --debug -- --step 1.3`
   To recover interrupted work for a specific step deterministically:
   `bash ai/scripts/orchestrator.sh --resume <step>`
   Preview planned resume behavior without executing:
@@ -50,7 +50,6 @@ This approach can be expressed in a few sentences:
 
 7. OPTIONAL — allow your AI CLI to work with git (except merge to `main`/`master`) to avoid repeated permission prompts.
   `bash ai/scripts/orchestrator.sh --dry-run`
-
 
 ## Why we need yet another SDD framework?
 
@@ -77,7 +76,6 @@ This approach can be expressed in a few sentences:
   - Worker-assigned discovery rule: when phase step is not provided explicitly, orchestrator resolves the next step from `overmind/implementation_plan.md` using worker UUID (`ai/*_dont_touch.txt`) and `#### Assigned: <uuid>` ownership blocks only.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
-  - Safety rule: `--resume` cannot be combined with explicit `--phase`.
   - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`ai/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
   - Default mode (without `--debug`): orchestrator writes only latest-per-phase artifacts (`ai/logs/<project>-<phase>-latest-log` and `ai/prompts/<phase>_prompts/<project>-latest-<phase>-prompt.txt`), overwriting those latest files each run.
   - Non-debug safeguard: previously generated step-specific prompt files are not modified when `--debug` is off.
