@@ -159,6 +159,17 @@ test_design_prompt_includes_readiness_contract() {
   assert_order "$out" 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh ai/step_designs/step-1.1-design.md`.' 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
 }
 
+test_design_prompt_includes_missing_discussion_points_gates() {
+  local repo_dir="$TMP_ROOT/repo-design-missing-discussion-gates"
+  setup_repo "$repo_dir"
+
+  local out
+  out="$(run_design "$repo_dir")"
+  assert_contains "$out" "#### Missing discussion points gates"
+  assert_contains "$out" "Before design handoff, run a lightweight missing-discussion-points ambiguity scan focused on planning-relevant gaps"
+  assert_contains "$out" "Normalize all planning-relevant unresolved findings into design \`## Things to Decide (for final planning discussion)\`"
+}
+
 test_design_readiness_helper_exit_codes() {
   local repo_dir="$TMP_ROOT/repo-design-readiness-helper"
   setup_repo "$repo_dir"
@@ -194,6 +205,7 @@ EOF
 test_feature_rich_mode_block_is_opt_in
 test_overmind_paths_are_used
 test_design_prompt_includes_readiness_contract
+test_design_prompt_includes_missing_discussion_points_gates
 test_design_readiness_helper_exit_codes
 
 echo "All ai_design feature-rich mode tests passed."
