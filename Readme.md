@@ -205,6 +205,8 @@ V-0.1.1 (current)
 - CRP-048 — ai_audit TODO Marker Processing Into Findings (now you can add TODO and they will be converted to folowing tasks by AI)
 - CRP-050 — Remove Target Bullets From Step Plans (now plan, implementation and user_review steps operates with internat complex plan and set od FRs, design and ai_audit phases translate EARS and high-level plan to and from this inter-step plan/FRs)
 - CRP-051 — In-Phase Readiness Gates (significanly improved betwen-phases sanity check logic, extract logic from orchestrator to hooks, 2-times check when finish one phase and when start following one)
+- removed --phase support specific phase cant be run anymore via orchestrator
+- sync between overmind and actual feature/master branch fixed
 
 
 2. known problems/to-do's:
