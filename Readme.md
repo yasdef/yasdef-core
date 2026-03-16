@@ -216,7 +216,6 @@ V-0.1.1 (current)
 - incorrect SP countion on post_review
 
 3. main plans
-- distinct tech debt from blockers and create alternative process for tech debt tasks
 - change bash scripts to lightweight cli (wrapper above coding agent cli's), see yasdef-wrapper
 - investigate "skills" usage
 - coordinator service
@@ -224,8 +223,9 @@ V-0.1.1 (current)
 
 ### security_improvement_proposals
 
+Scope: General
+- Introduce checksums 
 Scope: command-execution safety (non-git concerns).
-
 - Restrict runner command to trusted values only. Do not execute arbitrary binaries from config; use an allowlist-based runner mapping.
 - For implementation execution, use only `ai/setup/models.md` as the trusted source of runner/model/args.
 - Treat step-plan metadata as non-executable context only (for example prompt path/version), not as command authority.
