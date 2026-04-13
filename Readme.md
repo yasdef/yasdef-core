@@ -19,22 +19,24 @@ This approach can be expressed in a few sentences:
 - ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that.
 - ✅ You need the Codex CLI (https://chatgpt.com/codex) available to run this framework, or you can change the model in `ai/setup/models.md` but scripts was not tested with another CLI's
 
-1. Copy-paste the `ai/` and `overmind/` folders to the root of your project.
+1. Copy-paste the `ai/` folder to the root of your project.
 
 2. Make the bash scripts in `ai/scripts` executable:
   `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_user_review.sh ai/scripts/ai_audit.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh ai/scripts/init_worker.sh`
 
 3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
 
-4. Run `/overmind/bootstrap_overmind.sh` from main branch it'll create overmind branch and list of workers. If coordinator `overmind` is unavailable, the worker scripts will fail fast with: `no orchestrator detected, unable to proceed`
+4. Create `overmind` branch
 
-5. Run `ai/init_worker.sh` to register your worker in list of workers, you'll see the changes in `overmind` branch and unique id file in `/ai` folder in `main` branch
+5. Run `ai/init_worker.sh` to register your worker in list of workers, you need unique id for this, see yasdef-overmind readme to know more
 
 6. You need to provide `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` in `overmind` branch with the required format (you can have it in maser but it wont be used by ai, because all worker jobs started from `overmind` branch). If you don't have `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`, ask your model to generate it based on your requirements. You can find prompts in the "Helpers" block below.
 
-7. In `overmind/implementation_plan.md`, only steps with your unique id, which you get in p.5 will be available for you. You can add them manually with `#### Assigned:`. You can assign to you worker any number of steps. Examile of `implementation_plan.md` with assigned step:
+7. In `overmind/implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Only steps with your unique id, which you get in p.5 will be available for you. You can add worker ownership manually with `#### Assigned:`. You can assign to you worker any number of steps. Example of `implementation_plan.md` with repo + assigned step:
 ```
 ### Step 1.9 Some cool feature here
+#### Repo: backend
+#### Depends on: none
 #### Assigned: 7d88ab4d-be02-4bb2-9c92-d8c8d0c8591a
 /some plan bullets/
 ```
@@ -64,7 +66,7 @@ This approach can be expressed in a few sentences:
 
 ## How this works (or will be)
 
-- **Coordinator:** (/overmind) The Coordinator manages the whole project based on technical requirements, architecture, and core technical decisions. All tasks and subtasks form a cyclic graph. One branch of the graph is a sequence (a stack) of tasks. A stack becomes the source of an implementation plan. Each implementation plan contains a sequence of tasks that can be done one by one. The Coordinator should act agilely, manage the development process and task allocation based on feedback, and constantly optimize and recalculate the graph. The Coordinator never adds new tasks on its own; it only structures them in the graph. Requests to add tasks come from Workers (bottom-up) or from a human operator (top-down) as specific decisions. Coordinator responsible for token management and optimisation, for this it performs task-slicing based on model and reasoning.  
+- **Coordinator:** The Coordinator manages the whole project based on technical requirements, architecture, and core technical decisions. All tasks and subtasks form a cyclic graph. One branch of the graph is a sequence (a stack) of tasks. A stack becomes the source of an implementation plan. Each implementation plan contains a sequence of tasks that can be done one by one. The Coordinator should act agilely, manage the development process and task allocation based on feedback, and constantly optimize and recalculate the graph. The Coordinator never adds new tasks on its own; it only structures them in the graph. Requests to add tasks come from Workers (bottom-up) or from a human operator (top-down) as specific decisions. Coordinator responsible for token management and optimisation, for this it performs task-slicing based on model and reasoning.  
 
 - **Worker:** (/ai) Workers are the actual code implementers. They take the implementation plan as input and split it into reasonable steps. Each step is implemented following a strict AI-dev process. The main goal is to guarantee high code quality while reducing manual coding burden for the operator. This shifts the human operator's role from coding to making complex technical decisions and ensuring architectural quality.
 
@@ -96,7 +98,7 @@ This approach can be expressed in a few sentences:
 Each artifact below serves a specific role in the AI-dev process:
 
 - **overmind/reqirements_ears.md**: Source of truth for behavioral requirements and acceptance criteria (EARS format).
-- **overmind/implementation_plan.md**: Ordered execution plan at the step level; tracks all tasks and subtasks with story point estimates. Work happens bullet-by-bullet. Updated dynamically as the Coordinator refactors the graph.
+- **overmind/implementation_plan.md**: Ordered execution plan at the step level; tracks all tasks and subtasks with story point estimates. Keep one shared plan across backend/frontend/mobile and mark repo ownership per step with `#### Repo:`. Work happens bullet-by-bullet. Updated dynamically as the Coordinator refactors the graph.
 - **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
 - **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include `## Plan (ordered)`, translated functional requirements, preconditions, architecture, risks, and test strategy.
 - **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
@@ -235,9 +237,9 @@ Scope: command-execution safety (non-git concerns).
 
 ### Helpers
 - Here is the prompt to create `overmind/reqirements_ears.md` from usual technical requirements (run from repo root):
-`carefully examine technical_requirements.md and create overmind/reqirements_ears.md, follow overmind/templates/reqirements_ears_TEMPLATE.md and overmind/golden_examples/reqirements_ears_GOLDEN_EXAMPLE.md`
+`carefully examine technical_requirements.md and create overmind/reqirements_ears.md; use the reqirements_ears template and golden example from the standalone yasdef-overmind repo`
 --Here is the prompt to create `overmind/implementation_plan.md` from `overmind/reqirements_ears.md` and `technical_requirements.md` (run from repo root): 
-`carefully examine all project files especially AGENTS.md and README.md if they are presented, then from overmind/reqirements_ears.md (use is mandatory) and technical_requirements.md (optionally, if they are presented), create overmind/implementation_plan.md based on overmind/templates/implementation_plan_TEMPLATE.md and overmind/golden_examples/implementation_plan_GOLDEN_EXAMPLE.md; in this implementation plan you should add already implemented steps as well and not implemented, not implemented steps should be sliced based on functional, try to make it equal in terms of implementation efforts (10-20 SP means 1-3 day of work for human dev )`
+`carefully examine all project files especially AGENTS.md and README.md if they are presented, then from overmind/reqirements_ears.md, technical_requirements.md, and feature_contract_delta.md (all mandatory when presented in the feature flow), create overmind/implementation_plan.md using the implementation_plan template and golden example from the standalone yasdef-overmind repo; keep a single implementation plan for backend/frontend/mobile, assign every step to exactly one repo with \`#### Repo:\`, use \`#### Depends on:\` when cross-repo sequencing matters, add already implemented steps as well as not implemented ones, and slice not implemented steps by concrete function/component so implementation effort stays roughly balanced (10-20 SP means 1-3 day of work for a human dev)`
 
 ### License
 
