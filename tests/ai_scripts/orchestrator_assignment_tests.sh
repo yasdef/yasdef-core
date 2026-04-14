@@ -57,9 +57,17 @@ assert_file_contains() {
   fi
 }
 
+assert_file_not_exists() {
+  local file="$1"
+  if [[ -e "$file" ]]; then
+    echo "Assertion failed: expected file to be absent: $file" >&2
+    exit 1
+  fi
+}
+
 setup_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_review_results"
+  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   chmod +x "$repo_dir/ai/scripts/orchestrator.sh"
@@ -163,6 +171,22 @@ workers:
 EOF
 }
 
+write_local_overmind_runtime() {
+  local repo_dir="$1"
+  local worker_uuid="$2"
+  local step="${3:-1.7}"
+
+  cat >"$repo_dir/overmind/implementation_plan.md" <<EOF
+### Step $step Local runtime step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+EOF
+  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
+### Requirement 1 Local runtime requirement
+- The system SHALL support local standalone behavior.
+EOF
+}
+
 set_single_phase_model() {
   local repo_dir="$1"
   local phase="$2"
@@ -193,6 +217,7 @@ test_bound_project_single_feature_auto_selected() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  assert_contains "$out" "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled"
   assert_contains "$out" "orchestrator: selected feature 'feature-a' (mode=auto_single, project=project-alpha, step=2.2)."
   assert_contains "$out" "orchestrator: resolved routed step '2.2' for design; injecting --step into ai_design.sh."
   assert_contains "$out" "dry-run log: ai/logs/repo-single-feature-design-2-2-log"
@@ -370,6 +395,52 @@ test_planning_dry_run_injects_resolved_step_when_not_explicit() {
   assert_contains "$out" "dry-run log: ai/logs/repo-planning-step-injection-planning-latest-log"
 }
 
+test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation() {
+  local repo_dir="$TMP_ROOT/repo-standalone-local-routing"
+  local source_dir="$TMP_ROOT/source-standalone-local-routing-does-not-exist"
+  local project_id="project-iota"
+  local worker_uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_local_overmind_runtime "$repo_dir" "$worker_uuid" "7.3"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --standalone --debug --dry-run 2>&1)"
+  assert_contains "$out" "orchestrator: standalone mode enabled; bypassing ASDLC feature discovery, remote validation, and artifact mirroring."
+  assert_contains "$out" "orchestrator: standalone mode runtime inputs: overmind/implementation_plan.md, overmind/reqirements_ears.md."
+  assert_contains "$out" "orchestrator: selected standalone step '7.3' for worker '$worker_uuid' from overmind/implementation_plan.md."
+  assert_contains "$out" "ai/scripts/ai_design.sh --step 7.3"
+  assert_contains "$out" "dry-run log: ai/logs/repo-standalone-local-routing-design-7-3-log"
+  assert_file_not_exists "$repo_dir/ai/feature_sync.yaml"
+}
+
+test_standalone_fails_fast_when_local_runtime_ears_missing() {
+  local repo_dir="$TMP_ROOT/repo-standalone-missing-ears"
+  local source_dir="$TMP_ROOT/source-standalone-missing-ears-does-not-exist"
+  local project_id="project-kappa"
+  local worker_uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  cat >"$repo_dir/overmind/implementation_plan.md" <<EOF
+### Step 1.2 Missing local ears
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+EOF
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --standalone --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "Standalone mode requires local runtime EARS: overmind/reqirements_ears.md."
+}
+
 test_bound_project_single_feature_auto_selected
 test_requested_step_filters_candidate_features
 test_multiple_candidate_features_require_explicit_interactive_selection
@@ -377,5 +448,7 @@ test_fails_when_no_assigned_worker_steps_exist
 test_fails_when_selected_feature_requirements_ears_missing
 test_planning_syncs_runtime_plan_back_to_selected_feature_source
 test_planning_dry_run_injects_resolved_step_when_not_explicit
+test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation
+test_standalone_fails_fast_when_local_runtime_ears_missing
 
 echo "All orchestrator assignment tests passed."

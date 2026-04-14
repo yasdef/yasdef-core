@@ -37,6 +37,14 @@ This approach can be expressed in a few sentences:
    - `projects/<project-id>/<feature-id>/requirements_ears.md`
    Worker runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` are mirrored copies managed by orchestrator on branch `overmind`.
 
+5.1 Workaround (`--standalone`) when ASDLC paths are temporarily unreachable:
+   - Default orchestrator mode tries to read source artifacts from ASDLC and mirror them to local runtime files.
+   - If ASDLC cannot be reached, default mode fails fast even when local `/overmind` files exist.
+   - Use `bash ai/scripts/orchestrator.sh --standalone` to skip ASDLC feature discovery/read-copy flow and run directly from local:
+     - `overmind/implementation_plan.md`
+     - `overmind/reqirements_ears.md`
+   - Trade-off: standalone mode can run on stale local runtime copies because remote source sync is intentionally bypassed.
+
 6. In each feature `implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Worker routing uses `#### Assigned: <worker-uuid>` blocks only. Example:
 ```
 ### Step 1.9 Some cool feature here
@@ -49,6 +57,8 @@ This approach can be expressed in a few sentences:
 7. Run the orchestrator:
   `bash ai/scripts/orchestrator.sh` and follow the instructions.
   Routing behavior:
+  - default mode tries to read/copy `projects/<project-id>/<feature-id>/implementation_plan.md` and `projects/<project-id>/<feature-id>/requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
+  - if you need local-runtime-only execution, run `bash ai/scripts/orchestrator.sh --standalone` to bypass ASDLC artifact flow immediately
   - orchestrator scans bound project features from `ai/project_overmind.yaml`
   - `0` candidate features -> fail fast
   - `1` candidate feature -> auto-select
@@ -91,6 +101,7 @@ This approach can be expressed in a few sentences:
   - Candidate discovery rule: orchestrator scans bound project features (`projects/<project-id>/<feature-id>/implementation_plan.md`) and considers only `#### Assigned: <worker-uuid>` blocks.
   - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
   - Runtime mirroring rule: selected feature artifacts are mirrored into local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` on branch `overmind` before phase execution.
+  - Standalone override: `--standalone` bypasses ASDLC discovery/read-copy flow and uses existing local `overmind/implementation_plan.md` + `overmind/reqirements_ears.md` directly.
   - Feature sync state: orchestrator records selected feature metadata in `ai/feature_sync.yaml`; valid metadata is reused for `--resume <step>`, stale metadata is discarded and recomputed.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
