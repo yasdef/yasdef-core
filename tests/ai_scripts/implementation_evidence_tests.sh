@@ -196,6 +196,8 @@ EOF
 
 setup_orchestrator_repo() {
   local repo_dir="$1"
+  local worker_uuid="11111111-1111-1111-1111-111111111111"
+  local source_dir="$repo_dir/.tmp-asdlc-source"
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans" "$repo_dir/overmind"
   cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
   chmod +x "$repo_dir/ai/scripts/orchestrator.sh"
@@ -238,11 +240,39 @@ EOF
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
+#### Assigned: 11111111-1111-1111-1111-111111111111
 Est. step total: 5 SP
 - [x] Plan and discuss the step (SP=1) [REQ-1]
 - [x] Implement part A (SP=2) [REQ-1]
 - [x] Implement part B (SP=1) [REQ-1]
 - [ ] Review step implementation (SP=1)
+EOF
+  mkdir -p "$source_dir/projects/project-evidence/feature-one"
+  cat >"$source_dir/projects/project-evidence/workers.yaml" <<EOF
+workers:
+  - uuid: "$worker_uuid"
+    class: "platform"
+    status: "ready"
+EOF
+  cat >"$source_dir/projects/project-evidence/feature-one/implementation_plan.md" <<EOF
+### Step 1.1 Demo
+#### Assigned: $worker_uuid
+Est. step total: 5 SP
+- [x] Plan and discuss the step (SP=1) [REQ-1]
+- [x] Implement part A (SP=2) [REQ-1]
+- [x] Implement part B (SP=1) [REQ-1]
+- [ ] Review step implementation (SP=1)
+EOF
+  cat >"$source_dir/projects/project-evidence/feature-one/requirements_ears.md" <<'EOF'
+### Requirement 1 Demo
+- The system SHALL support demo behavior.
+EOF
+  cat >"$repo_dir/ai/project_overmind.yaml" <<EOF
+overmind_source_path: '$source_dir'
+project_id: 'project-evidence'
+worker_uuid: '$worker_uuid'
+class: 'platform'
+status: 'ready'
 EOF
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo

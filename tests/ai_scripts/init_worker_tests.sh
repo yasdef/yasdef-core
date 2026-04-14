@@ -122,6 +122,7 @@ EOF
   assert_contains "$out" "Worker init complete."
   assert_contains "$out" "Binding file: ai/project_overmind.yaml"
   assert_contains "$out" "Worker UUID: $worker_uuid"
+  assert_contains "$out" "Project ID: project-alpha"
   assert_contains "$out" "Worker class: platform"
   assert_contains "$out" "Worker status: ready"
   assert_contains "$out" "Overmind binding commit:"
@@ -133,6 +134,7 @@ EOF
   overmind_resolved="$(resolved_path "$overmind_dir")"
   expected="$(cat <<EOF
 overmind_source_path: '$overmind_resolved'
+project_id: 'project-alpha'
 worker_uuid: '$worker_uuid'
 class: 'platform'
 status: 'ready'
@@ -236,7 +238,7 @@ EOF
   set -e
 
   assert_nonzero_status "$status"
-  assert_contains "$out" "resolved to multiple registrations"
+  assert_contains "$out" "resolved to multiple project registrations"
 }
 
 test_init_worker_is_deterministic_and_refreshes_metadata() {

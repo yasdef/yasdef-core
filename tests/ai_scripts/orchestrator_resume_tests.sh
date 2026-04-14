@@ -6,6 +6,9 @@ ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
+WORKER_UUID_DEFAULT="11111111-1111-1111-1111-111111111111"
+PROJECT_ID_DEFAULT="project-resume"
+FEATURE_ID_DEFAULT="feature-resume"
 
 assert_contains() {
   local haystack="$1"
@@ -38,8 +41,31 @@ assert_not_equal() {
   fi
 }
 
+assert_file_contains() {
+  local file="$1"
+  local needle="$2"
+  if ! grep -Fq "$needle" "$file"; then
+    echo "Assertion failed: expected file $file to contain: $needle" >&2
+    echo "Actual file content:" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
+source_root_for_repo() {
+  local repo_dir="$1"
+  printf '%s' "$repo_dir/.tmp-asdlc-source"
+}
+
+feature_dir_for_repo() {
+  local repo_dir="$1"
+  printf '%s/projects/%s/%s' "$(source_root_for_repo "$repo_dir")" "$PROJECT_ID_DEFAULT" "$FEATURE_ID_DEFAULT"
+}
+
 setup_repo() {
   local repo_dir="$1"
+  local source_dir=""
+  local feature_dir=""
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
     "$repo_dir/ai/step_plans" "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
 
@@ -80,6 +106,35 @@ planning | echo | mock-model
 implementation | echo | mock-model
 user_review | echo | mock-model
 ai_audit | echo | mock-model
+EOF
+
+  source_dir="$(source_root_for_repo "$repo_dir")"
+  feature_dir="$(feature_dir_for_repo "$repo_dir")"
+  mkdir -p "$source_dir/projects/$PROJECT_ID_DEFAULT" "$feature_dir"
+  cat >"$source_dir/projects/$PROJECT_ID_DEFAULT/workers.yaml" <<EOF
+workers:
+  - uuid: "$WORKER_UUID_DEFAULT"
+    class: "platform"
+    status: "ready"
+EOF
+  cat >"$feature_dir/implementation_plan.md" <<EOF
+### Step 1.1 Demo
+#### Assigned: $WORKER_UUID_DEFAULT
+- [ ] Plan and discuss the step (SP=1)
+- [ ] Implement part A (SP=2)
+- [ ] Implement part B (SP=1)
+- [ ] Review step implementation (SP=1)
+EOF
+  cat >"$feature_dir/requirements_ears.md" <<'EOF'
+### Requirement 1 Demo
+- The system SHALL support demo behavior.
+EOF
+  cat >"$repo_dir/ai/project_overmind.yaml" <<EOF
+overmind_source_path: '$source_dir'
+project_id: '$PROJECT_ID_DEFAULT'
+worker_uuid: '$WORKER_UUID_DEFAULT'
+class: 'platform'
+status: 'ready'
 EOF
 
   (
@@ -206,6 +261,7 @@ write_impl_plan() {
   local impl_b_checked="$4"
   local review_checked="$5"
   local gate_prefix="${6:-}"
+  local feature_dir=""
 
   local plan_box=" "
   local impl_a_box=" "
@@ -217,13 +273,43 @@ write_impl_plan() {
   [[ "$impl_b_checked" == "1" ]] && impl_b_box="x"
   [[ "$review_checked" == "1" ]] && review_box="x"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<EOF
+  feature_dir="$(feature_dir_for_repo "$repo_dir")"
+  cat >"$feature_dir/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
+#### Assigned: $WORKER_UUID_DEFAULT
 Est. step total: 5 SP
 - [$plan_box] ${gate_prefix}Plan and discuss the step (SP=1)
 - [$impl_a_box] Implement part A (SP=2)
 - [$impl_b_box] Implement part B (SP=1)
 - [$review_box] ${gate_prefix}Review step implementation (SP=1)
+EOF
+}
+
+write_feature_sync() {
+  local repo_dir="$1"
+  local feature_id="$2"
+  local source_plan="$3"
+  local source_ears="$4"
+  local selected_step="$5"
+  local selection_mode="${6:-auto_single}"
+  local source_dir=""
+  source_dir="$(source_root_for_repo "$repo_dir")"
+
+  cat >"$repo_dir/ai/feature_sync.yaml" <<EOF
+project_id: '$PROJECT_ID_DEFAULT'
+feature_id: '$feature_id'
+worker_uuid: '$WORKER_UUID_DEFAULT'
+overmind_source_path: '$source_dir'
+bound_project_path: '$source_dir/projects/$PROJECT_ID_DEFAULT'
+source_feature_path: '$(dirname "$source_plan")'
+source_implementation_plan_path: '$source_plan'
+source_requirements_ears_path: '$source_ears'
+runtime_implementation_plan_path: '$repo_dir/overmind/implementation_plan.md'
+runtime_requirements_ears_path: '$repo_dir/overmind/reqirements_ears.md'
+runtime_branch: 'overmind'
+selection_mode: '$selection_mode'
+requested_step: '$selected_step'
+selected_step: '$selected_step'
 EOF
 }
 
@@ -480,7 +566,7 @@ test_missing_step_error() {
   status=$?
   set -e
   assert_not_equal "$status" "0"
-  assert_contains "$out" "Unknown step '9.9'"
+  assert_contains "$out" "No candidate features under project '$PROJECT_ID_DEFAULT' contain requested step '9.9' assigned to worker '$WORKER_UUID_DEFAULT'."
 }
 
 test_dry_run_is_deterministic() {
@@ -548,6 +634,96 @@ test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items() {
   assert_not_contains "$out" "Resume blocked:"
 }
 
+test_resume_reuses_valid_feature_sync_metadata() {
+  local repo_dir="$TMP_ROOT/repo-resume-feature-sync-reuse"
+  local source_dir=""
+  local feature_primary=""
+  local feature_secondary=""
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  source_dir="$(source_root_for_repo "$repo_dir")"
+  feature_primary="$(feature_dir_for_repo "$repo_dir")"
+  feature_secondary="$source_dir/projects/$PROJECT_ID_DEFAULT/feature-second"
+
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+
+  mkdir -p "$feature_secondary"
+  cat >"$feature_secondary/implementation_plan.md" <<EOF
+### Step 1.1 Demo secondary
+#### Assigned: $WORKER_UUID_DEFAULT
+- [x] Plan and discuss the step (SP=1)
+- [x] Implement part A (SP=2)
+- [x] Implement part B (SP=1)
+- [ ] Review step implementation (SP=1)
+EOF
+  cat >"$feature_secondary/requirements_ears.md" <<'EOF'
+### Requirement 1 Demo secondary
+- The system SHALL support secondary demo behavior.
+EOF
+
+  write_feature_sync \
+    "$repo_dir" \
+    "$FEATURE_ID_DEFAULT" \
+    "$feature_primary/implementation_plan.md" \
+    "$feature_primary/requirements_ears.md" \
+    "1.1" \
+    "auto_single"
+
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  assert_contains "$out" "Resume dry-run for step 1.1"
+  assert_not_contains "$out" "Multiple candidate features found under project"
+  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "selection_mode: 'resume_reuse"
+  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "feature_id: '$FEATURE_ID_DEFAULT'"
+}
+
+test_resume_invalidates_stale_feature_sync_metadata() {
+  local repo_dir="$TMP_ROOT/repo-resume-feature-sync-stale"
+  local source_dir=""
+  local feature_secondary=""
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  source_dir="$(source_root_for_repo "$repo_dir")"
+  feature_secondary="$source_dir/projects/$PROJECT_ID_DEFAULT/feature-second"
+
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+
+  mkdir -p "$feature_secondary"
+  cat >"$feature_secondary/implementation_plan.md" <<EOF
+### Step 1.1 Demo secondary
+#### Assigned: $WORKER_UUID_DEFAULT
+- [x] Plan and discuss the step (SP=1)
+- [x] Implement part A (SP=2)
+- [x] Implement part B (SP=1)
+- [ ] Review step implementation (SP=1)
+EOF
+  cat >"$feature_secondary/requirements_ears.md" <<'EOF'
+### Requirement 1 Demo secondary
+- The system SHALL support secondary demo behavior.
+EOF
+
+  write_feature_sync \
+    "$repo_dir" \
+    "feature-missing" \
+    "$source_dir/projects/$PROJECT_ID_DEFAULT/feature-missing/implementation_plan.md" \
+    "$source_dir/projects/$PROJECT_ID_DEFAULT/feature-missing/requirements_ears.md" \
+    "1.1" \
+    "auto_single"
+
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "Multiple candidate features were found for worker '$WORKER_UUID_DEFAULT'. Run in an interactive terminal to choose a feature."
+}
+
 test_resume_starts_at_planning
 test_resume_starts_at_planning_when_design_sections_missing
 test_resume_starts_at_planning_when_step_plan_missing
@@ -562,6 +738,8 @@ test_resume_starts_at_post_review_when_disposition_count_is_insufficient
 test_resume_does_not_require_evidence_before_ai_audit
 test_resume_allows_implementation_when_ordered_plan_section_missing
 test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items
+test_resume_reuses_valid_feature_sync_metadata
+test_resume_invalidates_stale_feature_sync_metadata
 test_missing_step_error
 test_dry_run_is_deterministic
 

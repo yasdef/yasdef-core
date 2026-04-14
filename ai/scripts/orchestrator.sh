@@ -35,6 +35,10 @@ BLOCKER_LOG_FILE="$ROOT/ai/blocker_log.md"
 OPEN_QUESTIONS_FILE="$ROOT/ai/open_questions.md"
 USER_REVIEW_FILE="$ROOT/ai/user_review.md"
 IMPLEMENTATION_PLAN_PRIMARY="$ROOT/overmind/implementation_plan.md"
+RUNTIME_REQUIREMENTS_PATH="$ROOT/overmind/reqirements_ears.md"
+PROJECT_BINDING_FILE="$ROOT/ai/project_overmind.yaml"
+FEATURE_SYNC_FILE="$ROOT/ai/feature_sync.yaml"
+RUNTIME_BRANCH="overmind"
 
 # Run all child commands from repository root for consistent sandbox/workspace resolution.
 cd "$ROOT"
@@ -57,6 +61,26 @@ PHASE_EVAL_STATES=()
 PHASE_EVAL_DETAILS=()
 IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
 CANONICAL_PHASES=(design planning implementation user_review ai_audit post_review)
+
+BINDING_OVERMIND_SOURCE_PATH=""
+BINDING_PROJECT_ID=""
+BINDING_WORKER_UUID=""
+BINDING_WORKER_CLASS=""
+BINDING_WORKER_STATUS=""
+BOUND_PROJECT_PATH=""
+BOUND_FEATURES_ROOT=""
+
+SELECTED_FEATURE_ID=""
+SELECTED_FEATURE_PATH=""
+SELECTED_SOURCE_PLAN_PATH=""
+SELECTED_SOURCE_EARS_PATH=""
+SELECTED_STEP=""
+SELECTED_SELECTION_MODE=""
+SELECTED_REQUESTED_STEP=""
+
+FEATURE_CONTEXT_READY=0
+FEATURE_CONTEXT_REQUESTED_STEP=""
+FEATURE_CONTEXT_RESUME_MODE=0
 
 usage() {
   cat <<'EOF'
@@ -537,13 +561,18 @@ list_phases() {
 run_planning_phase() {
   load_model_config "planning"
 
-  local step planning_prompt_out
+  local step planning_prompt_out explicit_step
   step="$(resolve_step_for_phase_from_args "planning" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")" || return 1
+  explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
   planning_prompt_out="$(resolve_prompt_output_path "planning" "$step")"
 
   local plan_cmd=("$ROOT/ai/scripts/ai_plan.sh")
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
     plan_cmd+=("${PLAN_ARGS[@]}")
+  fi
+  if [[ -z "$explicit_step" ]]; then
+    echo "orchestrator: resolved routed step '$step' for planning; injecting --step into ai_plan.sh." >&2
+    plan_cmd+=(--step "$step")
   fi
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     plan_cmd+=(--feature-rich-design-planning)
@@ -589,19 +618,18 @@ run_planning_phase() {
 run_design_phase() {
   load_model_config "design"
 
-  local explicit_step=""
-  explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
-  if [[ -z "$explicit_step" ]]; then
-    ensure_synced_overmind_for_step_selection
-  fi
-
-  local step design_prompt_out
+  local step design_prompt_out explicit_step
   step="$(resolve_step_for_phase_from_args "design" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")" || return 1
+  explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
   design_prompt_out="$(resolve_prompt_output_path "design" "$step")"
 
   local design_cmd=("$ROOT/ai/scripts/ai_design.sh")
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
     design_cmd+=("${PLAN_ARGS[@]}")
+  fi
+  if [[ -z "$explicit_step" ]]; then
+    echo "orchestrator: resolved routed step '$step' for design; injecting --step into ai_design.sh." >&2
+    design_cmd+=(--step "$step")
   fi
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     design_cmd+=(--feature-rich-design-planning)
@@ -730,161 +758,436 @@ is_valid_uuid() {
   [[ "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
 }
 
-resolve_overmind_remote_name() {
-  local remote=""
-  remote="$(git -C "$ROOT" config --get "branch.overmind.remote" 2>/dev/null || true)"
-  if [[ -z "$remote" ]]; then
-    remote="origin"
-  fi
-  printf '%s' "$remote"
+trim_whitespace() {
+  local value="${1:-}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
 }
 
-ensure_synced_overmind_for_step_selection() {
-  local remote=""
-  local master_branch="master"
-
-  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    die "Step selection requires a git repository."
-  fi
-
-  if ! git -C "$ROOT" show-ref --verify --quiet "refs/heads/overmind"; then
-    die "Step selection requires local Git branch 'overmind'."
-  fi
-
-  if [[ "$(get_current_branch_name)" != "overmind" ]]; then
-    if ! git -C "$ROOT" checkout overmind >/dev/null 2>&1; then
-      die "Failed to checkout local Git branch 'overmind' for step selection."
-    fi
-  fi
-
-  if ! git -C "$ROOT" show-ref --verify --quiet "refs/heads/$master_branch"; then
-    die "Step selection requires local Git branch '$master_branch' to merge into 'overmind'."
-  fi
-
-  if ! git -C "$ROOT" merge --no-edit "$master_branch" >/dev/null 2>&1; then
-    die "Failed to merge local Git branch '$master_branch' into 'overmind'. Resolve merge conflicts and rerun."
-  fi
-
-  remote="$(resolve_overmind_remote_name)"
-  if ! git -C "$ROOT" remote get-url "$remote" >/dev/null 2>&1; then
-    die "Step selection requires configured remote '$remote' for branch 'overmind'."
-  fi
-
-  if ! git -C "$ROOT" ls-remote --exit-code --heads "$remote" "overmind" >/dev/null 2>&1; then
-    die "Step selection requires remote Git branch '$remote/overmind'."
-  fi
-
-  if ! git -C "$ROOT" pull --ff-only "$remote" "overmind" >/dev/null 2>&1; then
-    die "Failed to sync local Git branch 'overmind' from '$remote/overmind'."
-  fi
+yaml_quote_single() {
+  printf '%s' "$1" | sed "s/'/''/g"
 }
 
-discover_worker_uuid_for_step_selection() {
-  local -a candidates=()
-  local file base worker_uuid
-  while IFS= read -r file; do
-    [[ -n "$file" ]] || continue
-    candidates+=("$file")
-  done < <(find "$ROOT/ai" -maxdepth 1 -type f -name '*_dont_touch.txt' -print 2>/dev/null || true)
+yaml_get_scalar() {
+  local file="$1"
+  local key="$2"
+  local raw=""
+  local value=""
 
-  if [[ ${#candidates[@]} -eq 0 ]] && git -C "$ROOT" show-ref --verify --quiet "refs/heads/master"; then
-    while IFS= read -r file; do
-      [[ -n "$file" ]] || continue
-      candidates+=("$ROOT/$file")
-    done < <(
-      git -C "$ROOT" ls-tree -r --name-only master -- ai 2>/dev/null \
-        | grep -E '^ai/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_dont_touch\.txt$' \
-        || true
-    )
-  fi
-
-  if [[ ${#candidates[@]} -eq 0 ]]; then
-    die "No worker identity file found matching ai/*_dont_touch.txt."
-  fi
-
-  if [[ ${#candidates[@]} -gt 1 ]]; then
-    die "Multiple worker identity files found matching ai/*_dont_touch.txt. Keep exactly one canonical file."
-  fi
-
-  base="$(basename "${candidates[0]}")"
-  worker_uuid="${base%_dont_touch.txt}"
-  if ! is_valid_uuid "$worker_uuid"; then
-    die "Worker identity filename is malformed (expected <uuid>_dont_touch.txt): ai/$base"
-  fi
-
-  printf '%s' "$worker_uuid"
-}
-
-get_first_unchecked_step() {
-  local worker_uuid=""
-  local selected_step=""
-
-  ensure_synced_overmind_for_step_selection
-  if [[ ! -f "$IMPLEMENTATION_PLAN_FILE" ]]; then
-    die "Required file not found: $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")"
-  fi
-  if ! worker_uuid="$(discover_worker_uuid_for_step_selection)"; then
+  if [[ ! -f "$file" ]]; then
     return 1
   fi
 
-  selected_step="$(
-    awk -v target_uuid="$worker_uuid" '
-      function trim(s) {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
-        return s
-      }
-      BEGIN {
-        step_num = ""
-        assigned_uuid = ""
-        matched_assignment = 0
-        found = 0
-      }
-      /^### Step / {
-        line = $0
-        sub(/^### Step /, "", line)
-        split(line, parts, " ")
-        step_num = parts[1]
-        assigned_uuid = ""
-        next
-      }
-      /^#### Assigned:[[:space:]]*/ {
-        line = $0
-        sub(/^#### Assigned:[[:space:]]*/, "", line)
-        assigned_uuid = trim(line)
-        if (assigned_uuid == target_uuid) {
-          matched_assignment = 1
-        }
-        next
-      }
-      /^- \[ \]/ {
-        if (step_num != "" && assigned_uuid == target_uuid) {
-          print step_num
-          found = 1
-          exit
-        }
-      }
-      END {
-        if (found == 1) {
-          exit 0
-        }
-        if (matched_assignment == 1) {
-          print "__NO_FREE_ASSIGNED_BULLETS__"
-          exit 0
-        }
-        print "__NO_ASSIGNED_STEPS__"
-      }
-    ' "$IMPLEMENTATION_PLAN_FILE"
-  )"
-
-  if [[ "$selected_step" == "__NO_ASSIGNED_STEPS__" ]]; then
-    die "No steps in $(repo_relpath "$IMPLEMENTATION_PLAN_FILE") are assigned to worker UUID '$worker_uuid'."
+  raw="$(grep -E "^[[:space:]]*$key:[[:space:]]*" "$file" | head -n 1 || true)"
+  if [[ -z "$raw" ]]; then
+    return 1
   fi
 
-  if [[ "$selected_step" == "__NO_FREE_ASSIGNED_BULLETS__" ]]; then
-    die "No free unchecked bullets remain for worker UUID '$worker_uuid' in $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")."
+  value="${raw#*:}"
+  value="$(trim_whitespace "$value")"
+  if [[ -z "$value" ]]; then
+    return 1
   fi
 
-  printf '%s' "$selected_step"
+  if [[ "$value" == "'"* && "$value" == *"'" ]]; then
+    value="${value:1:${#value}-2}"
+    value="${value//\'\'/\'}"
+  elif [[ "$value" == "\""* && "$value" == *"\"" ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+
+  printf '%s' "$value"
+}
+
+load_project_binding() {
+  if [[ -n "$BINDING_WORKER_UUID" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "$PROJECT_BINDING_FILE" ]]; then
+    die "Required binding file is missing: $(repo_relpath "$PROJECT_BINDING_FILE"). Run ai/scripts/init_worker.sh first."
+  fi
+
+  BINDING_OVERMIND_SOURCE_PATH="$(yaml_get_scalar "$PROJECT_BINDING_FILE" "overmind_source_path" || true)"
+  BINDING_PROJECT_ID="$(yaml_get_scalar "$PROJECT_BINDING_FILE" "project_id" || true)"
+  BINDING_WORKER_UUID="$(yaml_get_scalar "$PROJECT_BINDING_FILE" "worker_uuid" || true)"
+  BINDING_WORKER_CLASS="$(yaml_get_scalar "$PROJECT_BINDING_FILE" "class" || true)"
+  BINDING_WORKER_STATUS="$(yaml_get_scalar "$PROJECT_BINDING_FILE" "status" || true)"
+
+  if [[ -z "$BINDING_OVERMIND_SOURCE_PATH" ]]; then
+    die "Binding file is invalid: missing overmind_source_path in $(repo_relpath "$PROJECT_BINDING_FILE")."
+  fi
+  if [[ -z "$BINDING_PROJECT_ID" ]]; then
+    die "Binding file is invalid: missing project_id in $(repo_relpath "$PROJECT_BINDING_FILE")."
+  fi
+  if [[ -z "$BINDING_WORKER_UUID" ]]; then
+    die "Binding file is invalid: missing worker_uuid in $(repo_relpath "$PROJECT_BINDING_FILE")."
+  fi
+  if ! is_valid_uuid "$BINDING_WORKER_UUID"; then
+    die "Binding file is invalid: worker_uuid is not canonical UUID in $(repo_relpath "$PROJECT_BINDING_FILE")."
+  fi
+  if [[ ! -d "$BINDING_OVERMIND_SOURCE_PATH" ]]; then
+    die "Bound overmind source path does not exist: $BINDING_OVERMIND_SOURCE_PATH"
+  fi
+
+  if [[ -d "$BINDING_OVERMIND_SOURCE_PATH/projects/$BINDING_PROJECT_ID" ]]; then
+    BOUND_PROJECT_PATH="$BINDING_OVERMIND_SOURCE_PATH/projects/$BINDING_PROJECT_ID"
+  elif [[ -d "$BINDING_OVERMIND_SOURCE_PATH/$BINDING_PROJECT_ID" ]]; then
+    BOUND_PROJECT_PATH="$BINDING_OVERMIND_SOURCE_PATH/$BINDING_PROJECT_ID"
+  else
+    die "Bound project path is missing for project_id '$BINDING_PROJECT_ID' under overmind source '$BINDING_OVERMIND_SOURCE_PATH'."
+  fi
+  BOUND_FEATURES_ROOT="$BOUND_PROJECT_PATH"
+}
+
+ensure_runtime_branch_checked_out() {
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "Feature routing requires a git repository."
+  fi
+
+  if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH"; then
+    if [[ "$(get_current_branch_name)" != "$RUNTIME_BRANCH" ]]; then
+      if ! git -C "$ROOT" checkout "$RUNTIME_BRANCH" >/dev/null 2>&1; then
+        die "Failed to checkout runtime branch '$RUNTIME_BRANCH'."
+      fi
+    fi
+  else
+    if ! git -C "$ROOT" checkout -b "$RUNTIME_BRANCH" >/dev/null 2>&1; then
+      die "Failed to create runtime branch '$RUNTIME_BRANCH'."
+    fi
+  fi
+}
+
+analyze_feature_plan_for_worker() {
+  local plan_path="$1"
+  local worker_uuid="$2"
+  local requested_step="${3:-}"
+
+  awk -v target_uuid="$worker_uuid" -v requested_step="$requested_step" '
+    function trim(s) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+      return s
+    }
+    BEGIN {
+      step_num = ""
+      assigned_uuid = ""
+      assigned_any = 0
+      requested_match = 0
+      first_unchecked = ""
+    }
+    /^### Step / {
+      line = $0
+      sub(/^### Step /, "", line)
+      split(line, parts, " ")
+      step_num = parts[1]
+      assigned_uuid = ""
+      next
+    }
+    /^#### Assigned:[[:space:]]*/ {
+      line = $0
+      sub(/^#### Assigned:[[:space:]]*/, "", line)
+      assigned_uuid = trim(line)
+      if (assigned_uuid == target_uuid) {
+        assigned_any = 1
+        if (requested_step != "" && step_num == requested_step) {
+          requested_match = 1
+        }
+      }
+      next
+    }
+    /^- \[ \]/ {
+      if (step_num != "" && assigned_uuid == target_uuid && first_unchecked == "") {
+        first_unchecked = step_num
+      }
+      next
+    }
+    END {
+      printf "%d|%d|%s", assigned_any, requested_match, first_unchecked
+    }
+  ' "$plan_path"
+}
+
+plan_has_assigned_step_for_worker() {
+  local plan_path="$1"
+  local worker_uuid="$2"
+  local step="$3"
+
+  awk -v target_uuid="$worker_uuid" -v step="$step" '
+    function trim(s) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+      return s
+    }
+    /^### Step / {
+      line = $0
+      sub(/^### Step /, "", line)
+      split(line, parts, " ")
+      step_num = parts[1]
+      assigned_uuid = ""
+      next
+    }
+    /^#### Assigned:[[:space:]]*/ {
+      line = $0
+      sub(/^#### Assigned:[[:space:]]*/, "", line)
+      assigned_uuid = trim(line)
+      if (step_num == step && assigned_uuid == target_uuid) {
+        found = 1
+        exit 0
+      }
+      next
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$plan_path"
+}
+
+prompt_for_feature_selection_index() {
+  local feature_ids=("$@")
+  local selected=""
+
+  if [[ ! -t 0 ]]; then
+    die "Multiple candidate features were found for worker '$BINDING_WORKER_UUID'. Run in an interactive terminal to choose a feature."
+  fi
+
+  echo "Multiple candidate features found under project '$BINDING_PROJECT_ID' for worker '$BINDING_WORKER_UUID':" >&2
+  local i=0
+  while [[ $i -lt ${#feature_ids[@]} ]]; do
+    printf '  %d) %s\n' "$((i + 1))" "${feature_ids[$i]}" >&2
+    i=$((i + 1))
+  done
+
+  while true; do
+    printf 'Select feature number: ' >&2
+    IFS= read -r selected || selected=""
+    selected="$(trim_whitespace "$selected")"
+    if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 ]] && [[ "$selected" -le "${#feature_ids[@]}" ]]; then
+      printf '%s' "$((selected - 1))"
+      return 0
+    fi
+    echo "Invalid selection. Enter a number between 1 and ${#feature_ids[@]}." >&2
+  done
+}
+
+write_feature_sync_metadata() {
+  local selected_step="$1"
+  local tmp_path="${FEATURE_SYNC_FILE}.tmp"
+
+  ensure_dir_writable "$(dirname "$FEATURE_SYNC_FILE")"
+  {
+    printf "project_id: '%s'\n" "$(yaml_quote_single "$BINDING_PROJECT_ID")"
+    printf "feature_id: '%s'\n" "$(yaml_quote_single "$SELECTED_FEATURE_ID")"
+    printf "worker_uuid: '%s'\n" "$(yaml_quote_single "$BINDING_WORKER_UUID")"
+    printf "overmind_source_path: '%s'\n" "$(yaml_quote_single "$BINDING_OVERMIND_SOURCE_PATH")"
+    printf "bound_project_path: '%s'\n" "$(yaml_quote_single "$BOUND_PROJECT_PATH")"
+    printf "source_feature_path: '%s'\n" "$(yaml_quote_single "$SELECTED_FEATURE_PATH")"
+    printf "source_implementation_plan_path: '%s'\n" "$(yaml_quote_single "$SELECTED_SOURCE_PLAN_PATH")"
+    printf "source_requirements_ears_path: '%s'\n" "$(yaml_quote_single "$SELECTED_SOURCE_EARS_PATH")"
+    printf "runtime_implementation_plan_path: '%s'\n" "$(yaml_quote_single "$IMPLEMENTATION_PLAN_PRIMARY")"
+    printf "runtime_requirements_ears_path: '%s'\n" "$(yaml_quote_single "$RUNTIME_REQUIREMENTS_PATH")"
+    printf "runtime_branch: '%s'\n" "$(yaml_quote_single "$RUNTIME_BRANCH")"
+    printf "selection_mode: '%s'\n" "$(yaml_quote_single "$SELECTED_SELECTION_MODE")"
+    printf "requested_step: '%s'\n" "$(yaml_quote_single "$SELECTED_REQUESTED_STEP")"
+    printf "selected_step: '%s'\n" "$(yaml_quote_single "$selected_step")"
+  } >"$tmp_path"
+  mv "$tmp_path" "$FEATURE_SYNC_FILE"
+}
+
+try_reuse_feature_sync_for_resume() {
+  local requested_step="$1"
+  local feature_project_id=""
+  local feature_id=""
+  local feature_worker_uuid=""
+  local source_plan=""
+  local source_ears=""
+  local runtime_branch=""
+  local selection_mode=""
+
+  if [[ ! -f "$FEATURE_SYNC_FILE" ]]; then
+    return 1
+  fi
+
+  feature_project_id="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "project_id" || true)"
+  feature_id="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "feature_id" || true)"
+  feature_worker_uuid="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "worker_uuid" || true)"
+  source_plan="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "source_implementation_plan_path" || true)"
+  source_ears="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "source_requirements_ears_path" || true)"
+  runtime_branch="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "runtime_branch" || true)"
+  selection_mode="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "selection_mode" || true)"
+
+  if [[ "$feature_project_id" != "$BINDING_PROJECT_ID" ]]; then
+    return 1
+  fi
+  if [[ "$feature_worker_uuid" != "$BINDING_WORKER_UUID" ]]; then
+    return 1
+  fi
+  if [[ "$runtime_branch" != "$RUNTIME_BRANCH" ]]; then
+    return 1
+  fi
+  if [[ -z "$feature_id" || -z "$source_plan" || -z "$source_ears" ]]; then
+    return 1
+  fi
+  if [[ ! -f "$source_plan" || ! -f "$source_ears" ]]; then
+    return 1
+  fi
+  if ! plan_has_assigned_step_for_worker "$source_plan" "$BINDING_WORKER_UUID" "$requested_step"; then
+    return 1
+  fi
+
+  SELECTED_FEATURE_ID="$feature_id"
+  SELECTED_FEATURE_PATH="$(dirname "$source_plan")"
+  SELECTED_SOURCE_PLAN_PATH="$source_plan"
+  SELECTED_SOURCE_EARS_PATH="$source_ears"
+  SELECTED_SELECTION_MODE="resume_reuse"
+  if [[ -n "$selection_mode" ]]; then
+    SELECTED_SELECTION_MODE="resume_reuse:$selection_mode"
+  fi
+  SELECTED_REQUESTED_STEP="$requested_step"
+  SELECTED_STEP="$requested_step"
+  return 0
+}
+
+mirror_selected_feature_to_runtime() {
+  local selected_step="$1"
+
+  if [[ ! -f "$SELECTED_SOURCE_PLAN_PATH" ]]; then
+    die "Selected feature plan is missing: $SELECTED_SOURCE_PLAN_PATH"
+  fi
+  if [[ ! -f "$SELECTED_SOURCE_EARS_PATH" ]]; then
+    die "Selected feature requirements_ears.md is missing: $SELECTED_SOURCE_EARS_PATH"
+  fi
+  if ! grep -q '[^[:space:]]' "$SELECTED_SOURCE_EARS_PATH"; then
+    die "Selected feature requirements_ears.md is unusable (empty): $SELECTED_SOURCE_EARS_PATH"
+  fi
+
+  ensure_dir_writable "$ROOT/overmind"
+  cp "$SELECTED_SOURCE_PLAN_PATH" "$IMPLEMENTATION_PLAN_PRIMARY"
+  cp "$SELECTED_SOURCE_EARS_PATH" "$RUNTIME_REQUIREMENTS_PATH"
+  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
+
+  write_feature_sync_metadata "$selected_step"
+}
+
+ensure_feature_runtime_context() {
+  local requested_step="${1:-}"
+  local resume_mode="${2:-0}"
+
+  if [[ "$FEATURE_CONTEXT_READY" -eq 1 ]] && [[ "$FEATURE_CONTEXT_REQUESTED_STEP" == "$requested_step" ]] && [[ "$FEATURE_CONTEXT_RESUME_MODE" -eq "$resume_mode" ]]; then
+    return 0
+  fi
+
+  load_project_binding
+  ensure_runtime_branch_checked_out
+
+  local -a candidate_feature_ids=()
+  local -a candidate_feature_paths=()
+  local -a candidate_plan_paths=()
+  local -a candidate_ears_paths=()
+  local -a candidate_first_steps=()
+  local features_dir=""
+  local assigned_feature_count=0
+  local assigned_with_unchecked_count=0
+
+  if [[ "$resume_mode" -eq 1 && -n "$requested_step" ]]; then
+    if try_reuse_feature_sync_for_resume "$requested_step"; then
+      mirror_selected_feature_to_runtime "$requested_step"
+      FEATURE_CONTEXT_READY=1
+      FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
+      FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
+      echo "orchestrator: selected feature '$SELECTED_FEATURE_ID' (mode=$SELECTED_SELECTION_MODE, project=$BINDING_PROJECT_ID, step=$SELECTED_STEP)." >&2
+      return 0
+    fi
+  fi
+
+  while IFS= read -r features_dir; do
+    [[ -n "$features_dir" ]] || continue
+    local feature_id=""
+    local plan_path=""
+    local ears_path=""
+    local analysis=""
+    local assigned_any=0
+    local requested_match=0
+    local first_unchecked=""
+
+    feature_id="$(basename "$features_dir")"
+    plan_path="$features_dir/implementation_plan.md"
+    ears_path="$features_dir/requirements_ears.md"
+    [[ -f "$plan_path" ]] || continue
+
+    analysis="$(analyze_feature_plan_for_worker "$plan_path" "$BINDING_WORKER_UUID" "$requested_step")"
+    IFS='|' read -r assigned_any requested_match first_unchecked <<<"$analysis"
+
+    if [[ "$assigned_any" -eq 1 ]]; then
+      assigned_feature_count=$((assigned_feature_count + 1))
+      if [[ -n "$first_unchecked" ]]; then
+        assigned_with_unchecked_count=$((assigned_with_unchecked_count + 1))
+      fi
+    fi
+
+    if [[ -n "$requested_step" ]]; then
+      if [[ "$requested_match" -eq 1 ]]; then
+        candidate_feature_ids+=("$feature_id")
+        candidate_feature_paths+=("$features_dir")
+        candidate_plan_paths+=("$plan_path")
+        candidate_ears_paths+=("$ears_path")
+        candidate_first_steps+=("$requested_step")
+      fi
+    else
+      if [[ -n "$first_unchecked" ]]; then
+        candidate_feature_ids+=("$feature_id")
+        candidate_feature_paths+=("$features_dir")
+        candidate_plan_paths+=("$plan_path")
+        candidate_ears_paths+=("$ears_path")
+        candidate_first_steps+=("$first_unchecked")
+      fi
+    fi
+  done < <(find "$BOUND_FEATURES_ROOT" -mindepth 1 -maxdepth 1 -type d -print | LC_ALL=C sort)
+
+  if [[ "$assigned_feature_count" -eq 0 ]]; then
+    die "No feature under bound project '$BINDING_PROJECT_ID' contains assigned steps for worker UUID '$BINDING_WORKER_UUID'."
+  fi
+
+  if [[ ${#candidate_feature_ids[@]} -eq 0 ]]; then
+    if [[ -n "$requested_step" ]]; then
+      die "No candidate features under project '$BINDING_PROJECT_ID' contain requested step '$requested_step' assigned to worker '$BINDING_WORKER_UUID'."
+    fi
+    if [[ "$assigned_with_unchecked_count" -eq 0 ]]; then
+      die "Assigned steps exist for worker '$BINDING_WORKER_UUID' but all assigned checklist bullets are complete under project '$BINDING_PROJECT_ID'."
+    fi
+    die "No candidate features remain after assignment filtering for worker '$BINDING_WORKER_UUID' under project '$BINDING_PROJECT_ID'."
+  fi
+
+  local selected_index=0
+  if [[ ${#candidate_feature_ids[@]} -eq 1 ]]; then
+    selected_index=0
+    SELECTED_SELECTION_MODE="auto_single"
+  else
+    selected_index="$(prompt_for_feature_selection_index "${candidate_feature_ids[@]}")"
+    SELECTED_SELECTION_MODE="user_prompt"
+  fi
+
+  SELECTED_FEATURE_ID="${candidate_feature_ids[$selected_index]}"
+  SELECTED_FEATURE_PATH="${candidate_feature_paths[$selected_index]}"
+  SELECTED_SOURCE_PLAN_PATH="${candidate_plan_paths[$selected_index]}"
+  SELECTED_SOURCE_EARS_PATH="${candidate_ears_paths[$selected_index]}"
+  SELECTED_REQUESTED_STEP="$requested_step"
+  SELECTED_STEP="${candidate_first_steps[$selected_index]}"
+
+  if [[ -z "$SELECTED_STEP" ]]; then
+    die "Selected feature '$SELECTED_FEATURE_ID' has no runnable step for worker '$BINDING_WORKER_UUID'."
+  fi
+
+  mirror_selected_feature_to_runtime "$SELECTED_STEP"
+  FEATURE_CONTEXT_READY=1
+  FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
+  FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
+  echo "orchestrator: selected feature '$SELECTED_FEATURE_ID' (mode=$SELECTED_SELECTION_MODE, project=$BINDING_PROJECT_ID, step=$SELECTED_STEP)." >&2
+}
+
+get_first_unchecked_step() {
+  ensure_feature_runtime_context "" "${RESUME_MODE:-0}"
+  if [[ -z "$SELECTED_STEP" ]]; then
+    die "No selected step is available for worker '$BINDING_WORKER_UUID'."
+  fi
+  printf '%s' "$SELECTED_STEP"
 }
 
 resolve_step_for_phase_from_args() {
@@ -1297,6 +1600,96 @@ run_phase() {
       exit 1
       ;;
   esac
+}
+
+phase_requires_source_plan_sync() {
+  local phase="$1"
+  phase="$(canonicalize_phase_name "$phase")"
+  case "$phase" in
+    planning|ai_audit|post_review)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+compute_runtime_plan_digest() {
+  local digest=""
+  if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    && git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH" \
+    && git -C "$ROOT" cat-file -e "$RUNTIME_BRANCH:overmind/implementation_plan.md" 2>/dev/null; then
+    digest="$(git -C "$ROOT" show "$RUNTIME_BRANCH:overmind/implementation_plan.md" | cksum | awk '{print $1 ":" $2}' || true)"
+    if [[ -n "$digest" ]]; then
+      printf '%s' "$digest"
+      return 0
+    fi
+  fi
+
+  if [[ -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
+    cksum "$IMPLEMENTATION_PLAN_PRIMARY" | awk '{print $1 ":" $2}'
+    return 0
+  fi
+  printf ''
+}
+
+copy_runtime_plan_to_file() {
+  local target_file="$1"
+  if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    && git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH" \
+    && git -C "$ROOT" cat-file -e "$RUNTIME_BRANCH:overmind/implementation_plan.md" 2>/dev/null; then
+    git -C "$ROOT" show "$RUNTIME_BRANCH:overmind/implementation_plan.md" >"$target_file"
+    return 0
+  fi
+  if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
+    return 1
+  fi
+  cp "$IMPLEMENTATION_PLAN_PRIMARY" "$target_file"
+}
+
+sync_runtime_plan_back_to_selected_feature_source() {
+  local phase="$1"
+  local tmp_runtime=""
+
+  if [[ -z "$SELECTED_SOURCE_PLAN_PATH" ]]; then
+    die "Cannot sync runtime plan after phase '$phase': selected feature source plan path is unknown."
+  fi
+
+  ensure_dir_writable "$(dirname "$SELECTED_SOURCE_PLAN_PATH")"
+  tmp_runtime="$(mktemp)"
+  if ! copy_runtime_plan_to_file "$tmp_runtime"; then
+    rm -f "$tmp_runtime"
+    die "Cannot sync runtime plan after phase '$phase': overmind/implementation_plan.md is unavailable."
+  fi
+
+  if [[ -f "$SELECTED_SOURCE_PLAN_PATH" ]] && cmp -s "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH"; then
+    rm -f "$tmp_runtime"
+    return 0
+  fi
+
+  mv "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH"
+}
+
+run_phase_with_optional_feature_sync() {
+  local phase="$1"
+  local before_digest=""
+  local after_digest=""
+  local should_sync=0
+
+  if [[ "$DRY_RUN" -eq 0 ]] && phase_requires_source_plan_sync "$phase"; then
+    should_sync=1
+    before_digest="$(compute_runtime_plan_digest)"
+  fi
+
+  run_phase "$phase"
+
+  if [[ "$should_sync" -eq 1 ]]; then
+    after_digest="$(compute_runtime_plan_digest)"
+    if [[ "$before_digest" != "$after_digest" ]]; then
+      sync_runtime_plan_back_to_selected_feature_source "$phase"
+    fi
+  fi
 }
 
 array_contains_ci() {
@@ -2086,6 +2479,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+REQUESTED_STEP_FOR_FEATURE_CONTEXT=""
+if [[ "$RESUME_MODE" -eq 1 ]]; then
+  REQUESTED_STEP_FOR_FEATURE_CONTEXT="$RESUME_STEP"
+else
+  REQUESTED_STEP_FOR_FEATURE_CONTEXT="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
+fi
+ensure_feature_runtime_context "$REQUESTED_STEP_FOR_FEATURE_CONTEXT" "$RESUME_MODE"
+
 if [[ "$RESUME_MODE" -eq 1 ]]; then
   if [[ ! -f "$IMPLEMENTATION_PLAN_FILE" ]]; then
     die "Required file not found: $(repo_relpath "$IMPLEMENTATION_PLAN_FILE")"
@@ -2130,7 +2531,7 @@ fi
 
 for phase in "${REQUESTED_PHASES[@]+"${REQUESTED_PHASES[@]}"}"; do
   if confirm_phase_if_interactive "$phase"; then
-    run_phase "$phase"
+    run_phase_with_optional_feature_sync "$phase"
     if [[ "$(canonicalize_phase_name "$phase")" == "ai_audit" ]]; then
       RAN_AI_AUDIT=1
     fi

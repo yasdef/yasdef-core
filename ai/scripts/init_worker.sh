@@ -6,6 +6,7 @@ ORCHESTRATOR_BRANCH="overmind"
 
 WORKER_UUID=""
 OVERMIND_SOURCE_PATH=""
+PROJECT_ID=""
 WORKER_CLASS=""
 WORKER_STATUS=""
 WORKER_MATCH_FILE=""
@@ -14,6 +15,7 @@ BINDING_COMMIT_SHA=""
 
 declare -a WORKERS_FILES=()
 declare -a MATCH_FILES=()
+declare -a MATCH_PROJECT_IDS=()
 declare -a MATCH_CLASSES=()
 declare -a MATCH_STATUSES=()
 
@@ -124,6 +126,27 @@ discover_workers_files() {
   if [[ "${#WORKERS_FILES[@]}" -eq 0 ]]; then
     die "No project workers.yaml files found under overmind source: $source_path"
   fi
+}
+
+derive_project_id_from_workers_file() {
+  local file="$1"
+  local rel_path=""
+
+  if [[ "$file" != "$OVERMIND_SOURCE_PATH/"* ]]; then
+    die "Unusable workers registry path '$file': not under overmind source '$OVERMIND_SOURCE_PATH'."
+  fi
+
+  rel_path="${file#"$OVERMIND_SOURCE_PATH"/}"
+  if [[ "$rel_path" =~ ^projects/([^/]+)/workers\.yaml$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  if [[ "$rel_path" =~ ^([^/]+)/workers\.yaml$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+
+  die "Unusable workers registry path '$file': expected project-scoped workers.yaml."
 }
 
 parse_registry_matches_from_file() {
@@ -282,6 +305,7 @@ parse_registry_matches_from_file() {
       MATCH$'\t'*)
         IFS=$'\t' read -r _ match_class match_status <<<"$line"
         MATCH_FILES+=("$file")
+        MATCH_PROJECT_IDS+=("$(derive_project_id_from_workers_file "$file")")
         MATCH_CLASSES+=("$match_class")
         MATCH_STATUSES+=("$match_status")
         ;;
@@ -308,16 +332,17 @@ resolve_single_worker_match() {
   fi
 
   if [[ "$match_count" -gt 1 ]]; then
-    echo "ERROR: Worker UUID '$target_uuid' resolved to multiple registrations in overmind source. Ensure exactly one match." >&2
+    echo "ERROR: Worker UUID '$target_uuid' resolved to multiple project registrations in overmind source. Ensure exactly one project match." >&2
     echo "Matches:" >&2
     while [[ "$index" -lt "$match_count" ]]; do
-      echo "  - ${MATCH_FILES[$index]} (class=${MATCH_CLASSES[$index]}, status=${MATCH_STATUSES[$index]})" >&2
+      echo "  - project=${MATCH_PROJECT_IDS[$index]} file=${MATCH_FILES[$index]} (class=${MATCH_CLASSES[$index]}, status=${MATCH_STATUSES[$index]})" >&2
       index=$((index + 1))
     done
     exit 1
   fi
 
   WORKER_MATCH_FILE="${MATCH_FILES[0]}"
+  PROJECT_ID="${MATCH_PROJECT_IDS[0]}"
   WORKER_CLASS="${MATCH_CLASSES[0]}"
   WORKER_STATUS="${MATCH_STATUSES[0]}"
 }
@@ -333,6 +358,7 @@ write_project_binding_file() {
   mkdir -p "$(dirname "$output_path")"
   {
     printf "overmind_source_path: '%s'\n" "$(yaml_quote_single "$OVERMIND_SOURCE_PATH")"
+    printf "project_id: '%s'\n" "$(yaml_quote_single "$PROJECT_ID")"
     printf "worker_uuid: '%s'\n" "$(yaml_quote_single "$WORKER_UUID")"
     printf "class: '%s'\n" "$(yaml_quote_single "$WORKER_CLASS")"
     printf "status: '%s'\n" "$(yaml_quote_single "$WORKER_STATUS")"
@@ -420,6 +446,7 @@ commit_binding_if_needed "$REPO_ROOT/$BINDING_FILE"
 echo "Worker init complete."
 echo "Binding file: $BINDING_FILE"
 echo "Overmind source path: $OVERMIND_SOURCE_PATH"
+echo "Project ID: $PROJECT_ID"
 echo "Worker UUID: $WORKER_UUID"
 echo "Worker class: $WORKER_CLASS"
 echo "Worker status: $WORKER_STATUS"

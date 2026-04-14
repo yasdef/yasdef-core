@@ -26,17 +26,18 @@ This approach can be expressed in a few sentences:
 
 3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
 
-4. Create `overmind` branch
-
-5. Run `bash ai/scripts/init_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
+4. Run `bash ai/scripts/init_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
    The script prompts for:
-   - worker UUID (must already exist in overmind project `workers.yaml`),
-   - path to the overmind repo root.
-   On success it creates/checks out local branch `overmind`, writes `ai/project_overmind.yaml` there, and commits the change.
+   - worker UUID (must already exist in project-scoped `workers.yaml`),
+   - path to the ASDLC source root.
+   On success it creates/checks out local branch `overmind`, writes deterministic project binding `ai/project_overmind.yaml` (including `project_id`), and commits the change.
 
-6. You need to provide `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` in `overmind` branch with the required format (you can have it in maser but it wont be used by ai, because all worker jobs started from `overmind` branch). If you don't have `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`, ask your model to generate it based on your requirements. You can find prompts in the "Helpers" block below.
+5. Keep source-of-truth coordinator artifacts in ASDLC feature folders:
+   - `projects/<project-id>/<feature-id>/implementation_plan.md`
+   - `projects/<project-id>/<feature-id>/requirements_ears.md`
+   Worker runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` are mirrored copies managed by orchestrator on branch `overmind`.
 
-7. In `overmind/implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Only steps with your worker UUID (provided in overmind-side registration and used in p.5) will be available for you. You can add worker ownership manually with `#### Assigned:`. You can assign to your worker any number of steps. Example of `implementation_plan.md` with repo + assigned step:
+6. In each feature `implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Worker routing uses `#### Assigned: <worker-uuid>` blocks only. Example:
 ```
 ### Step 1.9 Some cool feature here
 #### Repo: backend
@@ -45,8 +46,15 @@ This approach can be expressed in a few sentences:
 /some plan bullets/
 ```
 
-8. Run the orchestrator:
+7. Run the orchestrator:
   `bash ai/scripts/orchestrator.sh` and follow the instructions.
+  Routing behavior:
+  - orchestrator scans bound project features from `ai/project_overmind.yaml`
+  - `0` candidate features -> fail fast
+  - `1` candidate feature -> auto-select
+  - `>1` candidate features -> explicit user choice
+  - after feature selection, orchestrator reads and copies source `implementation_plan.md` and `requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
+  Selected-feature traceability is recorded in `ai/feature_sync.yaml` and reused on valid `--resume <step>`.
   Use debug mode to keep per-step artifacts:
   `bash ai/scripts/orchestrator.sh --debug -- --step 1.3`
   To recover interrupted work for a specific step deterministically:
@@ -54,7 +62,7 @@ This approach can be expressed in a few sentences:
   Preview planned resume behavior without executing:
   `bash ai/scripts/orchestrator.sh --resume <step> --dry-run`
 
-7. OPTIONAL — allow your AI CLI to work with git (except merge to `main`/`master`) to avoid repeated permission prompts.
+8. OPTIONAL — allow your AI CLI to work with git (except merge to `main`/`master`) to avoid repeated permission prompts.
   `bash ai/scripts/orchestrator.sh --dry-run`
 
 ## Why we need yet another SDD framework?
@@ -79,7 +87,11 @@ This approach can be expressed in a few sentences:
 - **Phase-script behavior:** A phase-script managed by orchestrator, creates prompt, then model (via pipe orchestrator -> cli) consumes the script's result as a prompt. Specifically, orchestrator runs a coding agent (cli) with parameters like model, reasoning effort, and a request to run a script. Script-driven prompt generation make input prompt stable and guaranty it fils up context with correct set of system files. 
 
 - **Orchestration:** Since each phase starts as a terminal command, we can orchestrate the whole process from top-level script `ai/scripts/orchestrator.sh`.
-  - Worker-assigned discovery rule: when phase step is not provided explicitly, orchestrator resolves the next step from `overmind/implementation_plan.md` using worker UUID (`ai/*_dont_touch.txt`) and `#### Assigned: <uuid>` ownership blocks only.
+  - Worker/project binding rule: orchestrator reads `worker_uuid` and `project_id` from `ai/project_overmind.yaml` (legacy `ai/*_dont_touch.txt` is no longer used).
+  - Candidate discovery rule: orchestrator scans bound project features (`projects/<project-id>/<feature-id>/implementation_plan.md`) and considers only `#### Assigned: <worker-uuid>` blocks.
+  - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
+  - Runtime mirroring rule: selected feature artifacts are mirrored into local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` on branch `overmind` before phase execution.
+  - Feature sync state: orchestrator records selected feature metadata in `ai/feature_sync.yaml`; valid metadata is reused for `--resume <step>`, stale metadata is discarded and recomputed.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
   - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`ai/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
@@ -101,8 +113,12 @@ This approach can be expressed in a few sentences:
 
 Each artifact below serves a specific role in the AI-dev process:
 
-- **overmind/reqirements_ears.md**: Source of truth for behavioral requirements and acceptance criteria (EARS format).
-- **overmind/implementation_plan.md**: Ordered execution plan at the step level; tracks all tasks and subtasks with story point estimates. Keep one shared plan across backend/frontend/mobile and mark repo ownership per step with `#### Repo:`. Work happens bullet-by-bullet. Updated dynamically as the Coordinator refactors the graph.
+- **projects/<project-id>/<feature-id>/requirements_ears.md**: Source-of-truth behavioral requirements for each feature (EARS format).
+- **projects/<project-id>/<feature-id>/implementation_plan.md**: Source-of-truth execution plan for each feature; `#### Assigned:` routes work to workers.
+- **overmind/reqirements_ears.md**: Local mirrored runtime copy of selected feature EARS, consumed by worker phase scripts.
+- **overmind/implementation_plan.md**: Local mirrored runtime copy of selected feature plan, consumed by worker phase scripts.
+- **ai/project_overmind.yaml**: Durable local binding (`overmind_source_path`, `project_id`, worker metadata) created by `init_worker`.
+- **ai/feature_sync.yaml**: Per-run selected-feature metadata (selection mode, source/runtime paths, step context) used for traceability and resume reuse.
 - **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
 - **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include `## Plan (ordered)`, translated functional requirements, preconditions, architecture, risks, and test strategy.
 - **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
