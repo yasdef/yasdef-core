@@ -18,13 +18,11 @@ assert_contains() {
   fi
 }
 
-assert_not_contains() {
-  local haystack="$1"
-  local needle="$2"
-  if [[ "$haystack" == *"$needle"* ]]; then
-    echo "Assertion failed: expected output to NOT contain: $needle" >&2
-    echo "Actual output:" >&2
-    echo "$haystack" >&2
+assert_equal() {
+  local expected="$1"
+  local actual="$2"
+  if [[ "$expected" != "$actual" ]]; then
+    echo "Assertion failed: expected '$expected', got '$actual'" >&2
     exit 1
   fi
 }
@@ -37,15 +35,6 @@ assert_file_exists() {
   fi
 }
 
-assert_equal() {
-  local expected="$1"
-  local actual="$2"
-  if [[ "$expected" != "$actual" ]]; then
-    echo "Assertion failed: expected '$expected', got '$actual'" >&2
-    exit 1
-  fi
-}
-
 assert_nonzero_status() {
   local status="$1"
   if [[ "$status" -eq 0 ]]; then
@@ -54,16 +43,12 @@ assert_nonzero_status() {
   fi
 }
 
-setup_script() {
+setup_worker_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/ai/scripts"
   cp "$INIT_WORKER_SRC" "$repo_dir/ai/scripts/init_worker.sh"
   chmod +x "$repo_dir/ai/scripts/init_worker.sh"
-}
 
-setup_git_repo() {
-  local repo_dir="$1"
-  setup_script "$repo_dir"
   (
     cd "$repo_dir"
     git init -q -b master
@@ -76,261 +61,265 @@ setup_git_repo() {
   )
 }
 
-setup_repo_with_origin_and_overmind() {
-  local repo_dir="$1"
-  setup_git_repo "$repo_dir"
-
-  (
-    cd "$repo_dir"
-    git init --bare -q "$repo_dir/remote.git"
-    git remote add origin "$repo_dir/remote.git"
-    git push -u origin master >/dev/null
-
-    git checkout -b overmind >/dev/null
-    mkdir -p overmind
-    cat >overmind/worker_registry.yaml <<'EOF'
-version: 1
-generated_at: "2026-03-04T00:00:00Z"
-description: "Local worker registry for Overmind git-based coordination."
-workers: []
-EOF
-    git add overmind/worker_registry.yaml
-    git commit -qm "bootstrap registry"
-    git push -u origin overmind >/dev/null
-    git checkout master >/dev/null
-  )
+resolved_path() {
+  local path="$1"
+  (cd "$path" && pwd -P)
 }
 
-find_worker_id_file() {
-  local repo_dir="$1"
-  find "$repo_dir/ai" -maxdepth 1 -type f -name '*_dont_touch.txt' | sort | head -n 1
-}
-
-worker_id_file_from_branch() {
+binding_file_content_from_branch() {
   local repo_dir="$1"
   local branch="$2"
-  local listing=""
-  local -a files=()
-
-  listing="$(git -C "$repo_dir" ls-tree -r --name-only "$branch" -- ai 2>/dev/null \
-    | grep -E '^ai/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_dont_touch\.txt$' || true)"
-  while IFS= read -r line; do
-    [[ -n "$line" ]] || continue
-    files+=("$line")
-  done <<<"$listing"
-
-  if [[ "${#files[@]}" -eq 0 ]]; then
-    printf ''
-    return 0
-  fi
-
-  if [[ "${#files[@]}" -ne 1 ]]; then
-    echo "Assertion failed: expected exactly one worker id file on branch '$branch', got ${#files[@]}" >&2
-    exit 1
-  fi
-
-  printf '%s' "${files[0]}"
+  git -C "$repo_dir" show "${branch}:ai/project_overmind.yaml" 2>/dev/null || true
 }
 
-worker_id_from_master_branch() {
+assert_branch_exists() {
   local repo_dir="$1"
-  local path=""
-  path="$(worker_id_file_from_branch "$repo_dir" master)"
-  if [[ -z "$path" ]]; then
-    printf ''
-    return 0
+  local branch="$2"
+  if ! git -C "$repo_dir" show-ref --verify --quiet "refs/heads/$branch"; then
+    echo "Assertion failed: expected branch to exist: $branch" >&2
+    exit 1
   fi
-  git -C "$repo_dir" show "master:${path}" 2>/dev/null | head -n 1 | tr -d '[:space:]'
 }
 
-count_registry_occurrences() {
-  local content="$1"
-  local worker_id="$2"
-  grep -cE "^[[:space:]]*-[[:space:]]*${worker_id}[[:space:]]*$" <<<"$content" || true
+assert_no_legacy_identity_files() {
+  local repo_dir="$1"
+  local count="0"
+  count="$(find "$repo_dir/ai" -maxdepth 1 -type f -name '*_dont_touch.txt' | wc -l | tr -d '[:space:]')"
+  assert_equal "0" "$count"
 }
 
-test_init_worker_success_registers_and_returns_master() {
+run_init_worker() {
+  local repo_dir="$1"
+  local worker_uuid="$2"
+  local overmind_path="$3"
+
+  printf '%s\n%s\n' "$worker_uuid" "$overmind_path" | (
+    cd "$repo_dir"
+    ai/scripts/init_worker.sh
+  )
+}
+
+test_init_worker_success_creates_project_overmind_binding() {
   local repo_dir="$TMP_ROOT/repo-success"
-  mkdir -p "$repo_dir"
-  setup_repo_with_origin_and_overmind "$repo_dir"
-
-  local out
-  out="$(
-    cd "$repo_dir" &&
-    ai/scripts/init_worker.sh
-  )"
-
-  assert_contains "$out" "Worker init complete."
-  assert_contains "$out" "Committed local overmind changes:"
-  assert_contains "$out" "Pushing local overmind commit to remote 'origin/overmind'..."
-  assert_contains "$out" "Local overmind commit:"
-  assert_contains "$out" "Prepared worker ID file on 'master': ai/"
-  assert_contains "$out" "_dont_touch.txt"
-  assert_contains "$out" "Local master worker-id commit:"
-  assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
-
-  local worker_id
-  worker_id="$(worker_id_from_master_branch "$repo_dir")"
-  if [[ -z "$worker_id" ]]; then
-    echo "Assertion failed: worker id is empty" >&2
-    exit 1
-  fi
-
-  local remote_registry
-  remote_registry="$(git --git-dir "$repo_dir/remote.git" show overmind:overmind/worker_registry.yaml)"
-  assert_equal "1" "$(count_registry_occurrences "$remote_registry" "$worker_id")"
-
-  local overmind_subject
-  overmind_subject="$(git -C "$repo_dir" log overmind -1 --pretty=%s)"
-  assert_contains "$overmind_subject" "Register worker "
-
-  local worker_file
-  worker_file="$(find_worker_id_file "$repo_dir")"
-  if [[ -z "$worker_file" ]]; then
-    echo "Assertion failed: worker id file should exist on master working tree" >&2
-    exit 1
-  fi
-  assert_equal "$worker_id" "$(head -n 1 "$worker_file" | tr -d '[:space:]')"
-
-  local master_subject
-  master_subject="$(git -C "$repo_dir" log master -1 --pretty=%s)"
-  assert_contains "$master_subject" "Persist worker ID "
-
-  local status_short
-  status_short="$(git -C "$repo_dir" status --short)"
-  assert_not_contains "$status_short" "overmind/worker_registry.yaml"
-  assert_not_contains "$status_short" "_dont_touch.txt"
-
-  local overmind_worker_file
-  overmind_worker_file="$(git -C "$repo_dir" ls-tree -r --name-only overmind -- ai | grep -E '_dont_touch\.txt$' || true)"
-  assert_equal "" "$overmind_worker_file"
-}
-
-test_init_worker_fails_when_no_overmind_branch() {
-  local repo_dir="$TMP_ROOT/repo-no-overmind"
-  mkdir -p "$repo_dir"
-  setup_git_repo "$repo_dir"
-
-  (
-    cd "$repo_dir"
-    git init --bare -q "$repo_dir/remote.git"
-    git remote add origin "$repo_dir/remote.git"
-    git push -u origin master >/dev/null
-  )
-
-  local status=0
+  local overmind_dir="$TMP_ROOT/overmind-success"
+  local worker_uuid="11111111-1111-1111-1111-111111111111"
   local out=""
-  set +e
-  out="$(cd "$repo_dir" && ai/scripts/init_worker.sh 2>&1)"
-  status=$?
-  set -e
+  local expected=""
+  local overmind_resolved=""
 
-  assert_nonzero_status "$status"
-  assert_contains "$out" "no orchestrator detected, unable to proceed"
-  assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
-}
+  mkdir -p "$repo_dir" "$overmind_dir/project-alpha"
+  setup_worker_repo "$repo_dir"
 
-test_init_worker_fails_when_no_remote() {
-  local repo_dir="$TMP_ROOT/repo-no-remote"
-  mkdir -p "$repo_dir"
-  setup_git_repo "$repo_dir"
-
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$repo_dir" && ai/scripts/init_worker.sh 2>&1)"
-  status=$?
-  set -e
-
-  assert_nonzero_status "$status"
-  assert_contains "$out" "No git remote configured."
-}
-
-test_init_worker_fails_outside_git_repo() {
-  local dir="$TMP_ROOT/not-a-repo"
-  mkdir -p "$dir"
-  setup_script "$dir"
-
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$dir" && ai/scripts/init_worker.sh 2>&1)"
-  status=$?
-  set -e
-
-  assert_nonzero_status "$status"
-  assert_contains "$out" "Not a git repository."
-}
-
-test_init_worker_is_idempotent() {
-  local repo_dir="$TMP_ROOT/repo-idempotent"
-  mkdir -p "$repo_dir"
-  setup_repo_with_origin_and_overmind "$repo_dir"
-
-  (
-    cd "$repo_dir"
-    ai/scripts/init_worker.sh >/dev/null
-  )
-
-  local worker_id_before
-  worker_id_before="$(worker_id_from_master_branch "$repo_dir")"
-
-  local out_second
-  out_second="$(
-    cd "$repo_dir" &&
-    ai/scripts/init_worker.sh
-  )"
-  local worker_id_after
-  worker_id_after="$(worker_id_from_master_branch "$repo_dir")"
-
-  assert_equal "$worker_id_before" "$worker_id_after"
-  assert_contains "$out_second" "Using existing worker ID from master:ai/"
-  assert_contains "$out_second" "_dont_touch.txt."
-  assert_contains "$out_second" "Worker already registered in overmind/worker_registry.yaml."
-  assert_contains "$out_second" "No local overmind commit needed; worker already registered."
-  assert_contains "$out_second" "Local overmind commit: none (worker already registered)"
-  assert_contains "$out_second" "No changes detected for worker ID on 'master'; skipping commit."
-  assert_contains "$out_second" "Local master worker-id commit: none (worker ID already persisted)"
-  assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
-
-  local remote_registry
-  remote_registry="$(git --git-dir "$repo_dir/remote.git" show overmind:overmind/worker_registry.yaml)"
-  assert_equal "1" "$(count_registry_occurrences "$remote_registry" "$worker_id_after")"
-
-  local status_short
-  status_short="$(git -C "$repo_dir" status --short)"
-  assert_not_contains "$status_short" "overmind/worker_registry.yaml"
-  assert_not_contains "$status_short" "_dont_touch.txt"
-}
-
-test_init_worker_restores_master_on_push_failure() {
-  local repo_dir="$TMP_ROOT/repo-push-failure"
-  mkdir -p "$repo_dir"
-  setup_repo_with_origin_and_overmind "$repo_dir"
-
-  cat >"$repo_dir/remote.git/hooks/pre-receive" <<'EOF'
-#!/usr/bin/env bash
-exit 1
+  cat >"$overmind_dir/project-alpha/workers.yaml" <<EOF
+version: 1
+workers:
+  - uuid: "$worker_uuid"
+    class: "platform"
+    status: "ready"
 EOF
-  chmod +x "$repo_dir/remote.git/hooks/pre-receive"
 
-  local status=0
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$overmind_dir" 2>&1)"
+  assert_contains "$out" "Worker init complete."
+  assert_contains "$out" "Binding file: ai/project_overmind.yaml"
+  assert_contains "$out" "Worker UUID: $worker_uuid"
+  assert_contains "$out" "Worker class: platform"
+  assert_contains "$out" "Worker status: ready"
+  assert_contains "$out" "Overmind binding commit:"
+  assert_contains "$out" "Current branch: overmind"
+  assert_contains "$out" "you are in overmind branch now, if you need this changes in main/master you can merge it manually"
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+  assert_branch_exists "$repo_dir" "overmind"
+
+  overmind_resolved="$(resolved_path "$overmind_dir")"
+  expected="$(cat <<EOF
+overmind_source_path: '$overmind_resolved'
+worker_uuid: '$worker_uuid'
+class: 'platform'
+status: 'ready'
+EOF
+)"
+  assert_equal "$expected" "$(binding_file_content_from_branch "$repo_dir" "overmind")"
+  assert_no_legacy_identity_files "$repo_dir"
+}
+
+test_init_worker_fails_when_overmind_path_missing() {
+  local repo_dir="$TMP_ROOT/repo-missing-path"
+  local missing_path="$TMP_ROOT/does-not-exist-overmind"
+  local worker_uuid="22222222-2222-2222-2222-222222222222"
   local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_worker_repo "$repo_dir"
+
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/init_worker.sh 2>&1)"
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$missing_path" 2>&1)"
   status=$?
   set -e
 
   assert_nonzero_status "$status"
-  assert_contains "$out" "Failed to push registration to remote 'origin'."
+  assert_contains "$out" "Overmind repo path not found"
   assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
 }
 
-test_init_worker_success_registers_and_returns_master
-test_init_worker_fails_when_no_overmind_branch
-test_init_worker_fails_when_no_remote
-test_init_worker_fails_outside_git_repo
-test_init_worker_is_idempotent
-test_init_worker_restores_master_on_push_failure
+test_init_worker_fails_when_workers_yaml_missing() {
+  local repo_dir="$TMP_ROOT/repo-missing-workers"
+  local overmind_dir="$TMP_ROOT/overmind-missing-workers"
+  local worker_uuid="33333333-3333-3333-3333-333333333333"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir" "$overmind_dir"
+  setup_worker_repo "$repo_dir"
+
+  set +e
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$overmind_dir" 2>&1)"
+  status=$?
+  set -e
+
+  assert_nonzero_status "$status"
+  assert_contains "$out" "No project workers.yaml files found under overmind source"
+}
+
+test_init_worker_fails_when_uuid_not_registered() {
+  local repo_dir="$TMP_ROOT/repo-unknown-uuid"
+  local overmind_dir="$TMP_ROOT/overmind-unknown-uuid"
+  local worker_uuid="44444444-4444-4444-4444-444444444444"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir" "$overmind_dir/project-one"
+  setup_worker_repo "$repo_dir"
+
+  cat >"$overmind_dir/project-one/workers.yaml" <<'EOF'
+workers:
+  - uuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    class: "platform"
+    status: "ready"
+EOF
+
+  set +e
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$overmind_dir" 2>&1)"
+  status=$?
+  set -e
+
+  assert_nonzero_status "$status"
+  assert_contains "$out" "No registered worker found for UUID '$worker_uuid'"
+}
+
+test_init_worker_fails_when_uuid_duplicate() {
+  local repo_dir="$TMP_ROOT/repo-duplicate-uuid"
+  local overmind_dir="$TMP_ROOT/overmind-duplicate-uuid"
+  local worker_uuid="55555555-5555-5555-5555-555555555555"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir" "$overmind_dir/project-a" "$overmind_dir/project-b"
+  setup_worker_repo "$repo_dir"
+
+  cat >"$overmind_dir/project-a/workers.yaml" <<EOF
+workers:
+  - uuid: "$worker_uuid"
+    class: "platform"
+    status: "ready"
+EOF
+  cat >"$overmind_dir/project-b/workers.yaml" <<EOF
+workers:
+  - uuid: "$worker_uuid"
+    class: "backend"
+    status: "active"
+EOF
+
+  set +e
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$overmind_dir" 2>&1)"
+  status=$?
+  set -e
+
+  assert_nonzero_status "$status"
+  assert_contains "$out" "resolved to multiple registrations"
+}
+
+test_init_worker_is_deterministic_and_refreshes_metadata() {
+  local repo_dir="$TMP_ROOT/repo-deterministic"
+  local overmind_dir="$TMP_ROOT/overmind-deterministic"
+  local worker_uuid="66666666-6666-6666-6666-666666666666"
+  local first=""
+  local second=""
+  local third=""
+  local out_second=""
+  local overmind_head_before=""
+  local overmind_head_after=""
+
+  mkdir -p "$repo_dir" "$overmind_dir/project-z"
+  setup_worker_repo "$repo_dir"
+
+  cat >"$overmind_dir/project-z/workers.yaml" <<EOF
+workers:
+  - uuid: "$worker_uuid"
+    class: "platform"
+    status: "ready"
+EOF
+
+  run_init_worker "$repo_dir" "$worker_uuid" "$overmind_dir" >/dev/null
+  first="$(binding_file_content_from_branch "$repo_dir" "overmind")"
+  overmind_head_before="$(git -C "$repo_dir" rev-parse overmind)"
+
+  out_second="$(run_init_worker "$repo_dir" "$worker_uuid" "$overmind_dir" 2>&1)"
+  second="$(binding_file_content_from_branch "$repo_dir" "overmind")"
+  overmind_head_after="$(git -C "$repo_dir" rev-parse overmind)"
+  assert_equal "$first" "$second"
+  assert_equal "$overmind_head_before" "$overmind_head_after"
+  assert_contains "$out_second" "Overmind binding commit: none (already up to date)"
+
+  cat >"$overmind_dir/project-z/workers.yaml" <<EOF
+workers:
+  - uuid: "$worker_uuid"
+    class: "backend"
+    status: "paused"
+EOF
+
+  run_init_worker "$repo_dir" "$worker_uuid" "$overmind_dir" >/dev/null
+  third="$(binding_file_content_from_branch "$repo_dir" "overmind")"
+  assert_contains "$third" "class: 'backend'"
+  assert_contains "$third" "status: 'paused'"
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+
+  assert_no_legacy_identity_files "$repo_dir"
+}
+
+test_init_worker_fails_when_registry_data_unusable() {
+  local repo_dir="$TMP_ROOT/repo-unusable-registry"
+  local overmind_dir="$TMP_ROOT/overmind-unusable-registry"
+  local worker_uuid="77777777-7777-7777-7777-777777777777"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir" "$overmind_dir/project-m"
+  setup_worker_repo "$repo_dir"
+
+  cat >"$overmind_dir/project-m/workers.yaml" <<'EOF'
+version: 1
+items:
+  - uuid: "77777777-7777-7777-7777-777777777777"
+    class: "platform"
+    status: "ready"
+EOF
+
+  set +e
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$overmind_dir" 2>&1)"
+  status=$?
+  set -e
+
+  assert_nonzero_status "$status"
+  assert_contains "$out" "missing 'workers:' key"
+}
+
+test_init_worker_success_creates_project_overmind_binding
+test_init_worker_fails_when_overmind_path_missing
+test_init_worker_fails_when_workers_yaml_missing
+test_init_worker_fails_when_uuid_not_registered
+test_init_worker_fails_when_uuid_duplicate
+test_init_worker_is_deterministic_and_refreshes_metadata
+test_init_worker_fails_when_registry_data_unusable
 
 echo "All init worker script tests passed."

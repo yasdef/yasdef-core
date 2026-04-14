@@ -28,11 +28,15 @@ This approach can be expressed in a few sentences:
 
 4. Create `overmind` branch
 
-5. Run `ai/init_worker.sh` to register your worker in list of workers, you need unique id for this, see yasdef-overmind readme to know more
+5. Run `bash ai/scripts/init_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
+   The script prompts for:
+   - worker UUID (must already exist in overmind project `workers.yaml`),
+   - path to the overmind repo root.
+   On success it creates/checks out local branch `overmind`, writes `ai/project_overmind.yaml` there, and commits the change.
 
 6. You need to provide `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` in `overmind` branch with the required format (you can have it in maser but it wont be used by ai, because all worker jobs started from `overmind` branch). If you don't have `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`, ask your model to generate it based on your requirements. You can find prompts in the "Helpers" block below.
 
-7. In `overmind/implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Only steps with your unique id, which you get in p.5 will be available for you. You can add worker ownership manually with `#### Assigned:`. You can assign to you worker any number of steps. Example of `implementation_plan.md` with repo + assigned step:
+7. In `overmind/implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Only steps with your worker UUID (provided in overmind-side registration and used in p.5) will be available for you. You can add worker ownership manually with `#### Assigned:`. You can assign to your worker any number of steps. Example of `implementation_plan.md` with repo + assigned step:
 ```
 ### Step 1.9 Some cool feature here
 #### Repo: backend

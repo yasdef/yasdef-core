@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE_NAME="origin"
+BINDING_FILE="ai/project_overmind.yaml"
 ORCHESTRATOR_BRANCH="overmind"
-RETURN_BRANCH="master"
-REGISTRY_FILE="overmind/worker_registry.yaml"
-WORKER_ID_FILE_SUFFIX="_dont_touch.txt"
-WORKER_ID_FILE=""
-RESTORE_BRANCH_ON_EXIT=0
-REGISTRY_UPDATED=0
-REGISTRY_COMMIT_SHA=""
-MASTER_WORKER_ID_UPDATED=0
-MASTER_WORKER_ID_COMMIT_SHA=""
+
+WORKER_UUID=""
+OVERMIND_SOURCE_PATH=""
+WORKER_CLASS=""
+WORKER_STATUS=""
+WORKER_MATCH_FILE=""
+START_BRANCH=""
+BINDING_COMMIT_SHA=""
+
+declare -a WORKERS_FILES=()
+declare -a MATCH_FILES=()
+declare -a MATCH_CLASSES=()
+declare -a MATCH_STATUSES=()
 
 usage() {
   cat <<'EOF'
 Usage: ai/scripts/init_worker.sh [--help]
 
-Initializes a worker for Overmind coordination by:
-  1) ensuring local worker ID file exists under ai/
-  2) validating orchestrator branch overmind exists remotely
-  3) checking out overmind and registering worker ID in overmind/worker_registry.yaml
-  4) committing and pushing registration changes
-  5) switching back to master
+Initializes local worker binding for Overmind coordination by:
+  1) prompting for worker UUID
+  2) prompting for overmind repo path
+  3) scanning project workers.yaml registrations in overmind source
+  4) validating exactly one UUID match
+  5) writing ai/project_overmind.yaml deterministically
 
 Options:
   -h, --help       Show this help message
@@ -33,18 +37,6 @@ die() {
   echo "ERROR: $*" >&2
   exit 1
 }
-
-die_no_orchestrator() {
-  echo "no orchestrator detected, unable to proceed" >&2
-  exit 1
-}
-
-cleanup() {
-  if [[ "$RESTORE_BRANCH_ON_EXIT" -eq 1 ]]; then
-    git checkout "$RETURN_BRANCH" >/dev/null 2>&1 || true
-  fi
-}
-trap cleanup EXIT
 
 require_git() {
   if ! command -v git >/dev/null 2>&1; then
@@ -60,57 +52,15 @@ resolve_repo_root() {
   printf '%s' "$root"
 }
 
-ensure_remote_available() {
-  local remote="$1"
-
-  if [[ -z "$(git remote 2>/dev/null)" ]]; then
-    die "No git remote configured. Add a remote (for example: git remote add origin <url>) and retry."
-  fi
-
-  if ! git remote get-url "$remote" >/dev/null 2>&1; then
-    die "Remote '$remote' is not configured."
-  fi
+trim() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
 }
 
-ensure_return_branch() {
-  if ! git show-ref --verify --quiet "refs/heads/$RETURN_BRANCH"; then
-    die "Required return branch '$RETURN_BRANCH' does not exist."
-  fi
-}
-
-ensure_orchestrator_branch() {
-  local remote="$1"
-  if ! git fetch "$remote" "$ORCHESTRATOR_BRANCH" >/dev/null 2>&1; then
-    die_no_orchestrator
-  fi
-}
-
-ensure_local_overmind_branch() {
-  local remote="$1"
-  if git show-ref --verify --quiet "refs/heads/$ORCHESTRATOR_BRANCH"; then
-    git checkout "$ORCHESTRATOR_BRANCH" >/dev/null
-  else
-    git checkout -b "$ORCHESTRATOR_BRANCH" --track "$remote/$ORCHESTRATOR_BRANCH" >/dev/null
-  fi
-}
-
-sync_overmind_branch() {
-  local remote="$1"
-  if ! git pull --ff-only "$remote" "$ORCHESTRATOR_BRANCH" >/dev/null 2>&1; then
-    die "Failed to pull '$ORCHESTRATOR_BRANCH' from remote '$remote'."
-  fi
-}
-
-generate_worker_id() {
-  if command -v uuidgen >/dev/null 2>&1; then
-    uuidgen | tr '[:upper:]' '[:lower:]'
-    return 0
-  fi
-  # Fallback UUID-like generator when uuidgen is unavailable.
-  local hex
-  hex="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
-  printf '%s-%s-%s-%s-%s' \
-    "${hex:0:8}" "${hex:8:4}" "${hex:12:4}" "${hex:16:4}" "${hex:20:12}"
+to_lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
 is_valid_uuid() {
@@ -118,194 +68,319 @@ is_valid_uuid() {
   [[ "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
 }
 
-extract_worker_id_from_file_path() {
-  local path="$1"
-  local base
-  base="$(basename "$path")"
-  printf '%s' "${base%"$WORKER_ID_FILE_SUFFIX"}"
-}
-
-list_worker_id_files_on_branch() {
-  local branch="$1"
-  git ls-tree -r --name-only "$branch" -- ai 2>/dev/null \
-    | grep -E '^ai/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_dont_touch\.txt$' \
-    || true
-}
-
-load_or_generate_worker_id() {
+prompt_non_empty() {
+  local prompt="$1"
+  local out_var="$2"
   local value=""
-  local existing_file=""
-  local extracted=""
-  local master_worker_files_raw=""
-  local -a master_worker_files=()
 
-  master_worker_files_raw="$(list_worker_id_files_on_branch "$RETURN_BRANCH")"
+  printf '%s' "$prompt"
+  if ! IFS= read -r value; then
+    die "Failed to read input."
+  fi
+
+  value="$(trim "$value")"
+  if [[ -z "$value" ]]; then
+    die "Input cannot be empty."
+  fi
+
+  printf -v "$out_var" '%s' "$value"
+}
+
+resolve_overmind_source_path() {
+  local input_path="$1"
+  local resolved=""
+
+  if [[ ! -e "$input_path" ]]; then
+    die "Overmind repo path not found: $input_path"
+  fi
+
+  if [[ ! -d "$input_path" ]]; then
+    die "Overmind repo path is not a directory: $input_path"
+  fi
+
+  if ! resolved="$(cd "$input_path" && pwd -P)"; then
+    die "Unable to resolve overmind repo path: $input_path"
+  fi
+
+  printf '%s' "$resolved"
+}
+
+discover_workers_files() {
+  local source_path="$1"
+  local discovered=""
+
+  discovered="$(
+    find "$source_path" \
+      -type d -name .git -prune -o \
+      -type f -name 'workers.yaml' -print \
+      | LC_ALL=C sort
+  )"
+
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    WORKERS_FILES+=("$file")
+  done <<<"$discovered"
+
+  if [[ "${#WORKERS_FILES[@]}" -eq 0 ]]; then
+    die "No project workers.yaml files found under overmind source: $source_path"
+  fi
+}
+
+parse_registry_matches_from_file() {
+  local file="$1"
+  local target_uuid="$2"
+  local parsed=""
+  local line=""
+  local match_class=""
+  local match_status=""
+
+  if ! grep -Eq '^[[:space:]]*workers:[[:space:]]*(\[[[:space:]]*\])?[[:space:]]*$' "$file"; then
+    die "Unusable overmind worker registry data in '$file': missing 'workers:' key."
+  fi
+
+  parsed="$(
+    awk -v target_uuid="$target_uuid" '
+      function trim(str) {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", str)
+        return str
+      }
+      function unquote(str, first, last, sq) {
+        str = trim(str)
+        sub(/[[:space:]]+#.*$/, "", str)
+        str = trim(str)
+        if (length(str) >= 2) {
+          first = substr(str, 1, 1)
+          last = substr(str, length(str), 1)
+          sq = sprintf("%c", 39)
+          if ((first == "\"" && last == "\"") || (first == sq && last == sq)) {
+            str = substr(str, 2, length(str) - 2)
+          }
+        }
+        return str
+      }
+      function flush_entry() {
+        if (!in_entry) {
+          return
+        }
+
+        if (entry_uuid == target_uuid) {
+          if (entry_class == "" || entry_status == "") {
+            print "TARGET_MISSING_FIELDS"
+          } else {
+            print "MATCH\t" entry_class "\t" entry_status
+          }
+        }
+
+        in_entry = 0
+        entry_uuid = ""
+        entry_class = ""
+        entry_status = ""
+      }
+      function start_entry(rest) {
+        flush_entry()
+        in_entry = 1
+        rest = trim(rest)
+
+        if (rest == "") {
+          return
+        }
+
+        if (match(rest, /^uuid:[[:space:]]*/)) {
+          entry_uuid = tolower(unquote(substr(rest, RLENGTH + 1)))
+          return
+        }
+        if (match(rest, /^class:[[:space:]]*/)) {
+          entry_class = unquote(substr(rest, RLENGTH + 1))
+          return
+        }
+        if (match(rest, /^status:[[:space:]]*/)) {
+          entry_status = unquote(substr(rest, RLENGTH + 1))
+          return
+        }
+
+        malformed = 1
+      }
+      BEGIN {
+        in_workers = 0
+        workers_indent = -1
+        in_entry = 0
+        entry_uuid = ""
+        entry_class = ""
+        entry_status = ""
+        malformed = 0
+      }
+      {
+        line = $0
+        sub(/\r$/, "", line)
+
+        if (line ~ /^[[:space:]]*workers:[[:space:]]*(\[[[:space:]]*\])?[[:space:]]*$/) {
+          flush_entry()
+          in_workers = 1
+          match(line, /^[[:space:]]*/)
+          workers_indent = RLENGTH
+          if (line ~ /^[[:space:]]*workers:[[:space:]]*\[[[:space:]]*\][[:space:]]*$/) {
+            in_workers = 0
+            workers_indent = -1
+          }
+          next
+        }
+
+        if (!in_workers) {
+          next
+        }
+
+        if (line ~ /^[[:space:]]*$/ || line ~ /^[[:space:]]*#/) {
+          next
+        }
+
+        match(line, /^[[:space:]]*/)
+        current_indent = RLENGTH
+        if (current_indent <= workers_indent) {
+          flush_entry()
+          in_workers = 0
+          workers_indent = -1
+          next
+        }
+
+        if (match(line, /^[[:space:]]*-[[:space:]]*/)) {
+          start_entry(substr(line, RLENGTH + 1))
+          next
+        }
+
+        if (!in_entry) {
+          malformed = 1
+          next
+        }
+
+        if (match(line, /^[[:space:]]*uuid:[[:space:]]*/)) {
+          entry_uuid = tolower(unquote(substr(line, RLENGTH + 1)))
+          next
+        }
+        if (match(line, /^[[:space:]]*class:[[:space:]]*/)) {
+          entry_class = unquote(substr(line, RLENGTH + 1))
+          next
+        }
+        if (match(line, /^[[:space:]]*status:[[:space:]]*/)) {
+          entry_status = unquote(substr(line, RLENGTH + 1))
+          next
+        }
+      }
+      END {
+        if (in_workers) {
+          flush_entry()
+        }
+        if (malformed) {
+          print "PARSE_MALFORMED"
+        }
+      }
+    ' "$file"
+  )"
+
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
-    master_worker_files+=("$line")
-  done <<<"$master_worker_files_raw"
+    case "$line" in
+      MATCH$'\t'*)
+        IFS=$'\t' read -r _ match_class match_status <<<"$line"
+        MATCH_FILES+=("$file")
+        MATCH_CLASSES+=("$match_class")
+        MATCH_STATUSES+=("$match_status")
+        ;;
+      TARGET_MISSING_FIELDS)
+        die "Unusable overmind worker registry data in '$file': matched worker UUID '$target_uuid' is missing required 'class' or 'status'."
+        ;;
+      PARSE_MALFORMED)
+        die "Unusable overmind worker registry data in '$file': malformed workers list."
+        ;;
+      *)
+        die "Unusable overmind worker registry data in '$file': parser produced unexpected output."
+        ;;
+    esac
+  done <<<"$parsed"
+}
 
-  if (( ${#master_worker_files[@]} > 1 )); then
-    die "Multiple worker ID files found on '$RETURN_BRANCH' under ai/*_dont_touch.txt. Keep exactly one canonical identity file."
+resolve_single_worker_match() {
+  local target_uuid="$1"
+  local match_count="${#MATCH_FILES[@]}"
+  local index=0
+
+  if [[ "$match_count" -eq 0 ]]; then
+    die "No registered worker found for UUID '$target_uuid' in overmind source: $OVERMIND_SOURCE_PATH"
   fi
 
-  if (( ${#master_worker_files[@]} == 1 )); then
-    existing_file="${master_worker_files[0]}"
-    extracted="$(extract_worker_id_from_file_path "$existing_file")"
-    if ! is_valid_uuid "$extracted"; then
-      die "Worker ID filename is not a valid UUID on '$RETURN_BRANCH': $existing_file"
-    fi
+  if [[ "$match_count" -gt 1 ]]; then
+    echo "ERROR: Worker UUID '$target_uuid' resolved to multiple registrations in overmind source. Ensure exactly one match." >&2
+    echo "Matches:" >&2
+    while [[ "$index" -lt "$match_count" ]]; do
+      echo "  - ${MATCH_FILES[$index]} (class=${MATCH_CLASSES[$index]}, status=${MATCH_STATUSES[$index]})" >&2
+      index=$((index + 1))
+    done
+    exit 1
+  fi
 
-    value="$(git show "${RETURN_BRANCH}:${existing_file}" | head -n 1 | tr -d '[:space:]')"
-    if [[ -z "$value" ]]; then
-      die "Worker ID file exists on '$RETURN_BRANCH' but is empty: $existing_file"
-    fi
+  WORKER_MATCH_FILE="${MATCH_FILES[0]}"
+  WORKER_CLASS="${MATCH_CLASSES[0]}"
+  WORKER_STATUS="${MATCH_STATUSES[0]}"
+}
 
-    if [[ "$value" != "$extracted" ]]; then
-      die "Worker ID file content mismatch on '$RETURN_BRANCH': ${existing_file} (expected '$extracted', got '$value')."
-    fi
+yaml_quote_single() {
+  printf '%s' "$1" | sed "s/'/''/g"
+}
 
-    WORKER_ID="$extracted"
-    WORKER_ID_FILE="$existing_file"
-    echo "Using existing worker ID from ${RETURN_BRANCH}:${WORKER_ID_FILE}."
+write_project_binding_file() {
+  local output_path="$1"
+  local tmp_path="${output_path}.tmp"
+
+  mkdir -p "$(dirname "$output_path")"
+  {
+    printf "overmind_source_path: '%s'\n" "$(yaml_quote_single "$OVERMIND_SOURCE_PATH")"
+    printf "worker_uuid: '%s'\n" "$(yaml_quote_single "$WORKER_UUID")"
+    printf "class: '%s'\n" "$(yaml_quote_single "$WORKER_CLASS")"
+    printf "status: '%s'\n" "$(yaml_quote_single "$WORKER_STATUS")"
+  } >"$tmp_path"
+  mv "$tmp_path" "$output_path"
+}
+
+capture_start_branch() {
+  START_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+  if [[ -z "$START_BRANCH" ]]; then
+    START_BRANCH="DETACHED_HEAD"
+  fi
+}
+
+checkout_or_create_overmind_branch() {
+  local current_branch=""
+  current_branch="$(git branch --show-current 2>/dev/null || true)"
+
+  if [[ "$current_branch" == "$ORCHESTRATOR_BRANCH" ]]; then
     return 0
   fi
 
-  value="$(generate_worker_id)"
-  if ! is_valid_uuid "$value"; then
-    die "Generated worker ID is not a valid UUID: $value"
-  fi
-
-  WORKER_ID="$value"
-  WORKER_ID_FILE="ai/${WORKER_ID}${WORKER_ID_FILE_SUFFIX}"
-  echo "Generated new worker ID for registration; it will be committed on '$RETURN_BRANCH'."
-}
-
-persist_worker_id_on_master() {
-  local path="$1"
-  local existing=""
-  mkdir -p "$(dirname "$path")"
-
-  if [[ -f "$path" ]]; then
-    existing="$(head -n 1 "$path" | tr -d '[:space:]')"
-    if [[ "$existing" == "$WORKER_ID" ]]; then
-      echo "Worker ID file already up to date on '$RETURN_BRANCH': $WORKER_ID_FILE."
-      return 0
+  if git show-ref --verify --quiet "refs/heads/$ORCHESTRATOR_BRANCH"; then
+    if ! git checkout "$ORCHESTRATOR_BRANCH" >/dev/null 2>&1; then
+      die "Failed to checkout '$ORCHESTRATOR_BRANCH' branch."
     fi
-  fi
-
-  printf '%s\n' "$WORKER_ID" >"$path"
-  MASTER_WORKER_ID_UPDATED=1
-  echo "Prepared worker ID file on '$RETURN_BRANCH': $WORKER_ID_FILE"
-}
-
-ensure_registry_file_exists() {
-  local path="$1"
-  if [[ ! -f "$path" ]]; then
-    die "Registry file '$REGISTRY_FILE' not found on branch '$ORCHESTRATOR_BRANCH'. Run coordinator bootstrap first."
-  fi
-}
-
-register_worker_if_needed() {
-  local path="$1"
-  local escaped_worker_id=""
-  escaped_worker_id="$(printf '%s' "$WORKER_ID" | sed 's/[][\\/.*^$]/\\&/g')"
-
-  if grep -Eq "^[[:space:]]*-[[:space:]]*${escaped_worker_id}[[:space:]]*$" "$path"; then
-    echo "Worker already registered in $REGISTRY_FILE."
-    return 0
-  fi
-
-  if grep -Eq '^[[:space:]]*workers:[[:space:]]*\[[[:space:]]*\][[:space:]]*$' "$path"; then
-    awk -v wid="$WORKER_ID" '
-      /^[[:space:]]*workers:[[:space:]]*\[[[:space:]]*\][[:space:]]*$/ {
-        print "workers:"
-        print "  - " wid
-        next
-      }
-      { print }
-    ' "$path" >"$path.tmp"
-    mv "$path.tmp" "$path"
-    REGISTRY_UPDATED=1
-    echo "Registered worker ID in $REGISTRY_FILE."
-    return 0
-  fi
-
-  if grep -Eq '^[[:space:]]*workers:[[:space:]]*$' "$path"; then
-    printf '  - %s\n' "$WORKER_ID" >>"$path"
-    REGISTRY_UPDATED=1
-    echo "Registered worker ID in $REGISTRY_FILE."
-    return 0
-  fi
-
-  die "Unsupported '$REGISTRY_FILE' format: expected 'workers: []' or 'workers:' key."
-}
-
-commit_registry_changes_if_any() {
-  local registry_path="$1"
-
-  git add -- "$registry_path"
-
-  if git diff --cached --quiet -- "$registry_path"; then
-    if [[ "$REGISTRY_UPDATED" -eq 1 ]]; then
-      die "Registration updated '$REGISTRY_FILE' but no staged diff was detected."
-    fi
-    echo "No changes detected for worker registration on '$ORCHESTRATOR_BRANCH'; skipping commit."
-    return 0
-  fi
-
-  if ! git commit -m "Register worker ${WORKER_ID} in overmind registry" -- "$registry_path"; then
-    die "Failed to commit worker registration changes on '$ORCHESTRATOR_BRANCH'."
-  fi
-
-  REGISTRY_COMMIT_SHA="$(git rev-parse --short HEAD)"
-}
-
-push_registration_changes() {
-  local remote="$1"
-  if ! git push -u "$remote" "$ORCHESTRATOR_BRANCH"; then
-    die "Failed to push registration to remote '$remote'."
-  fi
-}
-
-announce_commit_and_push_plan() {
-  if [[ "$REGISTRY_UPDATED" -eq 1 && -z "$REGISTRY_COMMIT_SHA" ]]; then
-    die "Registration changed but no local '$ORCHESTRATOR_BRANCH' commit was created; refusing to push."
-  fi
-
-  if [[ -n "$REGISTRY_COMMIT_SHA" ]]; then
-    echo "Committed local overmind changes: $REGISTRY_COMMIT_SHA"
-    echo "Pushing local overmind commit to remote '$REMOTE_NAME/$ORCHESTRATOR_BRANCH'..."
   else
-    echo "No local overmind commit needed; worker already registered."
-    echo "Pushing local overmind branch to confirm remote sync..."
+    if ! git checkout -b "$ORCHESTRATOR_BRANCH" >/dev/null 2>&1; then
+      die "Failed to create '$ORCHESTRATOR_BRANCH' branch."
+    fi
   fi
+
 }
 
-commit_worker_id_on_master_if_any() {
-  local id_path="$1"
+commit_binding_if_needed() {
+  local binding_path="$1"
 
-  git add -- "$id_path"
-
-  if git diff --cached --quiet -- "$id_path"; then
-    if [[ "$MASTER_WORKER_ID_UPDATED" -eq 1 ]]; then
-      die "Worker ID update was expected on '$RETURN_BRANCH' but no staged diff was detected."
-    fi
-    echo "No changes detected for worker ID on '$RETURN_BRANCH'; skipping commit."
+  git add -- "$binding_path"
+  if git diff --cached --quiet -- "$binding_path"; then
+    echo "No changes detected for '$BINDING_FILE'; skipping commit."
     return 0
   fi
 
-  if ! git commit -m "Persist worker ID ${WORKER_ID}" -- "$id_path"; then
-    die "Failed to commit worker ID file on '$RETURN_BRANCH'."
+  if ! git commit -m "Bind worker ${WORKER_UUID} to overmind source" -- "$binding_path" >/dev/null; then
+    die "Failed to commit '$BINDING_FILE' on '$ORCHESTRATOR_BRANCH'."
   fi
 
-  MASTER_WORKER_ID_COMMIT_SHA="$(git rev-parse --short HEAD)"
-}
-
-checkout_return_branch() {
-  if ! git checkout "$RETURN_BRANCH" >/dev/null; then
-    die "Failed to checkout '$RETURN_BRANCH' after registration."
-  fi
+  BINDING_COMMIT_SHA="$(git rev-parse --short HEAD)"
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -321,34 +396,41 @@ require_git
 REPO_ROOT="$(resolve_repo_root)"
 cd "$REPO_ROOT"
 
-ensure_remote_available "$REMOTE_NAME"
-ensure_return_branch
-load_or_generate_worker_id
-ensure_orchestrator_branch "$REMOTE_NAME"
-ensure_local_overmind_branch "$REMOTE_NAME"
-RESTORE_BRANCH_ON_EXIT=1
-sync_overmind_branch "$REMOTE_NAME"
-ensure_registry_file_exists "$REPO_ROOT/$REGISTRY_FILE"
-register_worker_if_needed "$REPO_ROOT/$REGISTRY_FILE"
-commit_registry_changes_if_any "$REPO_ROOT/$REGISTRY_FILE"
-announce_commit_and_push_plan
-push_registration_changes "$REMOTE_NAME"
-checkout_return_branch
-persist_worker_id_on_master "$REPO_ROOT/$WORKER_ID_FILE"
-commit_worker_id_on_master_if_any "$REPO_ROOT/$WORKER_ID_FILE"
-RESTORE_BRANCH_ON_EXIT=0
+capture_start_branch
+
+prompt_non_empty "Enter worker UUID: " WORKER_UUID
+WORKER_UUID="$(to_lower "$WORKER_UUID")"
+if ! is_valid_uuid "$WORKER_UUID"; then
+  die "Worker UUID must use canonical format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx."
+fi
+
+prompt_non_empty "Enter overmind repo path: " OVERMIND_SOURCE_PATH
+OVERMIND_SOURCE_PATH="$(resolve_overmind_source_path "$OVERMIND_SOURCE_PATH")"
+
+discover_workers_files "$OVERMIND_SOURCE_PATH"
+for workers_file in "${WORKERS_FILES[@]}"; do
+  parse_registry_matches_from_file "$workers_file" "$WORKER_UUID"
+done
+resolve_single_worker_match "$WORKER_UUID"
+
+checkout_or_create_overmind_branch
+write_project_binding_file "$REPO_ROOT/$BINDING_FILE"
+commit_binding_if_needed "$REPO_ROOT/$BINDING_FILE"
 
 echo "Worker init complete."
-echo "Remote: $REMOTE_NAME"
-echo "Branch: $ORCHESTRATOR_BRANCH"
-echo "Worker ID file: $WORKER_ID_FILE"
-if [[ -n "$REGISTRY_COMMIT_SHA" ]]; then
-  echo "Local overmind commit: $REGISTRY_COMMIT_SHA"
+echo "Binding file: $BINDING_FILE"
+echo "Overmind source path: $OVERMIND_SOURCE_PATH"
+echo "Worker UUID: $WORKER_UUID"
+echo "Worker class: $WORKER_CLASS"
+echo "Worker status: $WORKER_STATUS"
+echo "Matched registry file: $WORKER_MATCH_FILE"
+echo "Starting branch: $START_BRANCH"
+if [[ -n "$BINDING_COMMIT_SHA" ]]; then
+  echo "Overmind binding commit: $BINDING_COMMIT_SHA"
 else
-  echo "Local overmind commit: none (worker already registered)"
+  echo "Overmind binding commit: none (already up to date)"
 fi
-if [[ -n "$MASTER_WORKER_ID_COMMIT_SHA" ]]; then
-  echo "Local master worker-id commit: $MASTER_WORKER_ID_COMMIT_SHA"
-else
-  echo "Local master worker-id commit: none (worker ID already persisted)"
-fi
+echo "Current branch: $ORCHESTRATOR_BRANCH"
+echo "=========================="
+echo "you are in overmind branch now, if you need this changes in main/master you can merge it manually"
+echo "=========================="
