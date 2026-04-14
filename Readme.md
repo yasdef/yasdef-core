@@ -241,6 +241,10 @@ V-0.1.1 (current)
 - removed --phase support specific phase cant be run anymore via orchestrator
 - sync between overmind and actual feature/master branch fixed
 
+V-0.1.2 (current)
+- add integration with new coordinator (asdlc folder) - now orchestrator can register itself in overmind and 
+fetch tasks directly from asdlc folder for particular feature (user can select if mutliple features available) 
+- add --standalone flag to allow orchestrator work without coorditator (overmind)
 
 2. known problems/to-do's:
 - only codex cli supported
