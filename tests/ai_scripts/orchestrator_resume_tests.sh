@@ -724,6 +724,57 @@ EOF
   assert_contains "$out" "Multiple candidate features were found for worker '$WORKER_UUID_DEFAULT'. Run in an interactive terminal to choose a feature."
 }
 
+test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout() {
+  local repo_dir="$TMP_ROOT/repo-resume-no-forced-overmind-checkout"
+  local source_dir=""
+  local feature_dir=""
+  local base_branch=""
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  source_dir="$(source_root_for_repo "$repo_dir")"
+  feature_dir="$(feature_dir_for_repo "$repo_dir")"
+  base_branch="$(git -C "$repo_dir" branch --show-current)"
+
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+  create_implementation_branch_marker "$repo_dir" "1.1"
+  write_feature_sync \
+    "$repo_dir" \
+    "$FEATURE_ID_DEFAULT" \
+    "$feature_dir/implementation_plan.md" \
+    "$feature_dir/requirements_ears.md" \
+    "1.1" \
+    "auto_single"
+
+  (
+    cd "$repo_dir"
+    git checkout -q -b overmind
+    echo "# runtime branch copy" > overmind/implementation_plan.md
+    echo "runtime ears" > overmind/reqirements_ears.md
+    git add overmind/implementation_plan.md overmind/reqirements_ears.md
+    git commit -qm "seed runtime branch artifacts"
+    git checkout -q "$base_branch"
+    mkdir -p overmind
+    echo "# dirty local file blocks checkout to overmind if attempted" > overmind/implementation_plan.md
+  )
+
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -ne 0 ]]; then
+    echo "Assertion failed: expected resume dry-run to succeed without forced overmind checkout" >&2
+    echo "Actual output:" >&2
+    echo "$out" >&2
+    exit 1
+  fi
+  assert_not_contains "$out" "Failed to checkout runtime branch 'overmind'."
+  assert_contains "$out" "Selected start phase: user_review"
+}
+
 test_resume_starts_at_planning
 test_resume_starts_at_planning_when_design_sections_missing
 test_resume_starts_at_planning_when_step_plan_missing
@@ -740,6 +791,7 @@ test_resume_allows_implementation_when_ordered_plan_section_missing
 test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items
 test_resume_reuses_valid_feature_sync_metadata
 test_resume_invalidates_stale_feature_sync_metadata
+test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout
 test_missing_step_error
 test_dry_run_is_deterministic
 

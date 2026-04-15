@@ -1140,16 +1140,6 @@ ensure_feature_runtime_context() {
   fi
 
   load_project_binding
-  ensure_runtime_branch_checked_out
-
-  local -a candidate_feature_ids=()
-  local -a candidate_feature_paths=()
-  local -a candidate_plan_paths=()
-  local -a candidate_ears_paths=()
-  local -a candidate_first_steps=()
-  local features_dir=""
-  local assigned_feature_count=0
-  local assigned_with_unchecked_count=0
 
   if [[ "$resume_mode" -eq 1 && -n "$requested_step" ]]; then
     if try_reuse_feature_sync_for_resume "$requested_step"; then
@@ -1161,6 +1151,17 @@ ensure_feature_runtime_context() {
       return 0
     fi
   fi
+
+  ensure_runtime_branch_checked_out
+
+  local -a candidate_feature_ids=()
+  local -a candidate_feature_paths=()
+  local -a candidate_plan_paths=()
+  local -a candidate_ears_paths=()
+  local -a candidate_first_steps=()
+  local features_dir=""
+  local assigned_feature_count=0
+  local assigned_with_unchecked_count=0
 
   while IFS= read -r features_dir; do
     [[ -n "$features_dir" ]] || continue
