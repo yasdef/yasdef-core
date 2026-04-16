@@ -31,13 +31,15 @@ Defaults:
   - --implementation-branch defaults to step-<step>-implementation.
   - --history-out defaults to ai/history.md.
   - Hard gate before history consolidation: `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>` must pass.
-  - If uncommitted review changes exist, commits them first as a review-completion guard.
+  - Captures post-review metrics before any auto-commit, including pending local changes via a temporary working-tree snapshot.
+  - If uncommitted review changes exist, commits them as a review-completion guard before history update.
   - Then writes post-review history and commits remaining uncommitted changes on the current branch.
   - Then syncs only `overmind/implementation_plan.md` from the review branch into local `overmind` branch and commits it there (if changed).
   - Keeps one consolidated history record per step with:
     - Aggregated token usage + per-phase subsection (design/planning/implementation/user_review/ai_audit).
     - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
-    - New classes added (new Java type files under src/main/java only; excludes ai/docs/scripts), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
+    - New files added (newly created files, excludes ai/**), measured from the same delta.
+    - Files touched (modified existing files, excludes ai/**), measured from the same delta.
 EOF
 }
 
@@ -280,40 +282,28 @@ count_loc_added_excluding_ai() {
   fi
 }
 
-count_new_java_types_added() {
-  # Intentionally count only new Java types under src/main/java.
-  local count=0
-  local path
-  local diff_cmd=()
+count_new_files_added_excluding_ai() {
+  # Count newly added files, excluding ai/.
+  local diff_args=()
   if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
-    diff_cmd=(diff --cached --name-only --diff-filter=A "$METRICS_FROM_REF" -- src/main/java)
+    diff_args=(diff --cached --name-only --diff-filter=A "$METRICS_FROM_REF")
   else
-    diff_cmd=(diff --name-only --diff-filter=A "$METRICS_FROM_REF..$METRICS_TO_REF" -- src/main/java)
+    diff_args=(diff --name-only --diff-filter=A "$METRICS_FROM_REF..$METRICS_TO_REF")
   fi
+  metrics_git "${diff_args[@]}" \
+    | awk '$0 !~ /^ai\// { count++ } END { print count + 0 }'
+}
 
-  while IFS= read -r path; do
-    [[ -z "$path" ]] && continue
-    case "$path" in
-      *.java) ;;
-      *) continue ;;
-    esac
-    case "$path" in
-      */package-info.java|*/module-info.java)
-        continue
-        ;;
-    esac
-    local show_target=""
-    if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
-      show_target=":$path"
-    else
-      show_target="$METRICS_TO_REF:$path"
-    fi
-    if metrics_git show "$show_target" 2>/dev/null \
-        | grep -Eq '\<(class|interface|enum|record)\>[[:space:]]+[A-Za-z_][A-Za-z0-9_]*'; then
-      count=$((count + 1))
-    fi
-  done < <(metrics_git "${diff_cmd[@]}")
-  printf '%s' "$count"
+count_touched_files_excluding_ai() {
+  # Count modified (not newly added) files, excluding ai/.
+  local diff_args=()
+  if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
+    diff_args=(diff --cached --name-only --diff-filter=M "$METRICS_FROM_REF")
+  else
+    diff_args=(diff --name-only --diff-filter=M "$METRICS_FROM_REF..$METRICS_TO_REF")
+  fi
+  metrics_git "${diff_args[@]}" \
+    | awk '$0 !~ /^ai\// { count++ } END { print count + 0 }'
 }
 
 ensure_history_file() {
@@ -544,12 +534,13 @@ append_consolidated_entry() {
   local title="$2"
   local step_plan="$3"
   local loc_added="$4"
-  local classes_added="$5"
-  local design_usage="$6"
-  local planning_usage="$7"
-  local implementation_usage="$8"
-  local user_review_usage="$9"
-  local ai_audit_usage="${10}"
+  local files_added="$5"
+  local files_touched="$6"
+  local design_usage="$7"
+  local planning_usage="$8"
+  local implementation_usage="$9"
+  local user_review_usage="${10}"
+  local ai_audit_usage="${11}"
   local ts
   ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
@@ -607,7 +598,8 @@ append_consolidated_entry() {
       printf -- '  - Phase: ai_audit - %s\n' "$ai_audit_usage"
     fi
     printf -- '- New lines of code added: %s\n' "$loc_added"
-    printf -- '- New classes added: %s\n' "$classes_added"
+    printf -- '- New files added: %s\n' "$files_added"
+    printf -- '- Files touched: %s\n' "$files_touched"
     printf -- '- Step plan: %s\n' "$step_plan_rel"
   } >>"$HISTORY_OUT"
 }
@@ -649,7 +641,7 @@ commit_pending_review_changes_guard() {
     commit_message="$commit_message - $title"
   fi
   git -C "$ROOT" commit -m "$commit_message"
-  printf 'Committed pending review-phase changes on branch %s before post-review metrics/history.\n' "$(get_current_branch)"
+  printf 'Committed pending review-phase changes on branch %s before post-review history update (metrics were already captured).\n' "$(get_current_branch)"
 }
 
 sync_implementation_plan_to_overmind_branch() {
@@ -794,7 +786,8 @@ if [[ "$STEP_TITLE" == "$STEP_AND_TITLE" ]]; then
 fi
 
 LOC_ADDED="$(count_loc_added_excluding_ai)"
-CLASSES_ADDED="$(count_new_java_types_added)"
+FILES_ADDED="$(count_new_files_added_excluding_ai)"
+FILES_TOUCHED="$(count_touched_files_excluding_ai)"
 
 DESIGN_USAGE="$(extract_token_usage_from_log design)"
 PLANNING_USAGE="$(extract_token_usage_from_log planning)"
@@ -860,7 +853,8 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf 'user_review usage: %s\n' "${USER_REVIEW_USAGE:-<none>}"
   printf 'ai_audit usage: %s\n' "${AI_AUDIT_USAGE:-<none>}"
   printf 'new lines of code added: %s\n' "$LOC_ADDED"
-  printf 'new classes added: %s\n' "$CLASSES_ADDED"
+  printf 'new files added: %s\n' "$FILES_ADDED"
+  printf 'files touched: %s\n' "$FILES_TOUCHED"
   printf 'history out: %s\n' "$HISTORY_OUT"
   exit 0
 fi
@@ -874,7 +868,8 @@ append_consolidated_entry \
   "$STEP_TITLE" \
   "$STEP_PLAN" \
   "$LOC_ADDED" \
-  "$CLASSES_ADDED" \
+  "$FILES_ADDED" \
+  "$FILES_TOUCHED" \
   "$DESIGN_USAGE" \
   "$PLANNING_USAGE" \
   "$IMPLEMENTATION_USAGE" \
@@ -886,4 +881,5 @@ sync_implementation_plan_to_overmind_branch "$REVIEW_BRANCH" "$STEP_NUM" "$STEP_
 printf 'Post-review history updated for step %s.\n' "$STEP_NUM"
 printf 'Metrics diff: %s..%s (%s)\n' "$METRICS_FROM_REF" "$METRICS_TO_REF" "$METRICS_DIRECTION_NOTE"
 printf 'New lines of code added: %s\n' "$LOC_ADDED"
-printf 'New classes added: %s\n' "$CLASSES_ADDED"
+printf 'New files added: %s\n' "$FILES_ADDED"
+printf 'Files touched: %s\n' "$FILES_TOUCHED"
