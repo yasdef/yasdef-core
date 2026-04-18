@@ -204,12 +204,26 @@ ensure_ai_context_files() {
   ensure_dir_writable "$ROOT/ai/prompts/user_review_prompts"
   ensure_dir_writable "$ROOT/ai/prompts/ai_audit_prompts"
 
-  ensure_file_writable_if_missing "$DECISIONS_FILE"
-  ensure_file_writable_if_missing "$BLOCKER_LOG_FILE"
-  ensure_file_writable_if_missing "$OPEN_QUESTIONS_FILE"
-  ensure_file_writable_if_missing "$USER_REVIEW_FILE"
+  # Skip file creation when the step plan branch already exists and we are not
+  # on it — those files are tracked there, and creating them as untracked here
+  # would block checkout to the existing step branch.
+  local _skip_ctx_files=0
+  if [[ -n "$SELECTED_STEP" ]]; then
+    local _cb
+    _cb="$(get_current_branch_name)"
+    if [[ "$_cb" != "step-$SELECTED_STEP-"* ]] \
+       && git -C "$ROOT" show-ref --verify --quiet "refs/heads/step-$SELECTED_STEP-plan" 2>/dev/null; then
+      _skip_ctx_files=1
+    fi
+  fi
 
-  ensure_history_file
+  if [[ "$_skip_ctx_files" -eq 0 ]]; then
+    ensure_file_writable_if_missing "$DECISIONS_FILE"
+    ensure_file_writable_if_missing "$BLOCKER_LOG_FILE"
+    ensure_file_writable_if_missing "$OPEN_QUESTIONS_FILE"
+    ensure_file_writable_if_missing "$USER_REVIEW_FILE"
+    ensure_history_file
+  fi
 }
 
 ensure_orchestrator_prereqs() {
@@ -1036,7 +1050,7 @@ try_reuse_feature_sync_for_resume() {
   if [[ ! -f "$source_plan" || ! -f "$source_ears" ]]; then
     return 1
   fi
-  if ! plan_has_assigned_step_for_worker "$source_plan" "$BINDING_WORKER_UUID" "$requested_step"; then
+  if [[ -n "$requested_step" ]] && ! plan_has_assigned_step_for_worker "$source_plan" "$BINDING_WORKER_UUID" "$requested_step"; then
     return 1
   fi
 
@@ -1049,7 +1063,9 @@ try_reuse_feature_sync_for_resume() {
     SELECTED_SELECTION_MODE="resume_reuse:$selection_mode"
   fi
   SELECTED_REQUESTED_STEP="$requested_step"
-  SELECTED_STEP="$requested_step"
+  if [[ -n "$requested_step" ]]; then
+    SELECTED_STEP="$requested_step"
+  fi
   return 0
 }
 
@@ -1131,6 +1147,46 @@ ensure_standalone_runtime_context() {
   echo "orchestrator: selected standalone step '$SELECTED_STEP' for worker '$BINDING_WORKER_UUID' from $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
 }
 
+_try_fast_path_feature_context() {
+  local requested_step="$1"
+  local resume_mode="$2"
+
+  if ! try_reuse_feature_sync_for_resume "$requested_step"; then
+    return 1
+  fi
+
+  if [[ -z "$SELECTED_STEP" ]]; then
+    local _fa _ri _fu _analysis
+    _analysis="$(analyze_feature_plan_for_worker "$SELECTED_SOURCE_PLAN_PATH" "$BINDING_WORKER_UUID" "")"
+    IFS='|' read -r _fa _ri _fu <<<"$_analysis"
+    if [[ -z "$_fu" ]]; then
+      return 1
+    fi
+    SELECTED_STEP="$_fu"
+  fi
+
+  # Clean up orchestrator-created untracked files left on the runtime branch so
+  # that phase scripts can checkout the step branch without conflicts.
+  if [[ "$(get_current_branch_name)" == "$RUNTIME_BRANCH" ]]; then
+    local _f
+    for _f in "$IMPLEMENTATION_PLAN_PRIMARY" "$RUNTIME_REQUIREMENTS_PATH" \
+              "$BLOCKER_LOG_FILE" "$OPEN_QUESTIONS_FILE" \
+              "$USER_REVIEW_FILE" "$DECISIONS_FILE" "$HISTORY_FILE"; do
+      if [[ -f "$_f" ]] && ! git -C "$ROOT" ls-files --error-unmatch -- "$_f" >/dev/null 2>&1; then
+        rm -f "$_f"
+      fi
+    done
+  fi
+
+  IMPLEMENTATION_PLAN_FILE="$SELECTED_SOURCE_PLAN_PATH"
+  write_feature_sync_metadata "$SELECTED_STEP"
+  FEATURE_CONTEXT_READY=1
+  FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
+  FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
+  echo "orchestrator: selected feature '$SELECTED_FEATURE_ID' (mode=$SELECTED_SELECTION_MODE, project=$BINDING_PROJECT_ID, step=$SELECTED_STEP)." >&2
+  return 0
+}
+
 ensure_feature_runtime_context() {
   local requested_step="${1:-}"
   local resume_mode="${2:-0}"
@@ -1139,20 +1195,20 @@ ensure_feature_runtime_context() {
     return 0
   fi
 
-  load_project_binding
-
-  if [[ "$resume_mode" -eq 1 && -n "$requested_step" ]]; then
-    if try_reuse_feature_sync_for_resume "$requested_step"; then
-      mirror_selected_feature_to_runtime "$requested_step"
-      FEATURE_CONTEXT_READY=1
-      FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
-      FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
-      echo "orchestrator: selected feature '$SELECTED_FEATURE_ID' (mode=$SELECTED_SELECTION_MODE, project=$BINDING_PROJECT_ID, step=$SELECTED_STEP)." >&2
+  # Fast path: reuse existing feature sync without switching to the runtime branch.
+  # Only attempted when the binding file is accessible on the current branch.
+  # Handles --resume runs and re-invocations on an already-started feature.
+  if [[ -f "$PROJECT_BINDING_FILE" ]]; then
+    load_project_binding
+    if _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
       return 0
     fi
   fi
 
+  # Slow path: switch to runtime branch first (where the binding file lives),
+  # then load binding and discover the feature.
   ensure_runtime_branch_checked_out
+  load_project_binding
 
   local -a candidate_feature_ids=()
   local -a candidate_feature_paths=()
