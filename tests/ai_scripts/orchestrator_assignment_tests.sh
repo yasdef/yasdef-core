@@ -441,6 +441,257 @@ EOF
   assert_contains "$out" "Standalone mode requires local runtime EARS: overmind/reqirements_ears.md."
 }
 
+test_dep_none_step_is_selected() {
+  local repo_dir="$TMP_ROOT/repo-dep-none"
+  local source_dir="$TMP_ROOT/source-dep-none"
+  local project_id="project-dep-none"
+  local worker_uuid="d0000000-0000-0000-0000-000000000001"
+  local out=""
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-dep-none" "### Step 1.1 Backend step
+#### Assigned: other-worker
+- [x] Done (SP=1)
+
+### Step 2.1 Frontend step
+#### Depends on: none
+#### Assigned: $worker_uuid
+- [ ] Implement frontend (SP=2)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  assert_contains "$out" "selected feature 'feature-dep-none'"
+  assert_contains "$out" "step=2.1"
+}
+
+test_dep_missing_line_step_is_selected() {
+  local repo_dir="$TMP_ROOT/repo-dep-missing"
+  local source_dir="$TMP_ROOT/source-dep-missing"
+  local project_id="project-dep-missing"
+  local worker_uuid="d0000000-0000-0000-0000-000000000002"
+  local out=""
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-dep-missing" "### Step 3.1 Step without dep line
+#### Assigned: $worker_uuid
+- [ ] Do the work (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  assert_contains "$out" "step=3.1"
+}
+
+test_dep_satisfied_step_is_selected() {
+  local repo_dir="$TMP_ROOT/repo-dep-sat"
+  local source_dir="$TMP_ROOT/source-dep-sat"
+  local project_id="project-dep-sat"
+  local worker_uuid="d0000000-0000-0000-0000-000000000003"
+  local out=""
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-dep-sat" "### Step 1.1 OpenAPI step
+#### Assigned: other-worker
+- [x] Create OpenAPI spec (SP=2)
+
+### Step 2.1 Frontend step
+#### Depends on: 1.1
+#### Assigned: $worker_uuid
+- [ ] Implement frontend (SP=3)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  assert_contains "$out" "step=2.1"
+}
+
+test_dep_not_satisfied_skips_step_selects_next() {
+  local repo_dir="$TMP_ROOT/repo-dep-skip"
+  local source_dir="$TMP_ROOT/source-dep-skip"
+  local project_id="project-dep-skip"
+  local worker_uuid="d0000000-0000-0000-0000-000000000004"
+  local out=""
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-dep-skip" "### Step 1.1 OpenAPI step
+#### Assigned: other-worker
+- [ ] Create OpenAPI spec (SP=2)
+
+### Step 2.1 Blocked frontend
+#### Depends on: 1.1
+#### Assigned: $worker_uuid
+- [ ] Implement frontend (SP=3)
+
+### Step 2.2 Unblocked frontend task
+#### Assigned: $worker_uuid
+- [ ] Add styling (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  assert_contains "$out" "step=2.2"
+  assert_not_contains "$out" "step=2.1"
+}
+
+test_all_assigned_steps_blocked_exits_nonzero_with_blocked_message() {
+  local repo_dir="$TMP_ROOT/repo-dep-all-blocked"
+  local source_dir="$TMP_ROOT/source-dep-all-blocked"
+  local project_id="project-dep-all-blocked"
+  local worker_uuid="d0000000-0000-0000-0000-000000000005"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-all-blocked" "### Step 1.1 OpenAPI step
+#### Assigned: other-worker
+- [ ] Create OpenAPI spec (SP=2)
+
+### Step 2.1 Blocked frontend
+#### Depends on: 1.1
+#### Assigned: $worker_uuid
+- [ ] Implement frontend (SP=3)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "blocked by step '1.1'"
+}
+
+test_dep_nonexistent_step_id_is_plan_error() {
+  local repo_dir="$TMP_ROOT/repo-dep-missing-id"
+  local source_dir="$TMP_ROOT/source-dep-missing-id"
+  local project_id="project-dep-missing-id"
+  local worker_uuid="d0000000-0000-0000-0000-000000000006"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-bad-dep" "### Step 2.1 Step with bad dep
+#### Depends on: 9.9
+#### Assigned: $worker_uuid
+- [ ] Implement something (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "plan error"
+  assert_contains "$out" "9.9"
+}
+
+test_dep_zero_bullet_step_is_plan_error() {
+  local repo_dir="$TMP_ROOT/repo-dep-zero-bullets"
+  local source_dir="$TMP_ROOT/source-dep-zero-bullets"
+  local project_id="project-dep-zero-bullets"
+  local worker_uuid="d0000000-0000-0000-0000-000000000007"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-zero-bullets" "### Step 1.1 Empty dep step
+#### Assigned: other-worker
+
+### Step 2.1 Depends on empty step
+#### Depends on: 1.1
+#### Assigned: $worker_uuid
+- [ ] Implement something (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "plan error"
+  assert_contains "$out" "1.1"
+}
+
+test_multi_dep_all_satisfied_step_selected() {
+  local repo_dir="$TMP_ROOT/repo-multi-dep-ok"
+  local source_dir="$TMP_ROOT/source-multi-dep-ok"
+  local project_id="project-multi-dep-ok"
+  local worker_uuid="d0000000-0000-0000-0000-000000000008"
+  local out=""
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-multi-dep" "### Step 1.1 Backend step
+#### Assigned: other-worker
+- [x] Done (SP=1)
+
+### Step 1.2 DB migration
+#### Assigned: other-worker
+- [x] Migrated (SP=1)
+
+### Step 2.1 Frontend step
+#### Depends on: 1.1, 1.2
+#### Assigned: $worker_uuid
+- [ ] Implement (SP=2)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  assert_contains "$out" "step=2.1"
+}
+
+test_multi_dep_one_unsatisfied_step_skipped() {
+  local repo_dir="$TMP_ROOT/repo-multi-dep-block"
+  local source_dir="$TMP_ROOT/source-multi-dep-block"
+  local project_id="project-multi-dep-block"
+  local worker_uuid="d0000000-0000-0000-0000-000000000009"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir" "$source_dir"
+  setup_repo "$repo_dir"
+  create_workers_registry "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "$project_id" "feature-multi-dep-block" "### Step 1.1 Backend step
+#### Assigned: other-worker
+- [x] Done (SP=1)
+
+### Step 1.2 DB migration
+#### Assigned: other-worker
+- [ ] Not done yet (SP=1)
+
+### Step 2.1 Frontend step
+#### Depends on: 1.1, 1.2
+#### Assigned: $worker_uuid
+- [ ] Implement (SP=2)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "blocked by step '1.2'"
+}
+
 test_bound_project_single_feature_auto_selected
 test_requested_step_filters_candidate_features
 test_multiple_candidate_features_require_explicit_interactive_selection
@@ -450,5 +701,14 @@ test_planning_syncs_runtime_plan_back_to_selected_feature_source
 test_planning_dry_run_injects_resolved_step_when_not_explicit
 test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation
 test_standalone_fails_fast_when_local_runtime_ears_missing
+test_dep_none_step_is_selected
+test_dep_missing_line_step_is_selected
+test_dep_satisfied_step_is_selected
+test_dep_not_satisfied_skips_step_selects_next
+test_all_assigned_steps_blocked_exits_nonzero_with_blocked_message
+test_dep_nonexistent_step_id_is_plan_error
+test_dep_zero_bullet_step_is_plan_error
+test_multi_dep_all_satisfied_step_selected
+test_multi_dep_one_unsatisfied_step_skipped
 
 echo "All orchestrator assignment tests passed."

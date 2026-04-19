@@ -892,26 +892,40 @@ analyze_feature_plan_for_worker() {
       return s
     }
     BEGIN {
-      step_num = ""
-      assigned_uuid = ""
+      step_count = 0
       assigned_any = 0
       requested_match = 0
-      first_unchecked = ""
+      step_num = ""
     }
     /^### Step / {
       line = $0
       sub(/^### Step /, "", line)
       split(line, parts, " ")
       step_num = parts[1]
-      assigned_uuid = ""
+      step_order[step_count++] = step_num
+      dep_list[step_num] = ""
+      has_dep_line[step_num] = 0
+      bullet_count[step_num] = 0
+      unchecked_count[step_num] = 0
+      assigned_to_worker[step_num] = 0
+      next
+    }
+    /^#### Depends on:[[:space:]]*/ {
+      if (step_num != "") {
+        line = $0
+        sub(/^#### Depends on:[[:space:]]*/, "", line)
+        dep_list[step_num] = trim(line)
+        has_dep_line[step_num] = 1
+      }
       next
     }
     /^#### Assigned:[[:space:]]*/ {
       line = $0
       sub(/^#### Assigned:[[:space:]]*/, "", line)
-      assigned_uuid = trim(line)
-      if (assigned_uuid == target_uuid) {
+      uuid = trim(line)
+      if (step_num != "" && uuid == target_uuid) {
         assigned_any = 1
+        assigned_to_worker[step_num] = 1
         if (requested_step != "" && step_num == requested_step) {
           requested_match = 1
         }
@@ -919,13 +933,65 @@ analyze_feature_plan_for_worker() {
       next
     }
     /^- \[ \]/ {
-      if (step_num != "" && assigned_uuid == target_uuid && first_unchecked == "") {
-        first_unchecked = step_num
+      if (step_num != "") {
+        bullet_count[step_num]++
+        unchecked_count[step_num]++
+      }
+      next
+    }
+    /^- \[x\]/ {
+      if (step_num != "") {
+        bullet_count[step_num]++
       }
       next
     }
     END {
-      printf "%d|%d|%s", assigned_any, requested_match, first_unchecked
+      first_unchecked = ""
+      blocked_by = ""
+
+      for (i = 0; i < step_count; i++) {
+        s = step_order[i]
+        if (!assigned_to_worker[s] || unchecked_count[s] == 0) continue
+
+        if (!has_dep_line[s] || dep_list[s] == "" || dep_list[s] == "none") {
+          first_unchecked = s
+          break
+        }
+
+        n = split(dep_list[s], deps, ",")
+        dep_ok = 1
+        this_blocked_by = ""
+        for (j = 1; j <= n; j++) {
+          d = trim(deps[j])
+          if (d == "") continue
+          found = 0
+          for (k = 0; k < step_count; k++) {
+            if (step_order[k] == d) { found = 1; break }
+          }
+          if (!found) {
+            print "plan error: step " s " depends on " d " which does not exist in the plan" > "/dev/stderr"
+            exit 2
+          }
+          if (bullet_count[d] == 0) {
+            print "plan error: dep step " d " has zero bullets and cannot be considered complete" > "/dev/stderr"
+            exit 2
+          }
+          if (unchecked_count[d] > 0) {
+            dep_ok = 0
+            this_blocked_by = d
+            break
+          }
+        }
+
+        if (dep_ok) {
+          first_unchecked = s
+          break
+        } else if (blocked_by == "") {
+          blocked_by = this_blocked_by
+        }
+      }
+
+      printf "%d|%d|%s|%s", assigned_any, requested_match, first_unchecked, blocked_by
     }
   ' "$plan_path"
 }
@@ -1097,6 +1163,7 @@ ensure_standalone_runtime_context() {
   local assigned_any=0
   local requested_match=0
   local first_unchecked=""
+  local blocked_by=""
 
   if [[ "$FEATURE_CONTEXT_READY" -eq 1 ]] && [[ "$FEATURE_CONTEXT_REQUESTED_STEP" == "$requested_step" ]] && [[ "$FEATURE_CONTEXT_RESUME_MODE" -eq "$resume_mode" ]]; then
     return 0
@@ -1117,7 +1184,7 @@ ensure_standalone_runtime_context() {
 
   IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
   analysis="$(analyze_feature_plan_for_worker "$IMPLEMENTATION_PLAN_PRIMARY" "$BINDING_WORKER_UUID" "$requested_step")"
-  IFS='|' read -r assigned_any requested_match first_unchecked <<<"$analysis"
+  IFS='|' read -r assigned_any requested_match first_unchecked blocked_by <<<"$analysis"
 
   if [[ -n "$requested_step" ]]; then
     if [[ "$requested_match" -ne 1 ]]; then
@@ -1129,6 +1196,9 @@ ensure_standalone_runtime_context() {
       die "Standalone mode found no steps assigned to worker '$BINDING_WORKER_UUID' in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
     fi
     if [[ -z "$first_unchecked" ]]; then
+      if [[ -n "$blocked_by" ]]; then
+        die "Standalone mode: assigned step for worker '$BINDING_WORKER_UUID' is blocked by step '$blocked_by' in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
+      fi
       die "Standalone mode found assigned steps for worker '$BINDING_WORKER_UUID' but all assigned checklist bullets are complete in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
     fi
     SELECTED_STEP="$first_unchecked"
@@ -1158,7 +1228,7 @@ _try_fast_path_feature_context() {
   if [[ -z "$SELECTED_STEP" ]]; then
     local _fa _ri _fu _analysis
     _analysis="$(analyze_feature_plan_for_worker "$SELECTED_SOURCE_PLAN_PATH" "$BINDING_WORKER_UUID" "")"
-    IFS='|' read -r _fa _ri _fu <<<"$_analysis"
+    IFS='|' read -r _fa _ri _fu _bb <<<"$_analysis"
     if [[ -z "$_fu" ]]; then
       return 1
     fi
@@ -1218,6 +1288,7 @@ ensure_feature_runtime_context() {
   local features_dir=""
   local assigned_feature_count=0
   local assigned_with_unchecked_count=0
+  local last_blocked_by=""
 
   while IFS= read -r features_dir; do
     [[ -n "$features_dir" ]] || continue
@@ -1228,6 +1299,7 @@ ensure_feature_runtime_context() {
     local assigned_any=0
     local requested_match=0
     local first_unchecked=""
+    local blocked_by=""
 
     feature_id="$(basename "$features_dir")"
     plan_path="$features_dir/implementation_plan.md"
@@ -1235,12 +1307,14 @@ ensure_feature_runtime_context() {
     [[ -f "$plan_path" ]] || continue
 
     analysis="$(analyze_feature_plan_for_worker "$plan_path" "$BINDING_WORKER_UUID" "$requested_step")"
-    IFS='|' read -r assigned_any requested_match first_unchecked <<<"$analysis"
+    IFS='|' read -r assigned_any requested_match first_unchecked blocked_by <<<"$analysis"
 
     if [[ "$assigned_any" -eq 1 ]]; then
       assigned_feature_count=$((assigned_feature_count + 1))
       if [[ -n "$first_unchecked" ]]; then
         assigned_with_unchecked_count=$((assigned_with_unchecked_count + 1))
+      elif [[ -n "$blocked_by" ]]; then
+        last_blocked_by="$blocked_by"
       fi
     fi
 
@@ -1272,6 +1346,9 @@ ensure_feature_runtime_context() {
       die "No candidate features under project '$BINDING_PROJECT_ID' contain requested step '$requested_step' assigned to worker '$BINDING_WORKER_UUID'."
     fi
     if [[ "$assigned_with_unchecked_count" -eq 0 ]]; then
+      if [[ -n "$last_blocked_by" ]]; then
+        die "Assigned step for worker '$BINDING_WORKER_UUID' is blocked by step '$last_blocked_by' under project '$BINDING_PROJECT_ID'."
+      fi
       die "Assigned steps exist for worker '$BINDING_WORKER_UUID' but all assigned checklist bullets are complete under project '$BINDING_PROJECT_ID'."
     fi
     die "No candidate features remain after assignment filtering for worker '$BINDING_WORKER_UUID' under project '$BINDING_PROJECT_ID'."
