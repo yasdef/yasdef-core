@@ -817,6 +817,11 @@ yaml_get_scalar() {
   printf '%s' "$value"
 }
 
+read_init_progress_project_id() {
+  local def_file="$1"
+  grep -m1 '^\s*project_id:' "$def_file" | sed "s/.*project_id:[[:space:]]*//;s/[\"']//g"
+}
+
 load_project_binding() {
   if [[ -n "$BINDING_WORKER_UUID" ]]; then
     return 0
@@ -850,17 +855,24 @@ load_project_binding() {
     die "Binding file is invalid: missing project_id in $(repo_relpath "$PROJECT_BINDING_FILE")."
   fi
   if [[ ! -d "$BINDING_OVERMIND_SOURCE_PATH" ]]; then
-    die "Bound overmind source path does not exist: $BINDING_OVERMIND_SOURCE_PATH"
+    die "Bound overmind project repo does not exist: $BINDING_OVERMIND_SOURCE_PATH. Re-run ai/scripts/init_worker.sh."
   fi
 
-  if [[ -d "$BINDING_OVERMIND_SOURCE_PATH/projects/$BINDING_PROJECT_ID" ]]; then
-    BOUND_PROJECT_PATH="$BINDING_OVERMIND_SOURCE_PATH/projects/$BINDING_PROJECT_ID"
-  elif [[ -d "$BINDING_OVERMIND_SOURCE_PATH/$BINDING_PROJECT_ID" ]]; then
-    BOUND_PROJECT_PATH="$BINDING_OVERMIND_SOURCE_PATH/$BINDING_PROJECT_ID"
-  else
-    die "Bound project path is missing for project_id '$BINDING_PROJECT_ID' under overmind source '$BINDING_OVERMIND_SOURCE_PATH'."
-  fi
+  BOUND_PROJECT_PATH="$BINDING_OVERMIND_SOURCE_PATH"
   BOUND_FEATURES_ROOT="$BOUND_PROJECT_PATH"
+
+  local _def_file="$BOUND_PROJECT_PATH/init_progress_definition.yaml"
+  if [[ ! -f "$_def_file" ]]; then
+    die "Bound overmind project repo is missing init_progress_definition.yaml: $BOUND_PROJECT_PATH. Re-run ai/scripts/init_worker.sh against the correct project repo."
+  fi
+  local _def_project_id=""
+  _def_project_id="$(read_init_progress_project_id "$_def_file")"
+  if [[ -z "$_def_project_id" ]]; then
+    die "init_progress_definition.yaml in bound project repo is missing meta_info.project_id: $BOUND_PROJECT_PATH. Re-run ai/scripts/init_worker.sh."
+  fi
+  if [[ "$_def_project_id" != "$BINDING_PROJECT_ID" ]]; then
+    die "Bound project_id '$BINDING_PROJECT_ID' does not match meta_info.project_id '$_def_project_id' in init_progress_definition.yaml. Re-run ai/scripts/init_worker.sh against the correct project repo."
+  fi
 }
 
 ensure_runtime_branch_checked_out() {
@@ -1335,7 +1347,7 @@ ensure_feature_runtime_context() {
         candidate_first_steps+=("$first_unchecked")
       fi
     fi
-  done < <(find "$BOUND_FEATURES_ROOT" -mindepth 1 -maxdepth 1 -type d -print | LC_ALL=C sort)
+  done < <(find "$BOUND_FEATURES_ROOT" -mindepth 1 -maxdepth 1 -type d -not -name '.git' -print | LC_ALL=C sort)
 
   if [[ "$assigned_feature_count" -eq 0 ]]; then
     die "No feature under bound project '$BINDING_PROJECT_ID' contains assigned steps for worker UUID '$BINDING_WORKER_UUID'."
@@ -2705,7 +2717,7 @@ if [[ "$STANDALONE_MODE" -eq 1 ]]; then
   echo "orchestrator: standalone mode enabled; bypassing ASDLC feature discovery, remote validation, and artifact mirroring." >&2
   echo "orchestrator: standalone mode runtime inputs: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY"), $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH")." >&2
 else
-  echo "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled (projects/<project-id>/<feature-id>/implementation_plan.md + requirements_ears.md -> overmind runtime files)." >&2
+  echo "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled (<project-repo>/<feature-id>/implementation_plan.md + requirements_ears.md -> overmind runtime files)." >&2
 fi
 ensure_runtime_context "$REQUESTED_STEP_FOR_FEATURE_CONTEXT" "$RESUME_MODE"
 

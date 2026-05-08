@@ -126,20 +126,25 @@ EOF
 - None.
 EOF
 
-  mkdir -p "$source_dir/projects/project-debug/feature-one"
-  cat >"$source_dir/projects/project-debug/workers.yaml" <<EOF
+  mkdir -p "$source_dir/feature-one"
+  cat >"$source_dir/workers.yaml" <<EOF
 workers:
   - uuid: "$worker_uuid"
     class: "platform"
     status: "ready"
 EOF
-  cat >"$source_dir/projects/project-debug/feature-one/implementation_plan.md" <<EOF
+  cat >"$source_dir/init_progress_definition.yaml" <<'EOF'
+meta_info:
+  project_id: 'project-debug'
+steps: []
+EOF
+  cat >"$source_dir/feature-one/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
 #### Assigned: $worker_uuid
 - [ ] Plan and discuss the step (SP=1)
 - [ ] Implement demo behavior (SP=1)
 EOF
-  cat >"$source_dir/projects/project-debug/feature-one/requirements_ears.md" <<'EOF'
+  cat >"$source_dir/feature-one/requirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
 - The system SHALL support demo behavior.
 EOF

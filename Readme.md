@@ -28,18 +28,19 @@ This approach can be expressed in a few sentences:
 
 4. Run `bash ai/scripts/init_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
    The script prompts for:
-   - worker UUID (must already exist in project-scoped `workers.yaml`),
-   - path to the ASDLC source root.
+   - worker UUID (must already exist in the project repo's root `workers.yaml`),
+   - path to the single ASDLC project repo (not a parent of many projects).
+   The script reads `project_id` from `<project_repo>/init_progress_definition.yaml` under `meta_info.project_id`.
    On success it creates/checks out local branch `overmind`, writes deterministic project binding `ai/project_overmind.yaml` (including `project_id`), and commits the change.
 
 5. Keep source-of-truth coordinator artifacts in ASDLC feature folders:
-   - `projects/<project-id>/<feature-id>/implementation_plan.md`
-   - `projects/<project-id>/<feature-id>/requirements_ears.md`
+   - `<project-repo>/<feature-id>/implementation_plan.md`
+   - `<project-repo>/<feature-id>/requirements_ears.md`
    Worker runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` are mirrored copies managed by orchestrator on branch `overmind`.
 
 5.1 Workaround (`--standalone`) when ASDLC paths are temporarily unreachable:
-   - Default orchestrator mode tries to read source artifacts from ASDLC and mirror them to local runtime files.
-   - If ASDLC cannot be reached, default mode fails fast even when local `/overmind` files exist.
+   - Default orchestrator mode tries to read source artifacts from `<project-repo>/<feature-id>/` and mirror them to local runtime files.
+   - If the project repo cannot be reached, default mode fails fast even when local `/overmind` files exist.
    - Use `bash ai/scripts/orchestrator.sh --standalone` to skip ASDLC feature discovery/read-copy flow and run directly from local:
      - `overmind/implementation_plan.md`
      - `overmind/reqirements_ears.md`
@@ -57,9 +58,9 @@ This approach can be expressed in a few sentences:
 7. Run the orchestrator:
   `bash ai/scripts/orchestrator.sh` and follow the instructions.
   Routing behavior:
-  - default mode tries to read/copy `projects/<project-id>/<feature-id>/implementation_plan.md` and `projects/<project-id>/<feature-id>/requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
+  - default mode tries to read/copy `<project-repo>/<feature-id>/implementation_plan.md` and `<project-repo>/<feature-id>/requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
   - if you need local-runtime-only execution, run `bash ai/scripts/orchestrator.sh --standalone` to bypass ASDLC artifact flow immediately
-  - orchestrator scans bound project features from `ai/project_overmind.yaml`
+  - orchestrator scans bound project repo features (`<project-repo>/<feature-id>/implementation_plan.md`) from `ai/project_overmind.yaml`; `.git` and subdirectories without `implementation_plan.md` are skipped
   - `0` candidate features -> fail fast
   - `1` candidate feature -> auto-select
   - `>1` candidate features -> explicit user choice
@@ -98,7 +99,7 @@ This approach can be expressed in a few sentences:
 
 - **Orchestration:** Since each phase starts as a terminal command, we can orchestrate the whole process from top-level script `ai/scripts/orchestrator.sh`.
   - Worker/project binding rule: orchestrator reads `worker_uuid` and `project_id` from `ai/project_overmind.yaml` (legacy `ai/*_dont_touch.txt` is no longer used).
-  - Candidate discovery rule: orchestrator scans bound project features (`projects/<project-id>/<feature-id>/implementation_plan.md`) and considers only `#### Assigned: <worker-uuid>` blocks.
+  - Candidate discovery rule: orchestrator scans bound project repo features (`<project-repo>/<feature-id>/implementation_plan.md`), skipping `.git` and subdirectories without `implementation_plan.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
   - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
   - Runtime mirroring rule: selected feature artifacts are mirrored into local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` on branch `overmind` before phase execution.
   - Standalone override: `--standalone` bypasses ASDLC discovery/read-copy flow and uses existing local `overmind/implementation_plan.md` + `overmind/reqirements_ears.md` directly.
@@ -124,8 +125,8 @@ This approach can be expressed in a few sentences:
 
 Each artifact below serves a specific role in the AI-dev process:
 
-- **projects/<project-id>/<feature-id>/requirements_ears.md**: Source-of-truth behavioral requirements for each feature (EARS format).
-- **projects/<project-id>/<feature-id>/implementation_plan.md**: Source-of-truth execution plan for each feature; `#### Assigned:` routes work to workers.
+- **<project-repo>/<feature-id>/requirements_ears.md**: Source-of-truth behavioral requirements for each feature (EARS format).
+- **<project-repo>/<feature-id>/implementation_plan.md**: Source-of-truth execution plan for each feature; `#### Assigned:` routes work to workers.
 - **overmind/reqirements_ears.md**: Local mirrored runtime copy of selected feature EARS, consumed by worker phase scripts.
 - **overmind/implementation_plan.md**: Local mirrored runtime copy of selected feature plan, consumed by worker phase scripts.
 - **ai/project_overmind.yaml**: Durable local binding (`overmind_source_path`, `project_id`, worker metadata) created by `init_worker`.

@@ -59,7 +59,7 @@ source_root_for_repo() {
 
 feature_dir_for_repo() {
   local repo_dir="$1"
-  printf '%s/projects/%s/%s' "$(source_root_for_repo "$repo_dir")" "$PROJECT_ID_DEFAULT" "$FEATURE_ID_DEFAULT"
+  printf '%s/%s' "$(source_root_for_repo "$repo_dir")" "$FEATURE_ID_DEFAULT"
 }
 
 setup_repo() {
@@ -110,12 +110,17 @@ EOF
 
   source_dir="$(source_root_for_repo "$repo_dir")"
   feature_dir="$(feature_dir_for_repo "$repo_dir")"
-  mkdir -p "$source_dir/projects/$PROJECT_ID_DEFAULT" "$feature_dir"
-  cat >"$source_dir/projects/$PROJECT_ID_DEFAULT/workers.yaml" <<EOF
+  mkdir -p "$source_dir" "$feature_dir"
+  cat >"$source_dir/workers.yaml" <<EOF
 workers:
   - uuid: "$WORKER_UUID_DEFAULT"
     class: "platform"
     status: "ready"
+EOF
+  cat >"$source_dir/init_progress_definition.yaml" <<EOF
+meta_info:
+  project_id: '$PROJECT_ID_DEFAULT'
+steps: []
 EOF
   cat >"$feature_dir/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
@@ -300,7 +305,7 @@ project_id: '$PROJECT_ID_DEFAULT'
 feature_id: '$feature_id'
 worker_uuid: '$WORKER_UUID_DEFAULT'
 overmind_source_path: '$source_dir'
-bound_project_path: '$source_dir/projects/$PROJECT_ID_DEFAULT'
+bound_project_path: '$source_dir'
 source_feature_path: '$(dirname "$source_plan")'
 source_implementation_plan_path: '$source_plan'
 source_requirements_ears_path: '$source_ears'
@@ -645,7 +650,7 @@ test_resume_reuses_valid_feature_sync_metadata() {
   setup_repo "$repo_dir"
   source_dir="$(source_root_for_repo "$repo_dir")"
   feature_primary="$(feature_dir_for_repo "$repo_dir")"
-  feature_secondary="$source_dir/projects/$PROJECT_ID_DEFAULT/feature-second"
+  feature_secondary="$source_dir/feature-second"
 
   write_design_and_plan_artifacts "$repo_dir" "1.1"
   write_impl_plan "$repo_dir" 1 1 1 0
@@ -689,7 +694,7 @@ test_resume_invalidates_stale_feature_sync_metadata() {
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   source_dir="$(source_root_for_repo "$repo_dir")"
-  feature_secondary="$source_dir/projects/$PROJECT_ID_DEFAULT/feature-second"
+  feature_secondary="$source_dir/feature-second"
 
   write_design_and_plan_artifacts "$repo_dir" "1.1"
   write_impl_plan "$repo_dir" 1 1 1 0
@@ -711,8 +716,8 @@ EOF
   write_feature_sync \
     "$repo_dir" \
     "feature-missing" \
-    "$source_dir/projects/$PROJECT_ID_DEFAULT/feature-missing/implementation_plan.md" \
-    "$source_dir/projects/$PROJECT_ID_DEFAULT/feature-missing/requirements_ears.md" \
+    "$source_dir/feature-missing/implementation_plan.md" \
+    "$source_dir/feature-missing/requirements_ears.md" \
     "1.1" \
     "auto_single"
 
