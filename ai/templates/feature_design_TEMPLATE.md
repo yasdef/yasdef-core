@@ -7,6 +7,7 @@ Notes:
 - This artifact is for user review in the design phase.
 - Include only feature-relevant rules from `AGENTS.md` and `ai/user_review.md`.
 - For non-trivial scope, include 1-3 plan-critical items in `## Things to Decide (for final planning discussion)`; if none, write `- None.` with short rationale.
+- Add `## First-Feature Bootstrap (only if needed)` only when bootstrap handoff is needed for this step.
 
 ---
 
@@ -68,3 +69,11 @@ Optional in design phase. Required for non-trivial behavior changes; otherwise i
 
 ## Unknowns / Assumptions to Validate (optional)
 - <uncertainty or assumption to verify, or "None">
+
+## First-Feature Bootstrap (only if needed)
+<Replace this line only when bootstrap handoff is needed.>
+- Bootstrap required: yes|no
+- Blueprint result: <relevant blueprint found / no relevant blueprint found / irrelevant blueprint(s) only / blocked by missing class metadata>
+- Blueprint evidence: <path(s) or "None">
+- User stack decision: <approved stack/scaffold choice or "None">
+- Planning handoff: <state scaffold creation must be first in planning, plus scaffold constraints/deliverable>

@@ -13,6 +13,8 @@ AGENTS="$ROOT/AGENTS.md"
 USER_REVIEW="$ROOT/ai/user_review.md"
 DESIGN_TEMPLATE="$ROOT/ai/templates/feature_design_TEMPLATE.md"
 DESIGN_GOLDEN="$ROOT/ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md"
+FEATURE_SYNC_FILE="$ROOT/ai/feature_sync.yaml"
+BLUEPRINT_HELPER="$ROOT/ai/scripts/helpers/helper_find_blueprints.sh"
 
 STEP=""
 DESIGN_OUT=""
@@ -195,6 +197,33 @@ get_process_design_section() {
     /^### 2\)/ { exit }
     in_scope { print }
   ' "$PROCESS"
+}
+
+read_yaml_scalar() {
+  local file="$1"
+  local key="$2"
+
+  if [[ ! -f "$file" ]]; then
+    return 1
+  fi
+
+  awk -v key="$key" '
+    function trim(str) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", str)
+      return str
+    }
+    $0 ~ "^[[:space:]]*" key ":[[:space:]]*" {
+      line = $0
+      sub("^[[:space:]]*" key ":[[:space:]]*", "", line)
+      sub(/[[:space:]]+#.*$/, "", line)
+      line = trim(line)
+      if ((line ~ /^".*"$/) || (line ~ /^'\''.*'\''$/)) {
+        line = substr(line, 2, length(line) - 2)
+      }
+      print line
+      exit
+    }
+  ' "$file"
 }
 
 extract_feature_design_template_body() {
@@ -418,6 +447,7 @@ if [[ -z "$OPEN_QUESTIONS_SECTION" ]]; then
 fi
 
 REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
+FEATURE_SYNC_SOURCE_FEATURE_PATH="$(read_yaml_scalar "$FEATURE_SYNC_FILE" "source_feature_path" || true)"
 
 mkdir -p "$(dirname "$DESIGN_OUT")"
 if [[ ! -f "$DESIGN_OUT" ]]; then
@@ -427,18 +457,29 @@ ensure_applicable_adr_shortlist_section
 
 emit() {
   local design_label
+  local helper_label
   if [[ "$DESIGN_OUT" == "$ROOT/"* ]]; then
     design_label="${DESIGN_OUT#"$ROOT"/}"
   else
     design_label="$DESIGN_OUT"
+  fi
+  if [[ "$BLUEPRINT_HELPER" == "$ROOT/"* ]]; then
+    helper_label="${BLUEPRINT_HELPER#"$ROOT"/}"
+  else
+    helper_label="$BLUEPRINT_HELPER"
   fi
 
   printf 'Feature design phase for Step %s\n' "$STEP"
   printf 'Target bullets (excluding planning/review):\n%s\n' "${TARGET_BULLETS:-- (none found; verify step bullets)}"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 1) as process rules.\n'
   printf 'Create/update feature design at: %s\n' "$DESIGN_OUT"
-  printf 'This design artifact is mandatory input for planning and implementation phases.\n'
-  printf 'Shortlist relevant accepted ADRs into design section "Applicable ADR Shortlist (from ai/decisions.md)".\n'
+  printf 'Apply `#### Bootstrap decision algorithm` from Section 1 before design handoff.\n'
+  printf 'Blueprint helper contract: when bootstrap is required and stack/architecture guidance is needed, run `%s` from the ASDLC feature folder context where `implementation_plan.md` and `requirements_ears.md` live; it searches the parent project-level directory for `project_stack_blueprint_*.md`.\n' "$helper_label"
+  if [[ -n "$FEATURE_SYNC_SOURCE_FEATURE_PATH" ]]; then
+    printf 'Suggested bootstrap lookup command for this run: `cd "%s" && "%s"`.\n' "$FEATURE_SYNC_SOURCE_FEATURE_PATH" "$BLUEPRINT_HELPER"
+  else
+    printf 'ASDLC source feature path is unavailable in ai/feature_sync.yaml. If bootstrap is required, locate the source feature folder first or ask the user before inventing stack/scaffold details.\n'
+  fi
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     printf 'Feature-rich design/planning mode: ENABLED (design-only add-on).\n'
     printf 'Add a concise "Optional Hardening Opportunities" shortlist (max 5 bullets) from risks/trade-offs.\n'
@@ -467,6 +508,15 @@ emit() {
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
   printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$OPEN_QUESTIONS_SECTION"
+  printf '== Bootstrap context ==\n'
+  if [[ -f "$FEATURE_SYNC_FILE" ]]; then
+    printf 'Feature sync file: ai/feature_sync.yaml\n'
+    cat "$FEATURE_SYNC_FILE"
+    printf '\n\n'
+  else
+    printf 'Feature sync file missing: ai/feature_sync.yaml\n\n'
+  fi
+  printf 'Blueprint helper path: %s\n\n' "$helper_label"
   printf '== ai/decisions.md (Accepted ADRs) ==\n'
   printf 'Read directly from repo and shortlist only relevant accepted ADRs for this step/feature.\n'
   printf 'Path: ai/decisions.md\n\n'

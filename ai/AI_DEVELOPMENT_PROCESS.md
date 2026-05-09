@@ -57,12 +57,26 @@ Before step planning:
 - Design must include both:
   - step scope bullets (`## Target Bullets (excluding planning/review)`), and
   - selected EARS requirement blocks for planning translation (`## Selected EARS Requirements (for planning translation)`).
+- Apply `#### Bootstrap decision algorithm` before design handoff.
+- If bootstrap is required and stack/architecture guidance is needed, run `ai/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context and evaluate class-relevant `project_stack_blueprint_*.md` files from the project-level directory above that feature folder.
+- Use project class metadata from `ai/project_overmind.yaml` to scope blueprint relevance; if class metadata is missing/unsupported or no relevant blueprint exists, stop and ask the user for stack/scaffold direction instead of inventing one.
 - Include only relevant constraints from `AGENTS.md` and relevant insights from `ai/user_review.md` (do not dump all rules).
 - Shortlist only relevant accepted ADRs from `ai/decisions.md` and capture them in the design artifact (do not dump all ADRs).
 - In this phase, do not finalize durable decisions and do not update `ai/decisions.md`; capture candidate decisions under "Things to Decide" in the design artifact for final planning discussion.
 - In feature design, perform `#### Missing discussion points gates` before handoff to planning and add all meaningful unresolved findings to `## Things to Decide (for final planning discussion)`.
 - Design decision quality gate: make "Things to Decide" entries concrete and action-driving (decision-shaped, not generic questions), with mutually exclusive options and explicit trade-offs so planning can present clear `1`/`2` choices.
 - Design decision depth gate: for non-trivial scope, capture at least 1-3 plan-critical "Things to Decide" items. If there are truly no plan-critical choices, explicitly record `- None.` with short rationale.
+#### Bootstrap decision algorithm
+- Inspect the current step goal and the current implementation evidence in the bound repo for the current class.
+- Treat the step as first-feature bootstrap only when it must create the initial runnable scaffold/stack for that class because there is no meaningful existing implementation to extend.
+- Main evidence to inspect:
+  - existing source files for the class
+  - existing app/module scaffold
+  - existing dependency/build setup
+  - existing runtime entrypoints
+  - whether the step bullets are scaffold-creation work versus normal feature-extension work
+- If the step is first-feature bootstrap, add one compact section: `## First-Feature Bootstrap (only if needed)`.
+- In that section, record `Bootstrap required: yes`, the blueprint lookup result, blueprint evidence or explicit user stack decision, and a short planning handoff.
 #### Missing discussion points gates
 - Before design handoff, run a lightweight missing-discussion-points ambiguity scan focused on planning-relevant gaps.
 - Use this structured taxonomy when scanning:
@@ -90,10 +104,12 @@ Before step planning:
 - Use web research for best practices when needed; record sources in the plan to reduce hallucinations.
 - The plan must be concise and execution-focused: ordered steps, constraints, decisions, tests, and docs/artifacts to update.
 - Scope contract lives in the feature design artifact: `## Goal`, `## In Scope`, and `## Out of Scope`. Do not restate those sections in the step plan; instead add a pointer to the design and focus the plan on execution.
+- If present, the optional design bootstrap section is the source of truth for bootstrap handling; planning must not re-investigate repo emptiness or independently re-decide bootstrap need.
 - Step-plan structure contract:
   - Do not include `## Target Bullets` in step plans.
   - Do not include `## Requirement Tags` in step plans.
   - Require `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)` (in that order).
+- Only when design records `Bootstrap required: yes`, require `## Scaffold Bootstrap Plan` in the step plan and place scaffold creation before dependent feature implementation work in `## Plan (ordered)`.
 - Functional-requirement translation contract (Design -> Plan):
   - Planning translates the design-selected EARS into plain step-plan FRs. Design keeps the EARS source context; implementation and user_review operate on FRs only.
   - Resolve planning decisions that change runtime behavior before translating design EARS into final FR wording.

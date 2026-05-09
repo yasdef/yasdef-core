@@ -21,14 +21,14 @@ The user wants this behavior anchored to ASDLC project blueprints that may alrea
 
 ## Decisions
 
-### Decision 1: Introduce canonical design sections for bootstrap resolution
+### Decision 1: Keep bootstrap handoff compact and optional
 
-The design artifact should gain explicit sections for first-feature bootstrap handling:
-- `## First-Feature Bootstrap Decision`
-- `## Blueprint Context`
-- `## Scaffold Creation Handoff`
+The design artifact should stay lean for normal feature work. Only rare first-feature bootstrap cases should add one compact section:
+- `## First-Feature Bootstrap (only if needed)`
 
-Rationale: the current design artifact has no canonical place to express whether scaffold creation is required or what blueprint justified it. Planning should not parse this from prose.
+That section should record `Bootstrap required: yes`, the blueprint lookup result, blueprint evidence or explicit user stack direction, and a short planning handoff.
+
+Rationale: first-feature bootstrap is rare. The contract needs structure, but it should not add three mandatory sections or extra verbosity to every normal design artifact.
 
 ### Decision 2: Treat the ASDLC project-level directory above the feature artifact folder as the blueprint search root
 
@@ -44,15 +44,15 @@ Rationale: class-scoped lookup is more reliable than guessing from repo contents
 
 Alternative considered: infer class from file layout. Rejected because empty/near-empty repos often do not have enough structure to infer safely.
 
-### Decision 4: Design must explicitly classify bootstrap vs. non-bootstrap
+### Decision 4: Bootstrap classification is explicit only when needed
 
-The design phase should always emit one of two outcomes:
+For normal feature work, the design artifact should omit bootstrap-specific sections entirely. When the step is truly first-feature bootstrap on an empty or near-empty repo, design should add the compact bootstrap section and record:
 - `Bootstrap required: yes`
-- `Bootstrap required: no`
+- a short repo-state rationale
+- the blueprint result
+- the planning handoff
 
-This decision should include a short rationale based on repo state and the step goal. For `yes`, design must also state whether scaffold creation is required in the current step handoff.
-
-Rationale: the user asked for the model to decide explicitly instead of leaving the bootstrap need implicit.
+Rationale: the user asked to avoid disproportionate verbosity and complexity in the common case while still keeping the bootstrap decision explicit in the rare case where it matters.
 
 ### Decision 5: Missing or weak blueprint evidence should force a user stop
 
@@ -66,7 +66,7 @@ When design marks first-feature bootstrap and provides scaffold handoff data, pl
 - `## Scaffold Bootstrap Plan`
 
 The ordered plan must include scaffold creation before downstream feature tasks that depend on the scaffold.
-Planning should treat `## First-Feature Bootstrap Decision` in the design artifact as the source of truth for bootstrap status, rather than re-checking repo emptiness or re-deciding bootstrap need independently.
+Planning should treat the optional design bootstrap section as the source of truth for bootstrap status, rather than re-checking repo emptiness or re-deciding bootstrap need independently.
 
 Rationale: the user's requirement is not just to mention blueprints in design; the scaffold decision must affect the actual implementation plan.
 
@@ -83,11 +83,11 @@ Rationale: the user's requirement is not just to mention blueprints in design; t
 
 ## Implementation Outline
 
-1. Extend `ai/scripts/ai_design.sh` prompt contract to require bootstrap classification, blueprint lookup, and canonical scaffold handoff sections.
+1. Extend `ai/scripts/ai_design.sh` prompt contract to support an optional compact bootstrap section, blueprint lookup, and scaffold handoff only when bootstrap is truly relevant.
 2. Add `ai/scripts/helpers/helper_find_blueprints.sh` to run from the current feature artifact context and search the parent project-level directory for class-scoped `project_stack_blueprint_*.md` candidates.
-3. Update `ai/templates/feature_design_TEMPLATE.md` and its golden example to include the new sections.
+3. Update `ai/templates/feature_design_TEMPLATE.md` and its golden example so normal designs stay lean and bootstrap content is added only when needed.
 4. Extend `ai/scripts/helpers/check_design_readiness.sh` and its spec contract so first-feature bootstrap cannot pass readiness without resolved scaffold handoff or explicit user decision.
-5. Extend `ai/scripts/ai_plan.sh` prompt contract and `ai/templates/step_plan_TEMPLATE.md` so planning consumes `## Scaffold Creation Handoff` and emits `## Scaffold Bootstrap Plan`.
+5. Extend `ai/scripts/ai_plan.sh` prompt contract so planning consumes the optional bootstrap section and emits `## Scaffold Bootstrap Plan` only when needed.
 6. Extend `ai/scripts/helpers/check_planning_readiness.sh` and its spec contract so first-feature bootstrap cannot pass readiness unless scaffold creation is present in the plan as mandatory work.
 7. Add targeted tests for blueprint-found, blueprint-missing, irrelevant-blueprint, and non-bootstrap cases.
 

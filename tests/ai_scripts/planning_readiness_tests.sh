@@ -376,6 +376,51 @@ EOF
   assert_contains "$out" "Planning readiness failed: 'Plan and discuss the step' is not marked [x] in overmind/implementation_plan.md for step 1.1"
 }
 
+test_helper_bootstrap_requires_scaffold_section_and_first_plan_item() {
+  local repo_dir="$TMP_ROOT/helper-bootstrap-gate"
+  setup_helper_repo "$repo_dir"
+  mkdir -p "$repo_dir/ai/step_designs"
+
+  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+## First-Feature Bootstrap (only if needed)
+- Bootstrap required: yes
+- Repo state rationale: Empty backend repo.
+- Blueprint result: relevant blueprint found
+- Blueprint evidence: /tmp/project_stack_blueprint_back.md
+- User stack decision: None
+- Planning handoff: Scaffold creation must come before endpoint implementation.
+EOF
+
+  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+# Step Plan
+## Scaffold Bootstrap Plan
+- Use the approved backend blueprint.
+## Plan (ordered)
+- [ ] 1. Implement the feature endpoint.
+## Functional Requirements (translated from design EARS)
+### FR-1.1-01
+- Source EARS Block: REQ-1
+- Requirement: The system SHALL demo.
+- Plan Links: 1
+- Verification: demo
+- Status: pending
+EOF
+
+  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+### Step 1.1 Demo
+- [x] Plan and discuss the step. [REQ-1]
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || exit 1
+  assert_contains "$out" "Planning readiness failed: bootstrap-required planning must place scaffold creation first in '## Plan (ordered)'"
+}
+
 test_plan_prompt_includes_readiness_contract() {
   local repo_dir="$TMP_ROOT/plan-prompt"
   setup_plan_repo "$repo_dir"
@@ -421,6 +466,7 @@ test_helper_ready_exit_code
 test_helper_missing_step_plan_fails
 test_helper_missing_section_fails
 test_helper_unchecked_gate_fails
+test_helper_bootstrap_requires_scaffold_section_and_first_plan_item
 test_plan_prompt_includes_readiness_contract
 test_implementation_prompt_includes_helper_contract
 test_implementation_prompt_fails_fast_when_helper_fails

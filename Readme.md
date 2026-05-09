@@ -36,7 +36,9 @@ This approach can be expressed in a few sentences:
 5. Keep source-of-truth coordinator artifacts in ASDLC feature folders:
    - `<project-repo>/<feature-id>/implementation_plan.md`
    - `<project-repo>/<feature-id>/requirements_ears.md`
+   - optional project-level blueprint files one directory above feature folders: `<project-repo>/project_stack_blueprint_*.md`
    Worker runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` are mirrored copies managed by orchestrator on branch `overmind`.
+   During design, if the step must create the initial runnable scaffold/stack for the bound class because there is no meaningful existing implementation to extend, use `ai/project_overmind.yaml` class metadata plus those project-level blueprint files to produce a compact bootstrap handoff for planning.
 
 5.1 Workaround (`--standalone`) when ASDLC paths are temporarily unreachable:
    - Default orchestrator mode tries to read source artifacts from `<project-repo>/<feature-id>/` and mirror them to local runtime files.
@@ -148,14 +150,14 @@ Each artifact below serves a specific role in the AI-dev process:
 
 **Phase 1: Design**
 - Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, existing architecture/context docs.
-- Output: `ai/designs/feature-<N>.md` with feature-level design decisions and constraints.
-- Gate: Design assumptions and unknowns are captured before planning starts.
+- Output: `ai/designs/feature-<N>.md` with feature-level design decisions and constraints. If the step must create the initial runnable scaffold/stack because there is no meaningful existing implementation to extend, add a compact `## First-Feature Bootstrap (only if needed)` handoff section.
+- Gate: Design assumptions and unknowns are captured before planning starts; if bootstrap is explicitly raised in design, scaffold direction must be resolved through a relevant blueprint or explicit user stack decision before handoff.
 
 **Phase 2: Planning**
 - Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
 - Input (additional): `ai/designs/feature-<N>.md`.
-- Output: `ai/step_plans/step-<N>.md` with `## Plan (ordered)`, translated functional requirements from design-selected EARS blocks, architecture, test strategy, and execution command for the implementation phase.
-- Gate: All open questions must be answered before planning completion.
+- Output: `ai/step_plans/step-<N>.md` with `## Plan (ordered)`, translated functional requirements from design-selected EARS blocks, architecture, test strategy, and execution command for the implementation phase. If the design explicitly marks bootstrap required, planning also adds `## Scaffold Bootstrap Plan` and places scaffold creation before dependent feature work.
+- Gate: All open questions must be answered before planning completion, and bootstrap-required plans must preserve scaffold creation as mandatory ordered work.
 
 **Phase 3: Implementation**
 - Input: Step plan (`ai/step_plans/step-<N>.md`), design (`ai/designs/feature-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.

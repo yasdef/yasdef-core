@@ -247,14 +247,18 @@ Est. step total: 5 SP
 - [x] Implement part B (SP=1) [REQ-1]
 - [ ] Review step implementation (SP=1)
 EOF
-  mkdir -p "$source_dir/projects/project-evidence/feature-one"
-  cat >"$source_dir/projects/project-evidence/workers.yaml" <<EOF
+  mkdir -p "$source_dir/feature-one"
+  cat >"$source_dir/init_progress_definition.yaml" <<'EOF'
+meta_info:
+  project_id: project-evidence
+EOF
+  cat >"$source_dir/workers.yaml" <<EOF
 workers:
   - uuid: "$worker_uuid"
     class: "platform"
     status: "ready"
 EOF
-  cat >"$source_dir/projects/project-evidence/feature-one/implementation_plan.md" <<EOF
+  cat >"$source_dir/feature-one/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
 #### Assigned: $worker_uuid
 Est. step total: 5 SP
@@ -263,7 +267,7 @@ Est. step total: 5 SP
 - [x] Implement part B (SP=1) [REQ-1]
 - [ ] Review step implementation (SP=1)
 EOF
-  cat >"$source_dir/projects/project-evidence/feature-one/requirements_ears.md" <<'EOF'
+  cat >"$source_dir/feature-one/requirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
 - The system SHALL support demo behavior.
 EOF

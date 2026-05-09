@@ -247,6 +247,23 @@ get_design_selected_ears_heading() {
   return 1
 }
 
+get_design_bootstrap_heading() {
+  local file="$1"
+  if grep -Fq "## First-Feature Bootstrap (only if needed)" "$file"; then
+    printf '## First-Feature Bootstrap (only if needed)'
+    return 0
+  fi
+  if grep -Fq "## First-Feature Bootstrap" "$file"; then
+    printf '## First-Feature Bootstrap'
+    return 0
+  fi
+  if grep -Fq "## First-Feature Bootstrap Decision" "$file"; then
+    printf '## First-Feature Bootstrap Decision'
+    return 0
+  fi
+  return 1
+}
+
 open_questions_has_any() {
   local section="$1"
   printf '%s\n' "$section" | awk '
@@ -618,6 +635,14 @@ fi
 if [[ -z "$DESIGN_EARS_SECTION" ]]; then
   DESIGN_EARS_SECTION="- (empty in design artifact; select concrete EARS blocks for translation before planning closure)"
 fi
+if DESIGN_BOOTSTRAP_HEADING="$(get_design_bootstrap_heading "$DESIGN_FILE")"; then
+  DESIGN_BOOTSTRAP_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_BOOTSTRAP_HEADING")"
+else
+  DESIGN_BOOTSTRAP_SECTION="- (not present; treat as normal feature work unless the design is explicitly updated)"
+fi
+if [[ -z "$DESIGN_BOOTSTRAP_SECTION" ]]; then
+  DESIGN_BOOTSTRAP_SECTION="- (present but empty; planning must not infer bootstrap behavior from repo state alone)"
+fi
 
 mkdir -p "$(dirname "$OUT")"
 if [[ ! -f "$OUT" ]]; then
@@ -643,18 +668,6 @@ emit() {
 
   printf 'Planning phase for Step %s.\n' "$STEP"
   printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 2, Estimation Gates, Prompt governance) as the process rules for this phase.\n'
-  printf 'Strict workflow: execute Section 2 in two mandatory sub-phases: 2.1) Planning draft and decision capture, then 2.2) Plan quality gates and closure.\n'
-  printf 'Do not start 2.2 before finishing 2.1 outputs (draft plan sections, prerequisites, assumptions, risks, tests/docs, and `Decisions Needed` entries).\n'
-  printf 'In 2.2, enforce all planning quality gates: open-questions gate, things-to-decide gate, and decision-confirmation gate.\n'
-  printf 'Treat design `## Things to Decide (for final planning discussion)` as required handoff input for user-facing clarification and decision resolution; do not invent a parallel structure.\n'
-  printf 'Decision prompts (required for unresolved design decisions): for each unresolved item in design `## Things to Decide`, ask exactly two options (`1.` recommended, `2.` alternative) and accept numeric reply `1` or `2`.\n'
-  printf 'If design `## Things to Decide` is missing or weak, derive concrete plan-critical decisions from design trade-offs/risks/prerequisites and ask two-option prompts when the choice impacts implementation path.\n'
-  printf 'If no plan-critical trade-off remains, explicitly state why no additional decision prompt is needed before closing planning.\n'
-  printf 'Do not mark planning complete while any gate is unresolved; continue planning discussion and update artifacts until all gates pass.\n'
-  printf 'Use the feature design artifact as the primary input and convert it into an execution-focused step plan.\n'
-  printf 'Execution scope must come from design target bullets (excluding planning/review bullets).\n'
-  printf 'Step-plan execution contract must include both `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)`, with Functional Requirements after Plan.\n'
-  printf 'Derive non-negotiable invariants from design-extracted ADR shortlist + AGENTS constraints.\n'
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     printf 'Feature-rich design/planning mode: ENABLED (planning-only add-on).\n'
     printf 'Derive up to 5 optional hardening candidates from design risks/trade-offs and record each in `## Decisions Needed` as `Accepted` or `Deferred` with rationale.\n'
@@ -684,6 +697,8 @@ emit() {
   printf '%s\n\n' "$TARGET_BULLETS"
   printf '== Design-selected EARS requirements (source for plan translation) ==\n'
   printf '%s\n\n' "$DESIGN_EARS_SECTION"
+  printf '== Design bootstrap handoff (optional source of truth) ==\n'
+  printf '%s\n\n' "$DESIGN_BOOTSTRAP_SECTION"
   printf '== Design-extracted AGENTS constraints ==\n'
   printf '%s\n\n' "$DESIGN_AGENTS_SECTION"
   printf '== Design-extracted user review rules ==\n'

@@ -4,6 +4,7 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_DESIGN_SRC="$SOURCE_ROOT/ai/scripts/ai_design.sh"
 HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_design_readiness.sh"
+BLUEPRINT_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/helper_find_blueprints.sh"
 PROCESS_SRC="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 TEMPLATE_SRC="$SOURCE_ROOT/ai/templates/feature_design_TEMPLATE.md"
 
@@ -64,9 +65,10 @@ setup_repo() {
   mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/templates" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
   cp "$AI_DESIGN_SRC" "$repo_dir/ai/scripts/ai_design.sh"
   cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_design_readiness.sh"
+  cp "$BLUEPRINT_HELPER_SRC" "$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh"
   cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
   cp "$TEMPLATE_SRC" "$repo_dir/ai/templates/feature_design_TEMPLATE.md"
-  chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/helpers/check_design_readiness.sh"
+  chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/helpers/check_design_readiness.sh" "$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
@@ -101,6 +103,25 @@ EOF
   cat >"$repo_dir/AGENTS.md" <<'EOF'
 # AGENTS
 - Demo constraint.
+EOF
+
+  cat >"$repo_dir/ai/project_overmind.yaml" <<'EOF'
+worker_uuid: 'worker-1'
+class: 'backend'
+status: 'active'
+EOF
+
+  cat >"$repo_dir/ai/feature_sync.yaml" <<EOF
+source_feature_path: '$repo_dir/source-project/feature-a'
+bound_project_path: '$repo_dir/source-project'
+EOF
+
+  mkdir -p "$repo_dir/source-project/feature-a"
+  cat >"$repo_dir/source-project/feature-a/implementation_plan.md" <<'EOF'
+# source plan
+EOF
+  cat >"$repo_dir/source-project/feature-a/requirements_ears.md" <<'EOF'
+# source ears
 EOF
 
   (
@@ -159,6 +180,17 @@ test_design_prompt_includes_readiness_contract() {
   assert_order "$out" 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh ai/step_designs/step-1.1-design.md`.' 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
 }
 
+test_design_prompt_includes_bootstrap_helper_contract() {
+  local repo_dir="$TMP_ROOT/repo-design-bootstrap-contract"
+  setup_repo "$repo_dir"
+
+  local out
+  out="$(run_design "$repo_dir")"
+  assert_contains "$out" 'Apply `#### Bootstrap decision algorithm` from Section 1 before design handoff.'
+  assert_contains "$out" 'Blueprint helper contract: when bootstrap is required and stack/architecture guidance is needed, run `ai/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context where `implementation_plan.md` and `requirements_ears.md` live; it searches the parent project-level directory for `project_stack_blueprint_*.md`.'
+  assert_contains "$out" "Suggested bootstrap lookup command for this run: \`cd \"$repo_dir/source-project/feature-a\" && \"$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh\"\`."
+}
+
 test_design_prompt_includes_missing_discussion_points_gates() {
   local repo_dir="$TMP_ROOT/repo-design-missing-discussion-gates"
   setup_repo "$repo_dir"
@@ -202,10 +234,42 @@ EOF
   assert_contains "$out" "Design readiness failed: missing required sections: In Scope Out of Scope"
 }
 
+test_design_readiness_helper_blocks_unresolved_bootstrap() {
+  local repo_dir="$TMP_ROOT/repo-design-bootstrap-readiness"
+  setup_repo "$repo_dir"
+
+  cat >"$repo_dir/ai/step_designs/bootstrap-unresolved.md" <<'EOF'
+## Goal
+- Bootstrap the first backend feature.
+## In Scope
+- Create scaffold direction for the first implementation step.
+## Out of Scope
+- Downstream feature implementation.
+## First-Feature Bootstrap (only if needed)
+- Bootstrap required: yes
+- Repo state rationale: Empty backend repo.
+- Blueprint result: no relevant blueprint found
+- Blueprint evidence: None
+- User stack decision: None
+- Planning handoff: Pending user direction.
+EOF
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && ai/scripts/helpers/check_design_readiness.sh ai/step_designs/bootstrap-unresolved.md 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "Design readiness failed: bootstrap-required design must include a concrete planning handoff"
+}
+
 test_feature_rich_mode_block_is_opt_in
 test_overmind_paths_are_used
 test_design_prompt_includes_readiness_contract
+test_design_prompt_includes_bootstrap_helper_contract
 test_design_prompt_includes_missing_discussion_points_gates
 test_design_readiness_helper_exit_codes
+test_design_readiness_helper_blocks_unresolved_bootstrap
 
 echo "All ai_design feature-rich mode tests passed."

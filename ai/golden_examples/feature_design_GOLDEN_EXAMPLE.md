@@ -71,3 +71,7 @@ Optional in design phase. Required for non-trivial behavior changes; this exampl
 
 ## Unknowns / Assumptions to Validate (optional)
 - None.
+
+## First-Feature Bootstrap (only if needed)
+- Not needed for this step.
+- This optional section is filled only when the step must create the initial scaffold/stack handoff before normal feature implementation planning.

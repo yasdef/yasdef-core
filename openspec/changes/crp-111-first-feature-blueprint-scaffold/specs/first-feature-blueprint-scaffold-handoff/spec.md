@@ -1,16 +1,17 @@
 ## ADDED Requirements
 
 ### Requirement: Design MUST emit an explicit first-feature bootstrap decision
-For every step, design SHALL state whether the step is the first implementation step on an empty or near-empty repo and SHALL record that outcome in a canonical bootstrap decision section.
+Design SHALL keep normal feature artifacts lean. When the step is the first implementation step on an empty or near-empty repo, design SHALL record that outcome in one compact bootstrap handoff section.
 
 #### Scenario: Design marks bootstrap required
 - **WHEN** the current step is the first implementation step for an empty or near-empty repo
-- **THEN** the design artifact records `Bootstrap required: yes`
+- **THEN** the design artifact includes `## First-Feature Bootstrap (only if needed)`
+- **AND** records `Bootstrap required: yes`
 - **THEN** the design artifact explains why scaffold creation is required for the current step
 
 #### Scenario: Design marks bootstrap not required
 - **WHEN** the current step extends an already-shaped implementation repo
-- **THEN** the design artifact records `Bootstrap required: no`
+- **THEN** the design artifact may omit bootstrap-specific sections entirely
 - **THEN** planning is not required to add bootstrap scaffold work
 
 ### Requirement: Blueprint lookup MUST use the ASDLC project level above the current feature artifact folder and bound project class
@@ -28,12 +29,12 @@ When design determines bootstrap is required and stack or architecture guidance 
 - **THEN** design asks the user how to proceed with stack selection
 
 ### Requirement: Valid blueprint evidence MUST be carried into the design handoff
-If blueprint lookup finds a relevant blueprint that is suitable for scaffold creation for the current class, the design artifact SHALL include blueprint-backed scaffold handoff data in canonical sections that planning can consume directly.
+If blueprint lookup finds a relevant blueprint that is suitable for scaffold creation for the current class, the design artifact SHALL include blueprint-backed scaffold handoff data in the compact bootstrap section so planning can consume it directly.
 
 #### Scenario: Relevant blueprint is included in design output
 - **WHEN** blueprint lookup finds a relevant `project_stack_blueprint_*.md` file suitable for scaffold creation
-- **THEN** the design artifact includes the blueprint path or identifier under `## Blueprint Context`
-- **THEN** the design artifact includes scaffold creation intent and constraints under `## Scaffold Creation Handoff`
+- **THEN** the design artifact includes the blueprint path or identifier in the bootstrap handoff section
+- **THEN** the design artifact includes scaffold creation intent and constraints in that same section
 
 #### Scenario: Design handoff records scaffold dependency on blueprint
 - **WHEN** design includes scaffold creation handoff for a first-feature bootstrap step
@@ -61,7 +62,7 @@ When design records `Bootstrap required: yes`, planning SHALL consume the scaffo
 - **THEN** the ordered plan contains scaffold creation work before any dependent feature implementation work
 
 #### Scenario: Planning uses explicit design decision as bootstrap source of truth
-- **WHEN** planning starts for a step whose design artifact contains `## First-Feature Bootstrap Decision`
+- **WHEN** planning starts for a step whose design artifact contains the optional bootstrap handoff section
 - **THEN** planning reads bootstrap status from that design section
 - **THEN** planning does not re-investigate repo state or independently re-decide whether the step is first-feature bootstrap
 
