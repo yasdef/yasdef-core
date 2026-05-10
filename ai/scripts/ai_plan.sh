@@ -643,6 +643,7 @@ fi
 if [[ -z "$DESIGN_BOOTSTRAP_SECTION" ]]; then
   DESIGN_BOOTSTRAP_SECTION="- (present but empty; planning must not infer bootstrap behavior from repo state alone)"
 fi
+DESIGN_LAR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Linked Artifacts (in scope)")"
 
 mkdir -p "$(dirname "$OUT")"
 if [[ ! -f "$OUT" ]]; then
@@ -672,6 +673,10 @@ emit() {
     printf 'Feature-rich design/planning mode: ENABLED (planning-only add-on).\n'
     printf 'Derive up to 5 optional hardening candidates from design risks/trade-offs and record each in `## Decisions Needed` as `Accepted` or `Deferred` with rationale.\n'
     printf 'If any optional item materially changes implementation path and remains unresolved, ask one explicit two-option prompt (`1.` recommended, `2.` alternative) before planning closure.\n'
+  fi
+  if [[ -n "$DESIGN_LAR_SECTION" ]]; then
+    printf 'Linked Artifacts (in scope): after writing the step plan, invoke `ai/scripts/helpers/sync_step_lars.sh %s %s` to sync the ## Linked Artifacts (in scope) section deterministically; do not echo the block textually into the step plan.\n' "$STEP" "$out_label"
+    printf 'Fetch rule (planning): at the start of context-gathering, fetch each in-scope LAR locator using available web/MCP tooling and treat the fetched content as one more context input alongside overmind/implementation_plan.md, overmind/reqirements_ears.md, the design artifact, and ADRs. Route any fetch failure through existing ask-user mechanisms (ai/open_questions.md, ai/blocker_log.md, two-option prompts) using the standard "cannot resolve LAR-NNN (locator: ...). How should I proceed?" question pattern.\n'
   fi
   printf 'Before ending the planning phase, run `%s %s`.\n' "${PLANNING_READINESS_HELPER#"$ROOT"/}" "$STEP"
   printf 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.\n'
@@ -707,6 +712,12 @@ emit() {
   printf '%s\n\n' "$DESIGN_ADR_SECTION"
   printf '== Design-extracted things to decide ==\n'
   printf '%s\n\n' "$DESIGN_THINGS_TO_DECIDE_SECTION"
+  printf '== Design-extracted linked artifacts (in scope) ==\n'
+  if [[ -n "$DESIGN_LAR_SECTION" ]]; then
+    printf '%s\n\n' "$DESIGN_LAR_SECTION"
+  else
+    printf '(none — step has no in-scope LAR entries)\n\n'
+  fi
   printf '== %s ==\n' "$out_label"
   cat "$OUT"
   printf '\n\n'

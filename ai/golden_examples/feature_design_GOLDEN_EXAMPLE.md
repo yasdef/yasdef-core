@@ -50,6 +50,9 @@ Designer model/session: gpt-5.3-codex, session=<fill>
 ## Alternatives
 - Use projection-derived idempotent replay -> rejected due to instability after subsequent events.
 
+## Linked Artifacts (in scope)
+- LAR-003 | Figma | Close Command UI Mockup | https://figma.com/file/example/close-command
+
 ## Applicable ADR Shortlist (from ai/decisions.md)
 - ADR-0001 — idempotent duplicate response behavior is directly relevant for close retries.
 - ADR-0005 — event stream routing constraints apply to any new close-command writes.

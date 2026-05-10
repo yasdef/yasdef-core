@@ -20,7 +20,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - `overmind/implementation_plan.md`: step-level backlog and target-bullet contract artifact; Implementation/User Review do not use it as the execution state machine, and `ai_audit` starts with explicit target-bullet proof-check against it.
 - `ai/step_designs/`: feature design artifacts created before planning for user review.
 - `ai/templates/feature_design_TEMPLATE.md` and `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`: structure and example for feature design artifacts.
-- `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts and the only mid-phase execution contract (`## Plan (ordered)` + translated functional requirements).
+- `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts and the only mid-phase execution contract (`## Plan (ordered)` + translated functional requirements + `## Linked Artifacts (in scope)` shortlist propagated from the design artifact).
 - `ai/blocker_log.md`: unknowns/blockers discovered while working an in-progress step.
 - `ai/templates/blocker_log_TEMPLATE.md` and `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`: structure and example for blocker log entries.
 - `ai/decisions.md`: durable technical decisions (“why we chose X”).
@@ -57,6 +57,7 @@ Before step planning:
 - Design must include both:
   - step scope bullets (`## Target Bullets (excluding planning/review)`), and
   - selected EARS requirement blocks for planning translation (`## Selected EARS Requirements (for planning translation)`).
+- After extracting `### Requirement N` blocks, perform the third-stage LAR funnel: scan the extracted blocks for `**Linked Artifacts:** LAR-NNN` lines, dedup IDs, look each up in the `## Linked Artifacts` registry of `overmind/reqirements_ears.md`, and propagate the result as a `## Linked Artifacts (in scope)` shortlist into the design artifact via `ai/scripts/helpers/sync_step_lars.sh`; do not fetch LAR content in the design phase.
 - Apply `#### Bootstrap decision algorithm` before design handoff.
 - If bootstrap is required and stack/architecture guidance is needed, run `ai/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context and evaluate class-relevant `project_stack_blueprint_*.md` files from the project-level directory above that feature folder.
 - Use project class metadata from `ai/project_overmind.yaml` to scope blueprint relevance; if class metadata is missing/unsupported or no relevant blueprint exists, stop and ask the user for stack/scaffold direction instead of inventing one.
@@ -102,6 +103,7 @@ Before step planning:
 - Use `ai/templates/step_plan_TEMPLATE.md` as the default structure and follow the style in `ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md`.
 - The plan may be produced in a separate session/model. Record planner and intended execution model/session IDs in the plan.
 - Use web research for best practices when needed; record sources in the plan to reduce hallucinations.
+- Mirror the design's `## Linked Artifacts (in scope)` block verbatim into the step plan via `ai/scripts/helpers/sync_step_lars.sh`; also fetch each in-scope LAR locator using available web/MCP tooling at the start of context-gathering and treat the fetched content as one more context input alongside `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, the design artifact, and ADRs. Route any fetch failure through existing ask-user mechanisms (`ai/open_questions.md`, `ai/blocker_log.md`, two-option prompts) using the standard "cannot resolve LAR-NNN (locator: ...). How should I proceed?" question pattern. Skip this fetch step when the design's LAR shortlist is empty.
 - The plan must be concise and execution-focused: ordered steps, constraints, decisions, tests, and docs/artifacts to update.
 - Scope contract lives in the feature design artifact: `## Goal`, `## In Scope`, and `## Out of Scope`. Do not restate those sections in the step plan; instead add a pointer to the design and focus the plan on execution.
 - If present, the optional design bootstrap section is the source of truth for bootstrap handling; planning must not re-investigate repo emptiness or independently re-decide bootstrap need.
@@ -170,6 +172,7 @@ Before step planning:
 - Ordered bullets are checkbox lifecycle items (`[ ]` / `[x]`). If a bullet is plain text without checkbox syntax, treat it as unchecked until normalized/closed.
 - Implementation strategy is adaptive: batch work in the most coherent order when needed, but close checklist state per ordered bullet and mark `[x]` only when that specific bullet is proven complete.
 - Review the step plan, design artifact, and supporting artifacts before coding: translated functional requirements, `ai/decisions.md`, `ai/blocker_log.md`, and `ai/open_questions.md`.
+- Fetch in-scope LAR locators: before implementing any FR that references a LAR-NNN, fetch the locator using available web/MCP tooling and use the fetched content as source of truth for whatever the artifact represents — UI details (spacing, icons, hover states, micro-interactions, breakpoints), schema structure (field names, types, constraints), API contracts (endpoints, payloads, error codes), architecture diagrams, or any other artifact-specific detail that FR text cannot fully encode. Stop and ask the user instead of inventing content when fetch fails or fetched content is ambiguous. Skip if the step plan's `## Linked Artifacts (in scope)` section is empty or absent.
 - If implementation must deviate from the step plan, update the step plan first, then continue implementation.
 - If design "Things to Decide" are still unresolved in the step plan during implementation: do not decide unilaterally in implementation. Recommend rerunning planning to resolve decisions first, then follow the user's instruction on whether to return to planning or proceed with explicit risk acceptance.
 - If a required project decision/blocker appears during implementation, stop and ask the user before proceeding.

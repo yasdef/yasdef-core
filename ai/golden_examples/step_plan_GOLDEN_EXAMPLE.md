@@ -14,6 +14,9 @@ Execution model/session (intended): gpt-5.3-codex (executor), session=<fill>
 - Review `ai/blocker_log.md` and `ai/open_questions.md` for Step 1.6b.
 - Confirm the existing idempotency key persistence strategy for commands.
 
+## Linked Artifacts (in scope)
+- LAR-003 | Figma | Close Command UI Mockup | https://figma.com/file/example/close-command
+
 ## Applicable UR Shortlist
 - UR-0004 - avoid single-field wrappers; this step touches response shape and could accidentally introduce wrapper DTOs.
 - UR-0011 - avoid `Optional` parameters in method signatures while adding validator/service method changes.

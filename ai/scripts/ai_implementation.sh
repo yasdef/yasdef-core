@@ -474,6 +474,8 @@ if [[ -z "$STEP_PLAN_ORDERED_PLAN_SECTION" ]]; then
   STEP_PLAN_ORDERED_PLAN_SECTION="- (missing in step plan)"
 fi
 
+STEP_PLAN_LAR_SECTION="$(get_step_plan_section "## Linked Artifacts (in scope)")"
+
 STEP_PLAN_UR_SHORTLIST_SECTION="$(get_step_plan_section "## Applicable UR Shortlist")"
 if [[ -z "$STEP_PLAN_UR_SHORTLIST_SECTION" ]]; then
   STEP_PLAN_UR_SHORTLIST_SECTION="- None."
@@ -601,6 +603,9 @@ emit() {
   printf '%s\n' '- If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
   printf '%s\n' '- The `implementation_plan.md` target-bullet proof-check runs first in ai_audit entry gate.'
   printf '%s\n' '- Only after the Implementation Readiness Gate is satisfied, end your final response with: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  if [[ -n "$STEP_PLAN_LAR_SECTION" ]]; then
+    printf '%s\n' '- Fetch rule (implementation): before implementing any FR that references a LAR-NNN, fetch the locator using available web/MCP tooling and use the fetched content as source of truth for whatever the artifact represents — UI details (spacing, icons, hover states, micro-interactions, breakpoints), schema structure (field names, types, constraints), API contracts (endpoints, payloads, error codes), architecture diagrams, or any other artifact-specific detail that FR text cannot fully encode. Stop and ask the user instead of inventing content when fetch fails or fetched content is ambiguous.'
+  fi
   printf '\n'
 
   printf 'Anti-regression checklist (max 8)\n'
@@ -611,6 +616,10 @@ emit() {
   printf '%s\n\n' "$STEP_PLAN_ORDERED_PLAN_SECTION"
 
   printf 'Step-plan execution context\n'
+  if [[ -n "$STEP_PLAN_LAR_SECTION" ]]; then
+    printf '## Linked Artifacts (in scope)\n'
+    printf '%s\n\n' "$STEP_PLAN_LAR_SECTION"
+  fi
   printf '## Functional Requirements (translated from design EARS)\n'
   printf '%s\n\n' "$STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION"
   printf '## Applicable UR Shortlist\n'

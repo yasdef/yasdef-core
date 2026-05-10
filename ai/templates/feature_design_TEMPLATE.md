@@ -53,6 +53,9 @@ Designer model/session: <fill>
 ## Alternatives
 - <alternative> -> <why not chosen>
 
+## Linked Artifacts (in scope)
+- <LAR-NNN | type | title | locator> (omit or leave empty when no LARs are in scope for this step)
+
 ## Applicable ADR Shortlist (from ai/decisions.md)
 - <ADR-xxxx — one-line relevance for this feature>
 - None applicable for this feature. (use only when no ADR applies)

@@ -19,6 +19,9 @@ Execution model/session (intended): <fill>
 - Review `ai/blocker_log.md` and `ai/open_questions.md` for the current step.
 - <missing prerequisites or required decisions>
 
+## Linked Artifacts (in scope)
+- <LAR-NNN | type | title | locator> (omit or leave empty when no LARs are in scope for this step)
+
 ## Applicable UR Shortlist
 - None.
 

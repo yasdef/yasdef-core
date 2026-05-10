@@ -179,6 +179,7 @@ Each artifact below serves a specific role in the AI-dev process:
 - Output: Post-review updates (for example metrics/history updates and follow-up step alignment), performed without AI model execution.
 - Gate: Review dispositions are reflected in planning artifacts before next step starts.
 
+**Worker cycle LAR flow:** `overmind/reqirements_ears.md` carries external artifact links (Figma mocks, Confluence schemas, OpenAPI specs, etc.) as a `## Linked Artifacts` registry. The design phase funnels the per-step LAR shortlist from that registry into the design artifact. Planning mirrors the shortlist into the step plan and fetches each LAR locator as one more clarification-loop input (structure, copy, field shapes); fetch failures are routed through the existing ask-user mechanisms (`ai/open_questions.md`, `ai/blocker_log.md`) using the standard "cannot resolve LAR-NNN" question pattern. Implementation re-fetches each LAR locator and uses the content as source of truth for whatever the artifact represents — UI details, schema structure, API contracts, architecture diagrams, or any other artifact-specific detail that FR text cannot encode.
 ## What's done + plans
 
 V-0.0.1

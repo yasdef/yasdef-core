@@ -22,6 +22,7 @@ INCLUDE_AGENTS=0
 BRANCH_NAME=""
 TARGET_BULLETS=""
 FEATURE_RICH_DESIGN_PLANNING=0
+LAR_SECTION=""
 
 usage() {
   cat <<'EOF'
@@ -158,6 +159,7 @@ extract_requirement_section() {
   awk -v req="$req" '
     BEGIN { req_re = req; gsub(/\./, "\\.", req_re) }
     $0 ~ "^### Requirement "req_re" " { in_req=1 }
+    in_req && /^## [^#]/ { exit }
     in_req && $0 ~ "^### Requirement " && $0 !~ "^### Requirement "req_re" " { exit }
     in_req { print }
   ' "$REQUIREMENTS"
@@ -189,6 +191,38 @@ get_requirements_section() {
   done <<<"$reqs"
 
   printf '%s' "$output"
+}
+
+get_step_lar_section() {
+  local req_section="$1"
+
+  if [[ -z "$req_section" ]]; then
+    return 0
+  fi
+
+  local lar_ids
+  lar_ids="$(printf '%s\n' "$req_section" | \
+    grep -E '\*\*Linked Artifacts:\*\*' | \
+    grep -oE 'LAR-[0-9]+' | \
+    sort -t- -k2 -n | \
+    uniq)"
+
+  [[ -z "$lar_ids" ]] && return 0
+
+  local lar_id entry
+  while IFS= read -r lar_id; do
+    [[ -z "$lar_id" ]] && continue
+    entry="$(awk -v id="$lar_id" '
+      /^## Linked Artifacts[[:space:]]*$/ { in_reg=1; next }
+      in_reg && /^## / { exit }
+      in_reg && $0 ~ ("^[[:space:]]*- " id "[[:space:]|]") {
+        sub(/^[[:space:]]*-[[:space:]]*/, "")
+        print
+        exit
+      }
+    ' "$REQUIREMENTS")"
+    [[ -n "$entry" ]] && printf '%s\n' "- $entry"
+  done <<<"$lar_ids"
 }
 
 get_process_design_section() {
@@ -447,6 +481,7 @@ if [[ -z "$OPEN_QUESTIONS_SECTION" ]]; then
 fi
 
 REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
+LAR_SECTION="$(get_step_lar_section "$REQ_SECTION")"
 FEATURE_SYNC_SOURCE_FEATURE_PATH="$(read_yaml_scalar "$FEATURE_SYNC_FILE" "source_feature_path" || true)"
 
 mkdir -p "$(dirname "$DESIGN_OUT")"
@@ -486,6 +521,9 @@ emit() {
     printf 'Each optional bullet must state default decision intent (`Accepted` or `Deferred`) and why.\n'
     printf 'Keep required scope boundaries unchanged unless an optional item is explicitly accepted.\n'
   fi
+  if [[ -n "$LAR_SECTION" ]]; then
+    printf 'Linked Artifacts (in scope): after writing the design artifact, invoke `ai/scripts/helpers/sync_step_lars.sh %s %s` to sync the ## Linked Artifacts (in scope) section deterministically; do not echo the block textually into the artifact.\n' "$STEP" "$design_label"
+  fi
   printf 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh %s`.\n' "$design_label"
   printf 'If the readiness check fails, do not emit the final completion line yet. Either continue iterating and re-run the check, or ask exactly two options: `1.` continue iterating and re-check, `2.` force the design phase done and proceed.\n'
   printf 'If option `2` is chosen, record that forced-done outcome in the design artifact before using the completion line.\n'
@@ -504,6 +542,12 @@ emit() {
   fi
   printf '== overmind/reqirements_ears.md (selected EARS candidates for design translation) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
+  printf '== ## Linked Artifacts (in scope) ==\n'
+  if [[ -n "$LAR_SECTION" ]]; then
+    printf '%s\n\n' "$LAR_SECTION"
+  else
+    printf '(none — step requirements reference no LAR-tagged EARS)\n\n'
+  fi
   printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
   printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"
