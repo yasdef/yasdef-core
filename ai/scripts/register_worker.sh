@@ -41,13 +41,6 @@ die() {
 }
 
 ensure_clean_worktree_before_branch_switch() {
-  local current_branch=""
-  current_branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
-
-  if [[ "$current_branch" == "$RUNTIME_BRANCH" ]]; then
-    return 0
-  fi
-
   if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null || true)" ]]; then
     die "uncommited changes detected, commit changes and rerun"
   fi
@@ -57,8 +50,6 @@ ensure_runtime_branch_checked_out() {
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     die "Worker registration requires a git repository."
   fi
-
-  ensure_clean_worktree_before_branch_switch
 
   local current_branch=""
   current_branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
@@ -399,6 +390,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 cd "$ROOT"
+ensure_clean_worktree_before_branch_switch
 
 prompt_non_empty "Enter worker UUID: " WORKER_UUID
 WORKER_UUID="$(to_lower "$WORKER_UUID")"
