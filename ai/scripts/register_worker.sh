@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
 ROOT="$WORKER_REPO_ROOT"
 BINDING_FILE=".asdlc_worker/project_overmind.yaml"
+RUNTIME_BRANCH="overmind"
 
 WORKER_UUID=""
 OVERMIND_SOURCE_PATH=""
@@ -37,6 +38,43 @@ EOF
 die() {
   echo "ERROR: $*" >&2
   exit 1
+}
+
+ensure_clean_worktree_before_branch_switch() {
+  local current_branch=""
+  current_branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
+
+  if [[ "$current_branch" == "$RUNTIME_BRANCH" ]]; then
+    return 0
+  fi
+
+  if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null || true)" ]]; then
+    die "uncommited changes detected, commit changes and rerun"
+  fi
+}
+
+ensure_runtime_branch_checked_out() {
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "Worker registration requires a git repository."
+  fi
+
+  ensure_clean_worktree_before_branch_switch
+
+  local current_branch=""
+  current_branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
+  if [[ "$current_branch" == "$RUNTIME_BRANCH" ]]; then
+    return 0
+  fi
+
+  if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH"; then
+    if ! git -C "$ROOT" checkout "$RUNTIME_BRANCH" >/dev/null 2>&1; then
+      die "Failed to checkout runtime branch '$RUNTIME_BRANCH'."
+    fi
+  else
+    if ! git -C "$ROOT" checkout -b "$RUNTIME_BRANCH" >/dev/null 2>&1; then
+      die "Failed to create runtime branch '$RUNTIME_BRANCH'."
+    fi
+  fi
 }
 
 trim() {
@@ -339,6 +377,18 @@ write_project_binding_file() {
   mv "$tmp_path" "$output_path"
 }
 
+commit_binding_if_changed() {
+  git -C "$ROOT" add "$BINDING_FILE"
+
+  if git -C "$ROOT" diff --cached --quiet -- "$BINDING_FILE"; then
+    return 0
+  fi
+
+  if ! git -C "$ROOT" commit -m "Bind worker $WORKER_UUID to ASDLC project $PROJECT_ID" >/dev/null 2>&1; then
+    die "Failed to commit updated worker binding on branch '$RUNTIME_BRANCH'."
+  fi
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -365,10 +415,13 @@ parse_registry_matches_from_file "$OVERMIND_SOURCE_PATH/workers.yaml" "$WORKER_U
 resolve_single_worker_match "$WORKER_UUID"
 
 warn_missing_agents_guidance
+ensure_runtime_branch_checked_out
 write_project_binding_file "$ROOT/$BINDING_FILE"
+commit_binding_if_changed
 
 echo "Worker registration complete."
 echo "Binding file: $BINDING_FILE"
+echo "Runtime branch: $RUNTIME_BRANCH"
 echo "Project repo path: $OVERMIND_SOURCE_PATH"
 echo "Project ID: $PROJECT_ID"
 echo "Worker UUID: $WORKER_UUID"

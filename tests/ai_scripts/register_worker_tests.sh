@@ -44,6 +44,15 @@ assert_nonzero_status() {
   fi
 }
 
+assert_file_tracked_at_head() {
+  local repo_dir="$1"
+  local path="$2"
+  if ! git -C "$repo_dir" ls-tree -r --name-only HEAD | grep -Fxq "$path"; then
+    echo "Assertion failed: expected HEAD to track file: $path" >&2
+    exit 1
+  fi
+}
+
 resolved_path() {
   local path="$1"
   (cd "$path" && pwd -P)
@@ -116,6 +125,7 @@ test_register_worker_success_writes_binding() {
   out="$(run_register_worker "$repo_dir" "$worker_uuid" "$project_dir" 2>&1)"
   assert_contains "$out" "Worker registration complete."
   assert_contains "$out" "Binding file: .asdlc_worker/project_overmind.yaml"
+  assert_contains "$out" "Runtime branch: overmind"
   assert_contains "$out" "Project ID: $project_id"
   assert_contains "$out" "Worker UUID: $worker_uuid"
 
@@ -130,6 +140,8 @@ EOF
 )"
   assert_file_exists "$repo_dir/.asdlc_worker/project_overmind.yaml"
   assert_equal "$expected" "$(cat "$repo_dir/.asdlc_worker/project_overmind.yaml")"
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/project_overmind.yaml"
 }
 
 test_register_worker_fails_when_project_path_missing() {
@@ -240,11 +252,35 @@ test_register_worker_rewrites_binding_deterministically() {
   assert_contains "$(cat "$repo_dir/.asdlc_worker/project_overmind.yaml")" "status: 'busy'"
 }
 
+test_register_worker_fails_fast_on_uncommitted_changes_before_branch_switch() {
+  local repo_dir="$TMP_ROOT/repo-dirty-worktree"
+  local project_dir="$TMP_ROOT/project-dirty-worktree"
+  local worker_uuid="77777777-7777-7777-7777-777777777777"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_worker_repo "$repo_dir"
+  write_project_repo "$project_dir" "project-dirty" "$worker_uuid"
+
+  echo "dirty" >>"$repo_dir/README.md"
+
+  set +e
+  out="$(run_register_worker "$repo_dir" "$worker_uuid" "$project_dir" 2>&1)"
+  status=$?
+  set -e
+
+  assert_nonzero_status "$status"
+  assert_contains "$out" "uncommited changes detected, commit changes and rerun"
+  assert_equal "master" "$(git -C "$repo_dir" branch --show-current)"
+}
+
 test_register_worker_success_writes_binding
 test_register_worker_fails_when_project_path_missing
 test_register_worker_fails_when_workers_yaml_missing
 test_register_worker_fails_when_definition_missing
 test_register_worker_fails_when_uuid_not_registered
 test_register_worker_rewrites_binding_deterministically
+test_register_worker_fails_fast_on_uncommitted_changes_before_branch_switch
 
 echo "register_worker_tests: PASS"
