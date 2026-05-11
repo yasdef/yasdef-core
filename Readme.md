@@ -31,6 +31,7 @@ This approach can be expressed in a few sentences:
    - worker UUID (must already exist in the project repo's root `workers.yaml`),
    - path to the single ASDLC project repo (not a parent of many projects).
    The script reads `project_id` from `<project_repo>/init_progress_definition.yaml` under `meta_info.project_id`.
+   Before switching branches, if the worker repo root has no `AGENTS.md`, the script prints a non-blocking reminder. When `<project_repo>/project_stack_blueprint_<worker-class>.md` exists, the reminder includes that blueprint path so a model can use it when drafting `AGENTS.md`.
    On success it creates/checks out local branch `overmind`, writes deterministic project binding `ai/project_overmind.yaml` (including `project_id`), and commits the change.
 
 5. Keep source-of-truth coordinator artifacts in ASDLC feature folders:

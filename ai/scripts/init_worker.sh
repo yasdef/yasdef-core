@@ -318,6 +318,21 @@ resolve_single_worker_match() {
   WORKER_STATUS="${MATCH_STATUSES[0]}"
 }
 
+warn_missing_agents_guidance() {
+  local agents_path="$REPO_ROOT/AGENTS.md"
+  local blueprint_path="$OVERMIND_SOURCE_PATH/project_stack_blueprint_${WORKER_CLASS}.md"
+
+  if [[ -f "$agents_path" ]]; then
+    return 0
+  fi
+
+  if [[ -f "$blueprint_path" ]]; then
+    printf '⚠️  before start implementing things, ask model to create AGENTS.md, pass %s to your prompt so model can use best practices\n' "$blueprint_path"
+  else
+    printf '⚠️  before start implementing things, dont forget to create AGENTS.md\n'
+  fi
+}
+
 yaml_quote_single() {
   printf '%s' "$1" | sed "s/'/''/g"
 }
@@ -409,6 +424,7 @@ PROJECT_ID="$(read_project_id_from_definition)"
 parse_registry_matches_from_file "$OVERMIND_SOURCE_PATH/workers.yaml" "$WORKER_UUID"
 resolve_single_worker_match "$WORKER_UUID"
 
+warn_missing_agents_guidance
 checkout_or_create_overmind_branch
 write_project_binding_file "$REPO_ROOT/$BINDING_FILE"
 commit_binding_if_needed "$REPO_ROOT/$BINDING_FILE"

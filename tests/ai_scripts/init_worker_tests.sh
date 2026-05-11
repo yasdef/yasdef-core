@@ -18,6 +18,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed: expected output not to contain: $needle" >&2
+    echo "Actual output:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 assert_equal() {
   local expected="$1"
   local actual="$2"
@@ -350,6 +361,76 @@ EOF
   assert_no_legacy_identity_files "$repo_dir"
 }
 
+test_init_worker_warns_with_blueprint_before_overmind_checkout() {
+  local repo_dir="$TMP_ROOT/repo-agents-blueprint"
+  local project_dir="$TMP_ROOT/project-agents-blueprint"
+  local worker_uuid="99999999-9999-9999-9999-999999999999"
+  local project_id="project-agents-blueprint"
+  local worker_class="backend"
+  local out=""
+  local project_resolved=""
+  local blueprint_path=""
+
+  mkdir -p "$repo_dir"
+  setup_worker_repo "$repo_dir"
+  write_project_repo "$project_dir" "$project_id" "$worker_uuid" "$worker_class"
+  echo "# Backend blueprint" >"$project_dir/project_stack_blueprint_${worker_class}.md"
+
+  (
+    cd "$repo_dir"
+    git checkout -q -b overmind
+    echo "# Branch-only guidance" >AGENTS.md
+    git add AGENTS.md
+    git commit -qm "add overmind-only agents"
+    git checkout -q master
+  )
+
+  project_resolved="$(resolved_path "$project_dir")"
+  blueprint_path="$project_resolved/project_stack_blueprint_${worker_class}.md"
+
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$project_dir" 2>&1)"
+  assert_contains "$out" "before start implementing things, ask model to create AGENTS.md"
+  assert_contains "$out" "pass $blueprint_path to your prompt so model can use best practices"
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+}
+
+test_init_worker_warns_without_blueprint_when_agents_missing() {
+  local repo_dir="$TMP_ROOT/repo-agents-no-blueprint"
+  local project_dir="$TMP_ROOT/project-agents-no-blueprint"
+  local worker_uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_worker_repo "$repo_dir"
+  write_project_repo "$project_dir" "project-agents-no-blueprint" "$worker_uuid" "frontend"
+
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$project_dir" 2>&1)"
+  assert_contains "$out" "before start implementing things, dont forget to create AGENTS.md"
+  assert_not_contains "$out" "pass "
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+}
+
+test_init_worker_suppresses_agents_warning_when_agents_exists() {
+  local repo_dir="$TMP_ROOT/repo-agents-present"
+  local project_dir="$TMP_ROOT/project-agents-present"
+  local worker_uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_worker_repo "$repo_dir"
+  write_project_repo "$project_dir" "project-agents-present" "$worker_uuid" "mobile"
+  echo "# Project guidance" >"$repo_dir/AGENTS.md"
+  (
+    cd "$repo_dir"
+    git add AGENTS.md
+    git commit -qm "add agents guidance"
+  )
+
+  out="$(run_init_worker "$repo_dir" "$worker_uuid" "$project_dir" 2>&1)"
+  assert_not_contains "$out" "before start implementing things"
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+}
+
 test_init_worker_fails_when_registry_data_unusable() {
   local repo_dir="$TMP_ROOT/repo-unusable-registry"
   local project_dir="$TMP_ROOT/project-unusable-registry"
@@ -414,6 +495,9 @@ test_init_worker_fails_when_meta_info_project_id_missing
 test_init_worker_fails_when_uuid_not_registered
 test_init_worker_fails_when_uuid_duplicate_in_single_workers_yaml
 test_init_worker_is_deterministic_and_refreshes_metadata
+test_init_worker_warns_with_blueprint_before_overmind_checkout
+test_init_worker_warns_without_blueprint_when_agents_missing
+test_init_worker_suppresses_agents_warning_when_agents_exists
 test_init_worker_fails_when_registry_data_unusable
 test_init_worker_rejects_multi_project_layout
 
