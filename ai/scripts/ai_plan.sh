@@ -196,11 +196,15 @@ get_markdown_section_body() {
 
 get_design_adr_heading() {
   local file="$1"
-  if grep -Fq "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "$file"; then
+  if grep -Fqx "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "$file"; then
     printf '## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)'
     return 0
   fi
-  if grep -Fq "## Applicable ADR Shortlist" "$file"; then
+  if grep -Fqx "## Applicable ADR Shortlist (from ai/decisions.md)" "$file"; then
+    printf '## Applicable ADR Shortlist (from ai/decisions.md)'
+    return 0
+  fi
+  if grep -Fqx "## Applicable ADR Shortlist" "$file"; then
     printf '## Applicable ADR Shortlist'
     return 0
   fi
@@ -209,11 +213,11 @@ get_design_adr_heading() {
 
 get_design_ur_heading() {
   local file="$1"
-  if grep -Fq "## Applicable UR Shortlist" "$file"; then
+  if grep -Fqx "## Applicable UR Shortlist" "$file"; then
     printf '## Applicable UR Shortlist'
     return 0
   fi
-  if grep -Fq "## Applicable User Review Rules" "$file"; then
+  if grep -Fqx "## Applicable User Review Rules" "$file"; then
     printf '## Applicable User Review Rules'
     return 0
   fi
@@ -386,7 +390,7 @@ fail_ur_shortlist_validation() {
 }
 
 validate_applicable_ur_shortlist_section() {
-  if ! grep -Fq "## Applicable UR Shortlist" "$OUT"; then
+  if ! grep -Fqx "## Applicable UR Shortlist" "$OUT"; then
     fail_ur_shortlist_validation "missing section \`## Applicable UR Shortlist\`."
   fi
 

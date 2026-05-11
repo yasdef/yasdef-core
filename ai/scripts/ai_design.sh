@@ -346,10 +346,13 @@ write_design_from_template() {
 }
 
 ensure_applicable_adr_shortlist_section() {
-  if grep -Fq "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "$DESIGN_OUT"; then
+  if grep -Fqx "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "$DESIGN_OUT"; then
     return 0
   fi
-  if grep -Fq "## Applicable ADR Shortlist" "$DESIGN_OUT"; then
+  if grep -Fqx "## Applicable ADR Shortlist (from ai/decisions.md)" "$DESIGN_OUT"; then
+    return 0
+  fi
+  if grep -Fqx "## Applicable ADR Shortlist" "$DESIGN_OUT"; then
     return 0
   fi
 

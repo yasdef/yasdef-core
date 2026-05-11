@@ -511,63 +511,63 @@ if [[ -z "$STEP_PLAN_ACCEPTED_DECISIONS_SECTION" ]]; then
   STEP_PLAN_ACCEPTED_DECISIONS_SECTION="- None explicitly marked as Accepted."
 fi
 
-DESIGN_GOAL_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Goal")"
+DESIGN_GOAL_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Goal" || true)"
 if [[ -z "$DESIGN_GOAL_SECTION" ]]; then
   DESIGN_GOAL_SECTION="- (missing in design artifact)"
 else
   DESIGN_GOAL_SECTION="$(cap_first_n_lines "$DESIGN_GOAL_SECTION" 10)"
 fi
 
-DESIGN_IN_SCOPE_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## In Scope")"
+DESIGN_IN_SCOPE_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## In Scope" || true)"
 if [[ -z "$DESIGN_IN_SCOPE_SECTION" ]]; then
   DESIGN_IN_SCOPE_SECTION="- (missing in design artifact)"
 else
   DESIGN_IN_SCOPE_SECTION="$(cap_first_n_lines "$DESIGN_IN_SCOPE_SECTION" 10)"
 fi
 
-DESIGN_OUT_OF_SCOPE_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Out of Scope")"
+DESIGN_OUT_OF_SCOPE_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Out of Scope" || true)"
 if [[ -z "$DESIGN_OUT_OF_SCOPE_SECTION" ]]; then
   DESIGN_OUT_OF_SCOPE_SECTION="- (missing in design artifact)"
 else
   DESIGN_OUT_OF_SCOPE_SECTION="$(cap_first_n_lines "$DESIGN_OUT_OF_SCOPE_SECTION" 10)"
 fi
 
-DESIGN_NON_GOALS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Non-goals" "## Non-Goals")"
+DESIGN_NON_GOALS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Non-goals" "## Non-Goals" || true)"
 if [[ -z "$DESIGN_NON_GOALS_SECTION" ]]; then
   DESIGN_NON_GOALS_SECTION="- (missing in design artifact)"
 else
   DESIGN_NON_GOALS_SECTION="$(cap_first_n_lines "$DESIGN_NON_GOALS_SECTION" 10)"
 fi
 
-DESIGN_PROPOSAL_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Proposal / Design Details")"
+DESIGN_PROPOSAL_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Proposal / Design Details" || true)"
 if [[ -z "$DESIGN_PROPOSAL_SECTION" ]]; then
   DESIGN_PROPOSAL_SECTION="- (missing in design artifact)"
 else
   DESIGN_PROPOSAL_SECTION="$(cap_first_n_lines "$DESIGN_PROPOSAL_SECTION" 20)"
 fi
 
-DESIGN_RISKS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Risks and Mitigations")"
+DESIGN_RISKS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Risks and Mitigations" || true)"
 if [[ -z "$DESIGN_RISKS_SECTION" ]]; then
   DESIGN_RISKS_SECTION="- (missing in design artifact)"
 else
   DESIGN_RISKS_SECTION="$(cap_top_n_bullets "$DESIGN_RISKS_SECTION" 10)"
 fi
 
-DESIGN_ADR_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "## Applicable ADR Shortlist")"
+DESIGN_ADR_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "## Applicable ADR Shortlist (from ai/decisions.md)" "## Applicable ADR Shortlist" || true)"
 if [[ -z "$DESIGN_ADR_SECTION" ]]; then
   DESIGN_ADR_SECTION="- (missing in design artifact)"
 else
   DESIGN_ADR_SECTION="$(cap_first_n_lines "$DESIGN_ADR_SECTION" 10)"
 fi
 
-DESIGN_AGENTS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints")"
+DESIGN_AGENTS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints" || true)"
 if [[ -z "$DESIGN_AGENTS_SECTION" ]]; then
   DESIGN_AGENTS_SECTION="- (missing in design artifact)"
 else
   DESIGN_AGENTS_SECTION="$(cap_first_n_lines "$DESIGN_AGENTS_SECTION" 12)"
 fi
 
-DESIGN_REFERENCES_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## References in Current Codebase")"
+DESIGN_REFERENCES_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## References in Current Codebase" || true)"
 if [[ -z "$DESIGN_REFERENCES_SECTION" ]]; then
   DESIGN_REFERENCES_SECTION="- (missing in design artifact)"
 fi
