@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BINDING_FILE="ai/project_overmind.yaml"
-ORCHESTRATOR_BRANCH="overmind"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/helpers/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
+BINDING_FILE=".asdlc_worker/project_overmind.yaml"
 
 WORKER_UUID=""
 OVERMIND_SOURCE_PATH=""
@@ -10,8 +13,6 @@ PROJECT_ID=""
 WORKER_CLASS=""
 WORKER_STATUS=""
 WORKER_MATCH_FILE=""
-START_BRANCH=""
-BINDING_COMMIT_SHA=""
 
 declare -a MATCH_FILES=()
 declare -a MATCH_CLASSES=()
@@ -19,14 +20,14 @@ declare -a MATCH_STATUSES=()
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/init_worker.sh [--help]
+Usage: .asdlc_worker/scripts/register_worker.sh [--help]
 
-Initializes local worker binding for Overmind coordination by:
+Registers local worker binding for ASDLC coordination by:
   1) prompting for worker UUID
   2) prompting for the path to the single ASDLC project repo
   3) validating <project_repo>/workers.yaml exists and reading project_id from <project_repo>/init_progress_definition.yaml
   4) validating exactly one UUID match in workers.yaml
-  5) writing ai/project_overmind.yaml deterministically
+  5) writing .asdlc_worker/project_overmind.yaml deterministically
 
 Options:
   -h, --help       Show this help message
@@ -36,20 +37,6 @@ EOF
 die() {
   echo "ERROR: $*" >&2
   exit 1
-}
-
-require_git() {
-  if ! command -v git >/dev/null 2>&1; then
-    die "git is not installed or not available in PATH."
-  fi
-}
-
-resolve_repo_root() {
-  local root=""
-  if ! root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-    die "Not a git repository. Run this script inside a git repository."
-  fi
-  printf '%s' "$root"
 }
 
 trim() {
@@ -319,7 +306,7 @@ resolve_single_worker_match() {
 }
 
 warn_missing_agents_guidance() {
-  local agents_path="$REPO_ROOT/AGENTS.md"
+  local agents_path="$ROOT/AGENTS.md"
   local blueprint_path="$OVERMIND_SOURCE_PATH/project_stack_blueprint_${WORKER_CLASS}.md"
 
   if [[ -f "$agents_path" ]]; then
@@ -352,49 +339,6 @@ write_project_binding_file() {
   mv "$tmp_path" "$output_path"
 }
 
-capture_start_branch() {
-  START_BRANCH="$(git branch --show-current 2>/dev/null || true)"
-  if [[ -z "$START_BRANCH" ]]; then
-    START_BRANCH="DETACHED_HEAD"
-  fi
-}
-
-checkout_or_create_overmind_branch() {
-  local current_branch=""
-  current_branch="$(git branch --show-current 2>/dev/null || true)"
-
-  if [[ "$current_branch" == "$ORCHESTRATOR_BRANCH" ]]; then
-    return 0
-  fi
-
-  if git show-ref --verify --quiet "refs/heads/$ORCHESTRATOR_BRANCH"; then
-    if ! git checkout "$ORCHESTRATOR_BRANCH" >/dev/null 2>&1; then
-      die "Failed to checkout '$ORCHESTRATOR_BRANCH' branch."
-    fi
-  else
-    if ! git checkout -b "$ORCHESTRATOR_BRANCH" >/dev/null 2>&1; then
-      die "Failed to create '$ORCHESTRATOR_BRANCH' branch."
-    fi
-  fi
-
-}
-
-commit_binding_if_needed() {
-  local binding_path="$1"
-
-  git add -- "$binding_path"
-  if git diff --cached --quiet -- "$binding_path"; then
-    echo "No changes detected for '$BINDING_FILE'; skipping commit."
-    return 0
-  fi
-
-  if ! git commit -m "Bind worker ${WORKER_UUID} to overmind source" -- "$binding_path" >/dev/null; then
-    die "Failed to commit '$BINDING_FILE' on '$ORCHESTRATOR_BRANCH'."
-  fi
-
-  BINDING_COMMIT_SHA="$(git rev-parse --short HEAD)"
-}
-
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -404,11 +348,7 @@ if [[ $# -gt 0 ]]; then
   die "Unknown argument: $1"
 fi
 
-require_git
-REPO_ROOT="$(resolve_repo_root)"
-cd "$REPO_ROOT"
-
-capture_start_branch
+cd "$ROOT"
 
 prompt_non_empty "Enter worker UUID: " WORKER_UUID
 WORKER_UUID="$(to_lower "$WORKER_UUID")"
@@ -425,11 +365,9 @@ parse_registry_matches_from_file "$OVERMIND_SOURCE_PATH/workers.yaml" "$WORKER_U
 resolve_single_worker_match "$WORKER_UUID"
 
 warn_missing_agents_guidance
-checkout_or_create_overmind_branch
-write_project_binding_file "$REPO_ROOT/$BINDING_FILE"
-commit_binding_if_needed "$REPO_ROOT/$BINDING_FILE"
+write_project_binding_file "$ROOT/$BINDING_FILE"
 
-echo "Worker init complete."
+echo "Worker registration complete."
 echo "Binding file: $BINDING_FILE"
 echo "Project repo path: $OVERMIND_SOURCE_PATH"
 echo "Project ID: $PROJECT_ID"
@@ -437,13 +375,3 @@ echo "Worker UUID: $WORKER_UUID"
 echo "Worker class: $WORKER_CLASS"
 echo "Worker status: $WORKER_STATUS"
 echo "Registry file: $WORKER_MATCH_FILE"
-echo "Starting branch: $START_BRANCH"
-if [[ -n "$BINDING_COMMIT_SHA" ]]; then
-  echo "Overmind binding commit: $BINDING_COMMIT_SHA"
-else
-  echo "Overmind binding commit: none (already up to date)"
-fi
-echo "Current branch: $ORCHESTRATOR_BRANCH"
-echo "=========================="
-echo "you are in overmind branch now, if you need this changes in main/master you can merge it manually"
-echo "=========================="

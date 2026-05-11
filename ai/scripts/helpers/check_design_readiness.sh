@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/helpers/check_design_readiness.sh <design-file>
+Usage: .asdlc_worker/scripts/helpers/check_design_readiness.sh <design-file>
 
 Exit codes:
   0  design artifact is ready

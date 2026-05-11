@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/helpers/check_implementation_readiness.sh <step>
+Usage: .asdlc_worker/scripts/helpers/check_implementation_readiness.sh <step>
 
 Exit codes:
   0  implementation handoff is ready
@@ -184,11 +187,11 @@ if [[ $# -ne 1 ]]; then
 fi
 
 STEP="$1"
-STEP_PLAN_FILE="$ROOT/ai/step_plans/step-$STEP.md"
+STEP_PLAN_FILE="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
 
 if [[ ! -f "$STEP_PLAN_FILE" ]]; then
   echo "Implementation readiness failed for step $STEP." >&2
-  echo "Step plan not found: ai/step_plans/step-$STEP.md" >&2
+  echo "Step plan not found: .asdlc_worker/step_plans/step-$STEP.md" >&2
   echo "Implementation was not finished correctly because the canonical step plan is missing." >&2
   exit 1
 fi
@@ -196,7 +199,7 @@ fi
 ORDERED_SECTION="$(get_markdown_section_body "$STEP_PLAN_FILE" "## Plan (ordered)")"
 if [[ -z "${ORDERED_SECTION//[[:space:]]/}" ]]; then
   echo "Implementation readiness failed for step $STEP." >&2
-  echo "Step plan gate requires section '## Plan (ordered)' in ai/step_plans/step-$STEP.md." >&2
+  echo "Step plan gate requires section '## Plan (ordered)' in .asdlc_worker/step_plans/step-$STEP.md." >&2
   echo "Implementation was not finished correctly because ordered checklist section is missing." >&2
   exit 1
 fi
@@ -204,7 +207,7 @@ fi
 NORMALIZED_ORDERED_ITEMS="$(list_normalized_ordered_plan_items "$ORDERED_SECTION")"
 if [[ -z "${NORMALIZED_ORDERED_ITEMS//[[:space:]]/}" ]]; then
   echo "Implementation readiness failed for step $STEP." >&2
-  echo "No ordered plan checklist items were found under '## Plan (ordered)' in ai/step_plans/step-$STEP.md." >&2
+  echo "No ordered plan checklist items were found under '## Plan (ordered)' in .asdlc_worker/step_plans/step-$STEP.md." >&2
   echo "Add ordered bullets as checklist items and mark them [x] only when each is proven complete." >&2
   echo "Implementation was not finished correctly because ordered checklist items are missing." >&2
   exit 1
@@ -223,7 +226,7 @@ fi
 FUNCTIONAL_SECTION="$(get_functional_requirements_section "$STEP_PLAN_FILE" || true)"
 if [[ -z "${FUNCTIONAL_SECTION//[[:space:]]/}" ]]; then
   echo "Implementation readiness failed for step $STEP." >&2
-  echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in ai/step_plans/step-$STEP.md." >&2
+  echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-$STEP.md." >&2
   echo "Implementation was not finished correctly because translated functional requirements section is missing." >&2
   exit 1
 fi
@@ -231,7 +234,7 @@ fi
 NORMALIZED_FUNCTIONAL_ITEMS="$(list_normalized_functional_requirement_items "$FUNCTIONAL_SECTION")"
 if [[ -z "${NORMALIZED_FUNCTIONAL_ITEMS//[[:space:]]/}" ]]; then
   echo "Implementation readiness failed for step $STEP." >&2
-  echo "No translated functional requirement entries were found in ai/step_plans/step-$STEP.md." >&2
+  echo "No translated functional requirement entries were found in .asdlc_worker/step_plans/step-$STEP.md." >&2
   echo "Use canonical entries only: - [ ] FR-$STEP-001 The system SHALL ... EARS[REQ-...]." >&2
   echo "Implementation was not finished correctly because functional requirements checklist is empty." >&2
   exit 1

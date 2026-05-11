@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/helpers/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
 PROJECT="$(basename "$ROOT")"
-HISTORY_FILE="$ROOT/ai/history.md"
-AI_AUDIT_DISPOSITION_HELPER="$ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+HISTORY_FILE="$ASDLC_HISTORY_FILE"
+AI_AUDIT_DISPOSITION_HELPER="$ASDLC_HELPERS_DIR/check_ai_audit_disposition_readiness.sh"
 OVERMIND_BRANCH="overmind"
-IMPLEMENTATION_PLAN_REL_PATH="overmind/implementation_plan.md"
+IMPLEMENTATION_PLAN_REL_PATH=".asdlc_worker/overmind/implementation_plan.md"
 
 STEP=""
 BASE_BRANCH=""
@@ -22,24 +25,24 @@ METRICS_SNAPSHOT_INDEX=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/post_review.sh [--step 1.6e] [--base-branch master] [--review-branch step-1.6e-review] [--implementation-branch step-1.6e-implementation] [--history-out file] [--dry-run]
+Usage: .asdlc_worker/scripts/post_review.sh [--step 1.6e] [--base-branch master] [--review-branch step-1.6e-review] [--implementation-branch step-1.6e-implementation] [--history-out file] [--dry-run]
 
 Defaults:
-  - If --step is omitted, uses the latest ai/step_plans/step-*.md.
+  - If --step is omitted, uses the latest .asdlc_worker/step_plans/step-*.md.
   - --base-branch defaults to `master` when present, otherwise `main`.
   - --review-branch defaults to step-<step>-review.
   - --implementation-branch defaults to step-<step>-implementation.
-  - --history-out defaults to ai/history.md.
-  - Hard gate before history consolidation: `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>` must pass.
+  - --history-out defaults to .asdlc_worker/history.md.
+  - Hard gate before history consolidation: `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>` must pass.
   - Captures post-review metrics before any auto-commit, including pending local changes via a temporary working-tree snapshot.
   - If uncommitted review changes exist, commits them as a review-completion guard before history update.
   - Then writes post-review history and commits remaining uncommitted changes on the current branch.
-  - Then syncs only `overmind/implementation_plan.md` from the review branch into local `overmind` branch and commits it there (if changed).
+  - Then syncs only `.asdlc_worker/overmind/implementation_plan.md` from the review branch into local `overmind` branch and commits it there (if changed).
   - Keeps one consolidated history record per step with:
     - Aggregated token usage + per-phase subsection (design/planning/implementation/user_review/ai_audit).
-    - New lines of code added (all files except ai/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
-    - New files added (newly created files, excludes ai/**), measured from the same delta.
-    - Files touched (modified existing files, excludes ai/**), measured from the same delta.
+    - New lines of code added (all files except .asdlc_worker/**), measured from the step delta to review (base..review when possible, otherwise merge-base..review). Pending local changes are included via a working-tree snapshot.
+    - New files added (newly created files, excludes .asdlc_worker/**), measured from the same delta.
+    - Files touched (modified existing files, excludes .asdlc_worker/**), measured from the same delta.
 EOF
 }
 
@@ -92,7 +95,7 @@ make_sort_key() {
 }
 
 get_latest_step_plan() {
-  local dir="$ROOT/ai/step_plans"
+  local dir="$ASDLC_STEP_PLANS_DIR"
   if [[ ! -d "$dir" ]]; then
     echo "Step plan directory not found: $dir" >&2
     exit 1
@@ -146,7 +149,7 @@ get_preferred_step_plan() {
   local branch step plan
   branch="$(get_current_branch_name)"
   if step="$(get_step_from_branch_name "$branch")"; then
-    plan="$ROOT/ai/step_plans/step-$step.md"
+    plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
     if [[ -f "$plan" ]]; then
       printf '%s' "$plan"
       return 0
@@ -272,18 +275,18 @@ ensure_current_branch_matches_review_branch() {
 }
 
 count_loc_added_excluding_ai() {
-  # Count added lines across the repo, excluding process artifacts under /ai.
+  # Count added lines across the repo, excluding runtime artifacts under /.asdlc_worker.
   if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
     metrics_git diff --cached --numstat "$METRICS_FROM_REF" \
-      | awk -F '\t' '($1 ~ /^[0-9]+$/ && $3 !~ /^ai\//) { sum += $1 } END { print sum + 0 }'
+      | awk -F '\t' '($1 ~ /^[0-9]+$/ && $3 !~ /^\.asdlc_worker\//) { sum += $1 } END { print sum + 0 }'
   else
     metrics_git diff --numstat "$METRICS_FROM_REF..$METRICS_TO_REF" \
-      | awk -F '\t' '($1 ~ /^[0-9]+$/ && $3 !~ /^ai\//) { sum += $1 } END { print sum + 0 }'
+      | awk -F '\t' '($1 ~ /^[0-9]+$/ && $3 !~ /^\.asdlc_worker\//) { sum += $1 } END { print sum + 0 }'
   fi
 }
 
 count_new_files_added_excluding_ai() {
-  # Count newly added files, excluding ai/.
+  # Count newly added files, excluding .asdlc_worker/.
   local diff_args=()
   if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
     diff_args=(diff --cached --name-only --diff-filter=A "$METRICS_FROM_REF")
@@ -291,11 +294,11 @@ count_new_files_added_excluding_ai() {
     diff_args=(diff --name-only --diff-filter=A "$METRICS_FROM_REF..$METRICS_TO_REF")
   fi
   metrics_git "${diff_args[@]}" \
-    | awk '$0 !~ /^ai\// { count++ } END { print count + 0 }'
+    | awk '$0 !~ /^\.asdlc_worker\// { count++ } END { print count + 0 }'
 }
 
 count_touched_files_excluding_ai() {
-  # Count modified (not newly added) files, excluding ai/.
+  # Count modified (not newly added) files, excluding .asdlc_worker/.
   local diff_args=()
   if [[ "$METRICS_USE_INDEX" -eq 1 ]]; then
     diff_args=(diff --cached --name-only --diff-filter=M "$METRICS_FROM_REF")
@@ -303,7 +306,7 @@ count_touched_files_excluding_ai() {
     diff_args=(diff --name-only --diff-filter=M "$METRICS_FROM_REF..$METRICS_TO_REF")
   fi
   metrics_git "${diff_args[@]}" \
-    | awk '$0 !~ /^ai\// { count++ } END { print count + 0 }'
+    | awk '$0 !~ /^\.asdlc_worker\// { count++ } END { print count + 0 }'
 }
 
 ensure_history_file() {
@@ -314,7 +317,7 @@ ensure_history_file() {
   cat >"$HISTORY_OUT" <<'EOF'
 # AI Run History
 
-This file is updated by `ai/scripts/post_review.sh` with one consolidated record per step.
+This file is updated by `.asdlc_worker/scripts/post_review.sh` with one consolidated record per step.
 
 EOF
 }
@@ -326,11 +329,11 @@ extract_token_usage_from_log() {
   phase_token="$(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
   step_token="$(printf '%s' "$STEP_NUM" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
   local candidates=(
-    "$ROOT/ai/logs/${PROJECT}-${phase}-latest-log"
-    "$ROOT/ai/logs/${PROJECT}-${phase_token}-latest-log"
-    "$ROOT/ai/logs/${PROJECT}-${phase}-${STEP_NUM}-log"
-    "$ROOT/ai/logs/${PROJECT}-${phase_token}-${STEP_NUM}-log"
-    "$ROOT/ai/logs/${PROJECT}-${phase_token}-${step_token}-log"
+    "$ASDLC_LOGS_DIR/${PROJECT}-${phase}-latest-log"
+    "$ASDLC_LOGS_DIR/${PROJECT}-${phase_token}-latest-log"
+    "$ASDLC_LOGS_DIR/${PROJECT}-${phase}-${STEP_NUM}-log"
+    "$ASDLC_LOGS_DIR/${PROJECT}-${phase_token}-${STEP_NUM}-log"
+    "$ASDLC_LOGS_DIR/${PROJECT}-${phase_token}-${step_token}-log"
   )
   local log_path line
 
@@ -745,7 +748,7 @@ if [[ -z "$STEP" ]]; then
   STEP_PLAN="$(get_preferred_step_plan)"
   STEP="$(get_step_from_plan_path "$STEP_PLAN")"
 else
-  STEP_PLAN="$ROOT/ai/step_plans/step-$STEP.md"
+  STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
 fi
 
 if [[ -z "$STEP" ]]; then

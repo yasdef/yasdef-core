@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-BINDING_FILE="$ROOT/ai/project_overmind.yaml"
-FEATURE_SYNC_FILE="$ROOT/ai/feature_sync.yaml"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
+BINDING_FILE="$ASDLC_BINDING_FILE"
+FEATURE_SYNC_FILE="$ASDLC_FEATURE_SYNC_FILE"
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/helpers/helper_find_blueprints.sh
+Usage: .asdlc_worker/scripts/helpers/helper_find_blueprints.sh
 
 Run this helper from an ASDLC feature folder that contains:
   - implementation_plan.md
@@ -16,7 +18,7 @@ Run this helper from an ASDLC feature folder that contains:
 
 The helper searches the parent project-level directory for
 project_stack_blueprint_*.md files and filters them using the bound project
-class from ai/project_overmind.yaml.
+class from .asdlc_worker/project_overmind.yaml.
 EOF
 }
 
@@ -128,7 +130,7 @@ fi
 
 FEATURE_DIR="$(resolve_feature_dir || true)"
 if [[ -z "$FEATURE_DIR" ]]; then
-  echo "Blueprint lookup failed: run this helper from an ASDLC feature folder with implementation_plan.md and requirements_ears.md, or provide ai/feature_sync.yaml with source_feature_path." >&2
+  echo "Blueprint lookup failed: run this helper from an ASDLC feature folder with implementation_plan.md and requirements_ears.md, or provide .asdlc_worker/feature_sync.yaml with source_feature_path." >&2
   exit 1
 fi
 

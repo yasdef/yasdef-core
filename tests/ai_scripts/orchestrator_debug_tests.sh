@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -60,54 +61,58 @@ setup_repo() {
   local repo_dir="$1"
   local worker_uuid="11111111-1111-1111-1111-111111111111"
   local source_dir="$repo_dir/.tmp-asdlc-source"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/step_plans" "$repo_dir/ai/step_review_results" "$repo_dir/ai/prompts"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" \
+    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/prompts" \
+    "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
-  cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
-  chmod +x "$repo_dir/ai/scripts/orchestrator.sh"
+  cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
-  cat >"$repo_dir/ai/scripts/ai_design.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_design.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-design}"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_plan.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-planning}"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_implementation.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-implementation}"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_user_review.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-user-review}"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_audit.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-review}"
 EOF
-  cat >"$repo_dir/ai/scripts/post_review.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/post_review.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "post_review"
 EOF
-  cat >"$repo_dir/ai/scripts/fake_model.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/fake_model.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "MODEL_MARKER=${MODEL_MARKER:-default-model}"
 echo "Token usage: input=1 output=1 total=2"
 EOF
-  chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_audit.sh" \
-    "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/fake_model.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_design.sh" "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
+    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
+    "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/fake_model.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
-design | ai/scripts/fake_model.sh | mock-model
-planning | ai/scripts/fake_model.sh | mock-model
-implementation | ai/scripts/fake_model.sh | mock-model
-user_review | ai/scripts/fake_model.sh | mock-model
-ai_audit | ai/scripts/fake_model.sh | mock-model
+design | .asdlc_worker/scripts/fake_model.sh | mock-model
+planning | .asdlc_worker/scripts/fake_model.sh | mock-model
+implementation | .asdlc_worker/scripts/fake_model.sh | mock-model
+user_review | .asdlc_worker/scripts/fake_model.sh | mock-model
+ai_audit | .asdlc_worker/scripts/fake_model.sh | mock-model
 EOF
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - 1. demo
@@ -120,7 +125,7 @@ EOF
 - Status: done
 EOF
 
-  cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1.md" <<'EOF'
 # Review Result: Step 1.1
 ## Disposition (per issue)
 - None.
@@ -170,7 +175,7 @@ set_single_phase_model() {
   local repo_dir="$1"
   local phase="$2"
   cat >"$repo_dir/ai/setup/models.md" <<EOF
-$phase | ai/scripts/fake_model.sh | mock-model
+$phase | .asdlc_worker/scripts/fake_model.sh | mock-model
 EOF
 }
 
@@ -182,11 +187,11 @@ run_non_debug_design_writes_latest_only() {
   (
     cd "$repo_dir"
     set_single_phase_model "$repo_dir" "design"
-    PROMPT_MARKER=first MODEL_MARKER=first ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    PROMPT_MARKER=first MODEL_MARKER=first .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
-  local latest_prompt="$repo_dir/ai/prompts/design_prompts/repo-non-debug-latest-design-prompt.txt"
-  local latest_log="$repo_dir/ai/logs/repo-non-debug-design-latest-log"
+  local latest_prompt="$repo_dir/.asdlc_worker/prompts/design_prompts/repo-non-debug-latest-design-prompt.txt"
+  local latest_log="$repo_dir/.asdlc_worker/logs/repo-non-debug-design-latest-log"
   assert_file_exists "$latest_prompt"
   assert_file_exists "$latest_log"
   assert_contains_file "$latest_prompt" "PROMPT_MARKER=first"
@@ -201,11 +206,11 @@ run_debug_design_writes_step_specific() {
   (
     cd "$repo_dir"
     set_single_phase_model "$repo_dir" "design"
-    PROMPT_MARKER=debug MODEL_MARKER=debug ai/scripts/orchestrator.sh --debug -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    PROMPT_MARKER=debug MODEL_MARKER=debug .asdlc_worker/scripts/orchestrator.sh --debug -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
-  local step_prompt="$repo_dir/ai/prompts/design_prompts/repo-debug-step-1.1.design.prompt.txt"
-  local step_log="$repo_dir/ai/logs/repo-debug-design-1-1-log"
+  local step_prompt="$repo_dir/.asdlc_worker/prompts/design_prompts/repo-debug-step-1.1.design.prompt.txt"
+  local step_log="$repo_dir/.asdlc_worker/logs/repo-debug-design-1-1-log"
   assert_file_exists "$step_prompt"
   assert_file_exists "$step_log"
   assert_contains_file "$step_prompt" "PROMPT_MARKER=debug"
@@ -220,22 +225,22 @@ run_latest_overwrite_and_legacy_preserved() {
   (
     cd "$repo_dir"
     set_single_phase_model "$repo_dir" "design"
-    PROMPT_MARKER=seed MODEL_MARKER=seed ai/scripts/orchestrator.sh --debug -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    PROMPT_MARKER=seed MODEL_MARKER=seed .asdlc_worker/scripts/orchestrator.sh --debug -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
-  local step_prompt="$repo_dir/ai/prompts/design_prompts/repo-overwrite-step-1.1.design.prompt.txt"
+  local step_prompt="$repo_dir/.asdlc_worker/prompts/design_prompts/repo-overwrite-step-1.1.design.prompt.txt"
   local step_before
   step_before="$(cat "$step_prompt")"
 
   (
     cd "$repo_dir"
     set_single_phase_model "$repo_dir" "design"
-    PROMPT_MARKER=first MODEL_MARKER=first ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
-    PROMPT_MARKER=second MODEL_MARKER=second ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    PROMPT_MARKER=first MODEL_MARKER=first .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
+    PROMPT_MARKER=second MODEL_MARKER=second .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
-  local latest_prompt="$repo_dir/ai/prompts/design_prompts/repo-overwrite-latest-design-prompt.txt"
-  local latest_log="$repo_dir/ai/logs/repo-overwrite-design-latest-log"
+  local latest_prompt="$repo_dir/.asdlc_worker/prompts/design_prompts/repo-overwrite-latest-design-prompt.txt"
+  local latest_log="$repo_dir/.asdlc_worker/logs/repo-overwrite-design-latest-log"
   assert_file_exists "$latest_prompt"
   assert_file_exists "$latest_log"
   assert_contains_file "$latest_prompt" "PROMPT_MARKER=second"
@@ -255,12 +260,12 @@ run_user_review_dry_run_reports_prompt_and_log_paths() {
   out="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "user_review" &&
-    PROMPT_MARKER=ur MODEL_MARKER=ur ai/scripts/orchestrator.sh --dry-run
+    PROMPT_MARKER=ur MODEL_MARKER=ur .asdlc_worker/scripts/orchestrator.sh --dry-run
   )"
 
-  local latest_prompt="$repo_dir/ai/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
-  assert_contains "$out" "dry-run prompt: ai/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
-  assert_contains "$out" "dry-run log: ai/logs/repo-user-review-latest-user-review-latest-log"
+  local latest_prompt="$repo_dir/.asdlc_worker/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
+  assert_contains "$out" "dry-run prompt: .asdlc_worker/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
+  assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-user-review-latest-user-review-latest-log"
   assert_contains "$out" "$latest_prompt"
 }
 
@@ -273,12 +278,12 @@ run_ai_audit_dry_run_reports_prompt_and_log_paths() {
   out="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "ai_audit" &&
-    PROMPT_MARKER=audit MODEL_MARKER=audit ai/scripts/orchestrator.sh --dry-run
+    PROMPT_MARKER=audit MODEL_MARKER=audit .asdlc_worker/scripts/orchestrator.sh --dry-run
   )"
 
-  local latest_prompt="$repo_dir/ai/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
-  assert_contains "$out" "dry-run prompt: ai/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
-  assert_contains "$out" "dry-run log: ai/logs/repo-ai-audit-latest-ai-audit-latest-log"
+  local latest_prompt="$repo_dir/.asdlc_worker/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
+  assert_contains "$out" "dry-run prompt: .asdlc_worker/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
+  assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-ai-audit-latest-ai-audit-latest-log"
   assert_contains "$out" "$latest_prompt"
 }
 
@@ -287,7 +292,7 @@ run_source_includes_user_review_interactive_confirmation() {
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
   local out
-  out="$(grep -n "planning|implementation|user_review|ai_audit" "$repo_dir/ai/scripts/orchestrator.sh" || true)"
+  out="$(grep -n "planning|implementation|user_review|ai_audit" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh" || true)"
   assert_contains "$out" "planning|implementation|user_review|ai_audit"
 }
 
@@ -300,7 +305,7 @@ run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
   out_design="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "design" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning -- --step 1.1
+    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning -- --step 1.1
   )"
   assert_contains "$out_design" "--feature-rich-design-planning"
 
@@ -308,7 +313,7 @@ run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
   out_planning="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "planning" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning -- --step 1.1
+    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning -- --step 1.1
   )"
   assert_contains "$out_planning" "--feature-rich-design-planning"
 
@@ -316,7 +321,7 @@ run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
   out_implementation="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "implementation" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
+    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
   )"
   assert_not_contains "$out_implementation" "--feature-rich-design-planning"
 
@@ -324,7 +329,7 @@ run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
   out_user_review="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "user_review" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
+    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
   )"
   assert_not_contains "$out_user_review" "--feature-rich-design-planning"
 
@@ -332,7 +337,7 @@ run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
   out_ai_audit="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "ai_audit" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
+    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
   )"
   assert_not_contains "$out_ai_audit" "--feature-rich-design-planning"
 
@@ -340,7 +345,7 @@ run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
   out_post_review="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "post_review" &&
-    ai/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
+    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
   )"
   assert_not_contains "$out_post_review" "--feature-rich-design-planning"
 }

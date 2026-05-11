@@ -4,6 +4,7 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 IMPLEMENTATION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 AI_PLAN_SRC="$SOURCE_ROOT/ai/scripts/ai_plan.sh"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
 PROCESS_SRC="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
@@ -51,29 +52,35 @@ assert_order() {
 
 setup_helper_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" "$repo_dir/overmind"
-  cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
+  cp "$HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
 }
 
 setup_plan_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans" \
-    "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/templates" "$repo_dir/overmind"
-  cp "$AI_PLAN_SRC" "$repo_dir/ai/scripts/ai_plan.sh"
-  cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-  cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/step_plans" \
+    "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/templates" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
+  cp "$AI_PLAN_SRC" "$repo_dir/.asdlc_worker/scripts/ai_plan.sh"
+  cp "$HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$PROCESS_SRC" "$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
   cp "$STEP_PLAN_TEMPLATE_SRC" "$repo_dir/ai/templates/step_plan_TEMPLATE.md"
-  chmod +x "$repo_dir/ai/scripts/ai_plan.sh" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [ ] Plan and discuss the step. [REQ-1]
 - [ ] Implement the feature endpoint. [REQ-1]
 - [ ] Review step implementation.
 EOF
 
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature endpoint.
 
@@ -93,22 +100,22 @@ EOF
 - ADR-0001 - Preserve existing API contract.
 EOF
 
-  cat >"$repo_dir/ai/open_questions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/open_questions.md" <<'EOF'
 ## Step 1.1 Demo
 - No open questions.
 EOF
 
-  cat >"$repo_dir/ai/blocker_log.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/blocker_log.md" <<'EOF'
 ## Step 1.1 Demo
 - No blockers.
 EOF
 
-  cat >"$repo_dir/ai/decisions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/decisions.md" <<'EOF'
 ## ADR-0001 - Baseline
 - **Status**: Accepted
 EOF
 
-  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 API behavior
 - Endpoint returns deterministic response.
 EOF
@@ -130,23 +137,26 @@ EOF
 setup_impl_repo() {
   local repo_dir="$1"
   local readiness_mode="${2:-ready}"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/step_plans" "$repo_dir/overmind"
-  cp "$AI_IMPL_SRC" "$repo_dir/ai/scripts/ai_implementation.sh"
-  cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" \
-    "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh" \
-    "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts" "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_designs" \
+    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
+  cp "$AI_IMPL_SRC" "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh"
+  cp "$HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
+  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [x] Plan and discuss the step. [REQ-1]
 - [ ] Implement the feature endpoint. [REQ-1]
 - [ ] Review step implementation.
 EOF
 
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Demo.
 ## In Scope
@@ -168,22 +178,22 @@ EOF
 ## Applicable ADR Shortlist
 - ADR-1
 ## References in Current Codebase
-- `ai/scripts/ai_implementation.sh`
+- `.asdlc_worker/scripts/ai_implementation.sh`
 EOF
 
-  cat >"$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md" <<'EOF'
 ### 3) Implement ordered plan (adaptive batch execution)
 - demo
 ### 4) Verification gates (required before Section 5)
 - demo
 EOF
 
-  cat >"$repo_dir/ai/blocker_log.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/blocker_log.md" <<'EOF'
 ## Step 1.1 Demo
 - No blockers.
 EOF
 
-  cat >"$repo_dir/ai/open_questions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/open_questions.md" <<'EOF'
 ## Step 1.1 Demo
 - No open questions.
 EOF
@@ -192,14 +202,14 @@ EOF
 Constraints.
 EOF
 
-  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
 - Demo.
 EOF
 
   case "$readiness_mode" in
     ready)
-      cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [ ] 1. Implement the feature endpoint.
@@ -225,13 +235,13 @@ EOF
     missing_step_plan)
       ;;
     unchecked_gate)
-      cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [ ] Plan and discuss the step. [REQ-1]
 - [ ] Implement the feature endpoint. [REQ-1]
 - [ ] Review step implementation.
 EOF
-      cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [ ] 1. Implement the feature endpoint.
@@ -264,7 +274,7 @@ run_plan() {
   local repo_dir="$1"
   (
     cd "$repo_dir"
-    ai/scripts/ai_plan.sh --step 1.1 --out ai/step_plans/step-1.1.md
+    .asdlc_worker/scripts/ai_plan.sh --step 1.1 --out .asdlc_worker/step_plans/step-1.1.md
   )
 }
 
@@ -272,7 +282,7 @@ run_impl() {
   local repo_dir="$1"
   (
     cd "$repo_dir"
-    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl.prompt.txt --no-branch
   )
 }
 
@@ -280,7 +290,7 @@ test_helper_ready_exit_code() {
   local repo_dir="$TMP_ROOT/helper-ready"
   setup_helper_repo "$repo_dir"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan
 ## Plan (ordered)
 - [ ] Demo
@@ -293,14 +303,14 @@ test_helper_ready_exit_code() {
 - Status: pending
 EOF
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [x] Plan and discuss the step. [REQ-1]
 - [ ] Implement demo.
 EOF
 
   local out
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_planning_readiness.sh 1.1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_planning_readiness.sh 1.1)"
   assert_contains "$out" "Planning readiness check passed for step 1.1"
 }
 
@@ -308,7 +318,7 @@ test_helper_missing_step_plan_fails() {
   local repo_dir="$TMP_ROOT/helper-missing-step-plan"
   setup_helper_repo "$repo_dir"
   mkdir -p "$repo_dir/overmind"
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [x] Plan and discuss the step. [REQ-1]
 EOF
@@ -316,22 +326,22 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || exit 1
-  assert_contains "$out" "Planning readiness failed: step plan not found: ai/step_plans/step-1.1.md"
+  assert_contains "$out" "Planning readiness failed: step plan not found: .asdlc_worker/step_plans/step-1.1.md"
 }
 
 test_helper_missing_section_fails() {
   local repo_dir="$TMP_ROOT/helper-missing-section"
   setup_helper_repo "$repo_dir"
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan
 ## Plan (ordered)
 - [ ] Demo
 EOF
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [x] Plan and discuss the step. [REQ-1]
 EOF
@@ -339,17 +349,17 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || exit 1
-  assert_contains "$out" "Planning readiness failed: missing required section '## Functional Requirements (translated from design EARS)' in ai/step_plans/step-1.1.md"
+  assert_contains "$out" "Planning readiness failed: missing required section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-1.1.md"
 }
 
 test_helper_unchecked_gate_fails() {
   local repo_dir="$TMP_ROOT/helper-unchecked-gate"
   setup_helper_repo "$repo_dir"
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan
 ## Plan (ordered)
 - [ ] Demo
@@ -361,7 +371,7 @@ test_helper_unchecked_gate_fails() {
 - Verification: demo
 - Status: pending
 EOF
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [ ] Plan and discuss the step. [REQ-1]
 EOF
@@ -369,11 +379,11 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || exit 1
-  assert_contains "$out" "Planning readiness failed: 'Plan and discuss the step' is not marked [x] in overmind/implementation_plan.md for step 1.1"
+  assert_contains "$out" "Planning readiness failed: 'Plan and discuss the step' is not marked [x] in .asdlc_worker/overmind/implementation_plan.md for step 1.1"
 }
 
 test_helper_bootstrap_requires_scaffold_section_and_first_plan_item() {
@@ -381,7 +391,7 @@ test_helper_bootstrap_requires_scaffold_section_and_first_plan_item() {
   setup_helper_repo "$repo_dir"
   mkdir -p "$repo_dir/ai/step_designs"
 
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## First-Feature Bootstrap (only if needed)
 - Bootstrap required: yes
 - Repo state rationale: Empty backend repo.
@@ -391,7 +401,7 @@ test_helper_bootstrap_requires_scaffold_section_and_first_plan_item() {
 - Planning handoff: Scaffold creation must come before endpoint implementation.
 EOF
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan
 ## Scaffold Bootstrap Plan
 - Use the approved backend blueprint.
@@ -406,7 +416,7 @@ EOF
 - Status: pending
 EOF
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [x] Plan and discuss the step. [REQ-1]
 EOF
@@ -414,7 +424,7 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_planning_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || exit 1
@@ -427,9 +437,9 @@ test_plan_prompt_includes_readiness_contract() {
 
   local out
   out="$(run_plan "$repo_dir")"
-  assert_contains "$out" 'Before ending the planning phase, run `ai/scripts/helpers/check_planning_readiness.sh 1.1`.'
-  assert_contains "$out" 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
-  assert_order "$out" 'Before ending the planning phase, run `ai/scripts/helpers/check_planning_readiness.sh 1.1`.' 'Only after the Planning Readiness Gate is satisfied, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  assert_contains "$out" 'Before ending the planning phase, run `.asdlc_worker/scripts/helpers/check_planning_readiness.sh 1.1`.'
+  assert_contains "$out" 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.'
+  assert_order "$out" 'Before ending the planning phase, run `.asdlc_worker/scripts/helpers/check_planning_readiness.sh 1.1`.' 'Only after the Planning Readiness Gate is satisfied, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
 }
 
 test_implementation_prompt_includes_helper_contract() {
@@ -438,10 +448,10 @@ test_implementation_prompt_includes_helper_contract() {
 
   run_impl "$repo_dir"
   local out
-  out="$(cat "$repo_dir/ai/prompts/impl.prompt.txt")"
+  out="$(cat "$repo_dir/.asdlc_worker/prompts/impl.prompt.txt")"
   assert_contains "$out" 'Execution list (step plan `## Plan (ordered)`)'
-  assert_contains "$out" 'Before ending the implementation phase, run `ai/scripts/helpers/check_implementation_readiness.sh 1.1`.'
-  assert_contains "$out" 'If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
+  assert_contains "$out" 'Before ending the implementation phase, run `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh 1.1`.'
+  assert_contains "$out" 'If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.'
 }
 
 test_implementation_prompt_fails_fast_when_helper_fails() {
@@ -455,8 +465,8 @@ test_implementation_prompt_fails_fast_when_helper_fails() {
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || exit 1
-  assert_contains "$out" "Planning readiness failed: step plan not found: ai/step_plans/step-1.1.md"
-  if [[ -f "$repo_dir/ai/prompts/impl.prompt.txt" ]]; then
+  assert_contains "$out" "Planning readiness failed: step plan not found: .asdlc_worker/step_plans/step-1.1.md"
+  if [[ -f "$repo_dir/.asdlc_worker/prompts/impl.prompt.txt" ]]; then
     echo "Assertion failed: implementation prompt should not be written when readiness fails" >&2
     exit 1
   fi

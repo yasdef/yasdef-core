@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-PLAN_FILE="$ROOT/overmind/implementation_plan.md"
-DESIGN_DIR="$ROOT/ai/step_designs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
+PLAN_FILE="$ASDLC_RUNTIME_PLAN_PATH"
+DESIGN_DIR="$ASDLC_STEP_DESIGNS_DIR"
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/helpers/check_planning_readiness.sh <step>
+Usage: .asdlc_worker/scripts/helpers/check_planning_readiness.sh <step>
 
 Exit codes:
   0  planning handoff is ready
@@ -88,27 +91,27 @@ if [[ $# -ne 1 ]]; then
 fi
 
 STEP="$1"
-STEP_PLAN_FILE="$ROOT/ai/step_plans/step-$STEP.md"
+STEP_PLAN_FILE="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
 DESIGN_FILE="$DESIGN_DIR/step-$STEP-design.md"
 
 if [[ ! -f "$STEP_PLAN_FILE" ]]; then
-  echo "Planning readiness failed: step plan not found: ai/step_plans/step-$STEP.md" >&2
+  echo "Planning readiness failed: step plan not found: .asdlc_worker/step_plans/step-$STEP.md" >&2
   exit 1
 fi
 
 if ! grep -Eq '^##[[:space:]]+Plan \(ordered\)[[:space:]]*$' "$STEP_PLAN_FILE"; then
-  echo "Planning readiness failed: missing required section '## Plan (ordered)' in ai/step_plans/step-$STEP.md" >&2
+  echo "Planning readiness failed: missing required section '## Plan (ordered)' in .asdlc_worker/step_plans/step-$STEP.md" >&2
   exit 1
 fi
 
 FUNCTIONAL_SECTION="$(get_functional_requirements_section "$STEP_PLAN_FILE" || true)"
 if [[ -z "${FUNCTIONAL_SECTION//[[:space:]]/}" ]]; then
-  echo "Planning readiness failed: missing required section '## Functional Requirements (translated from design EARS)' in ai/step_plans/step-$STEP.md" >&2
+  echo "Planning readiness failed: missing required section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-$STEP.md" >&2
   exit 1
 fi
 
 if [[ ! -f "$PLAN_FILE" ]]; then
-  echo "Planning readiness failed: implementation plan not found: overmind/implementation_plan.md" >&2
+  echo "Planning readiness failed: implementation plan not found: .asdlc_worker/overmind/implementation_plan.md" >&2
   exit 1
 fi
 
@@ -151,7 +154,7 @@ case "$GATE_STATE" in
   checked)
     ;;
   unchecked)
-    echo "Planning readiness failed: 'Plan and discuss the step' is not marked [x] in overmind/implementation_plan.md for step $STEP" >&2
+    echo "Planning readiness failed: 'Plan and discuss the step' is not marked [x] in .asdlc_worker/overmind/implementation_plan.md for step $STEP" >&2
     exit 1
     ;;
   *)
@@ -168,14 +171,14 @@ if [[ -f "$DESIGN_FILE" ]]; then
   fi
   if [[ "$BOOTSTRAP_REQUIRED" == "yes" ]]; then
     if ! grep -Eq '^##[[:space:]]+Scaffold Bootstrap Plan[[:space:]]*$' "$STEP_PLAN_FILE"; then
-      echo "Planning readiness failed: bootstrap-required design needs section '## Scaffold Bootstrap Plan' in ai/step_plans/step-$STEP.md" >&2
+      echo "Planning readiness failed: bootstrap-required design needs section '## Scaffold Bootstrap Plan' in .asdlc_worker/step_plans/step-$STEP.md" >&2
       exit 1
     fi
 
     PLAN_SECTION="$(get_markdown_section_body "$STEP_PLAN_FILE" "## Plan (ordered)")"
     FIRST_PLAN_BULLET="$(printf '%s\n' "$PLAN_SECTION" | awk '/^- / { print; exit }')"
     if [[ -z "$FIRST_PLAN_BULLET" ]]; then
-      echo "Planning readiness failed: bootstrap-required design needs ordered plan bullets in ai/step_plans/step-$STEP.md" >&2
+      echo "Planning readiness failed: bootstrap-required design needs ordered plan bullets in .asdlc_worker/step_plans/step-$STEP.md" >&2
       exit 1
     fi
     if ! printf '%s\n' "$FIRST_PLAN_BULLET" | grep -qiE 'scaffold|bootstrap|initialize'; then

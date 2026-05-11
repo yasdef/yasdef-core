@@ -1,43 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-resolve_root_from_ai_scripts() {
-  local script_dir ai_dir root expected_scripts
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  ai_dir="$(dirname "$script_dir")"
-  root="$(dirname "$ai_dir")"
-  expected_scripts="$root/ai/scripts"
-
-  if [[ "$(basename "$ai_dir")" != "ai" ]]; then
-    echo "Invalid layout: expected script path under <repo>/ai/scripts, got: $script_dir" >&2
-    exit 1
-  fi
-
-  if [[ ! -d "$expected_scripts" ]]; then
-    echo "Invalid layout: expected directory missing: $expected_scripts" >&2
-    exit 1
-  fi
-
-  if [[ "$(cd "$expected_scripts" && pwd)" != "$script_dir" ]]; then
-    echo "Invalid layout: ai/scripts is not located under the computed repo root: $root" >&2
-    exit 1
-  fi
-
-  printf '%s' "$root"
-}
-
-ROOT="$(resolve_root_from_ai_scripts)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/helpers/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
 PROJECT="$(basename "$ROOT")"
-MODELS="$ROOT/ai/setup/models.md"
-HISTORY_FILE="$ROOT/ai/history.md"
-DECISIONS_FILE="$ROOT/ai/decisions.md"
-BLOCKER_LOG_FILE="$ROOT/ai/blocker_log.md"
-OPEN_QUESTIONS_FILE="$ROOT/ai/open_questions.md"
-USER_REVIEW_FILE="$ROOT/ai/user_review.md"
-IMPLEMENTATION_PLAN_PRIMARY="$ROOT/overmind/implementation_plan.md"
-RUNTIME_REQUIREMENTS_PATH="$ROOT/overmind/reqirements_ears.md"
-PROJECT_BINDING_FILE="$ROOT/ai/project_overmind.yaml"
-FEATURE_SYNC_FILE="$ROOT/ai/feature_sync.yaml"
+MODELS="$ASDLC_MODELS_FILE"
+HISTORY_FILE="$ASDLC_HISTORY_FILE"
+DECISIONS_FILE="$ASDLC_DECISIONS_FILE"
+BLOCKER_LOG_FILE="$ASDLC_BLOCKER_LOG_FILE"
+OPEN_QUESTIONS_FILE="$ASDLC_OPEN_QUESTIONS_FILE"
+USER_REVIEW_FILE="$ASDLC_USER_REVIEW_FILE"
+IMPLEMENTATION_PLAN_PRIMARY="$ASDLC_RUNTIME_PLAN_PATH"
+RUNTIME_REQUIREMENTS_PATH="$ASDLC_RUNTIME_EARS_PATH"
+PROJECT_BINDING_FILE="$ASDLC_BINDING_FILE"
+FEATURE_SYNC_FILE="$ASDLC_FEATURE_SYNC_FILE"
 RUNTIME_BRANCH="overmind"
 
 # Run all child commands from repository root for consistent sandbox/workspace resolution.
@@ -85,16 +63,16 @@ FEATURE_CONTEXT_RESUME_MODE=0
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/orchestrator.sh [--resume <step>] [--debug] [--feature-rich-design-planning] [--standalone] [--dry-run] [--help] [-- <phase-script args>]
+Usage: .asdlc_worker/scripts/orchestrator.sh [--resume <step>] [--debug] [--feature-rich-design-planning] [--standalone] [--dry-run] [--help] [-- <phase-script args>]
 
 Default behavior:
-  - Runs all phases in ai/setup/models.md, in order, then runs post_review.
-  - design runs ai/scripts/ai_design.sh and generates/updates a feature-design artifact.
-  - planning runs ai/scripts/ai_plan.sh using the planning model entry.
-  - implementation runs ai/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command.
-  - user_review runs ai/scripts/ai_user_review.sh for the latest step plan, validates entry gate markers, then runs the user_review model command.
-  - ai_audit runs ai/scripts/ai_audit.sh for the latest step plan (post-step audit prompt), then runs the ai_audit model command.
-  - post_review runs ai/scripts/post_review.sh for the latest step plan and appends post-review metrics to ai/history.md.
+  - Runs all phases in .asdlc_worker/setup/models.md, in order, then runs post_review.
+  - design runs .asdlc_worker/scripts/ai_design.sh and generates/updates a feature-design artifact.
+  - planning runs .asdlc_worker/scripts/ai_plan.sh using the planning model entry.
+  - implementation runs .asdlc_worker/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command.
+  - user_review runs .asdlc_worker/scripts/ai_user_review.sh for the latest step plan, validates entry gate markers, then runs the user_review model command.
+  - ai_audit runs .asdlc_worker/scripts/ai_audit.sh for the latest step plan (post-step audit prompt), then runs the ai_audit model command.
+  - post_review runs .asdlc_worker/scripts/post_review.sh for the latest step plan and appends post-review metrics to .asdlc_worker/history.md.
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
   - --debug enables per-step/per-phase artifact files for logs and prompts.
   - --feature-rich-design-planning enables an opt-in richer contract for design/planning prompts only.
@@ -103,19 +81,19 @@ Default behavior:
   - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
   - When running interactively, asks for confirmation before planning/implementation/user_review/ai_audit.
   - If interactive confirmation is denied for any phase, orchestration stops immediately and does not prompt downstream phases in that run.
-  - Writes per-phase logs to ai/logs/<project>-<phase>-latest-log (or step-specific names with --debug).
-  - post_review consolidates per-step token usage and metrics into ai/history.md.
+  - Writes per-phase logs to .asdlc_worker/logs/<project>-<phase>-latest-log (or step-specific names with --debug).
+  - post_review consolidates per-step token usage and metrics into .asdlc_worker/history.md.
 
 Examples:
-  ai/scripts/orchestrator.sh
-  ai/scripts/orchestrator.sh -- --step 1.3
-  ai/scripts/orchestrator.sh -- --step 1.3 --out ai/tmp/step-1.3.md
-  ai/scripts/orchestrator.sh --resume 1.3
-  ai/scripts/orchestrator.sh --resume 1.3 --dry-run
-  ai/scripts/orchestrator.sh --feature-rich-design-planning -- --step 1.3
-  ai/scripts/orchestrator.sh --standalone -- --step 1.3
-  ai/scripts/orchestrator.sh --debug -- --step 1.3
-  ai/scripts/orchestrator.sh --dry-run
+  .asdlc_worker/scripts/orchestrator.sh
+  .asdlc_worker/scripts/orchestrator.sh -- --step 1.3
+  .asdlc_worker/scripts/orchestrator.sh -- --step 1.3 --out .asdlc_worker/tmp/step-1.3.md
+  .asdlc_worker/scripts/orchestrator.sh --resume 1.3
+  .asdlc_worker/scripts/orchestrator.sh --resume 1.3 --dry-run
+  .asdlc_worker/scripts/orchestrator.sh --feature-rich-design-planning -- --step 1.3
+  .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.3
+  .asdlc_worker/scripts/orchestrator.sh --debug -- --step 1.3
+  .asdlc_worker/scripts/orchestrator.sh --dry-run
 EOF
 }
 
@@ -184,7 +162,7 @@ ensure_executable_script() {
     die "Required script not found: $(repo_relpath "$script")"
   fi
   if [[ ! -x "$script" ]]; then
-    die "Script is not executable: $(repo_relpath "$script"). Fix: chmod +x ai/scripts/*.sh"
+    die "Script is not executable: $(repo_relpath "$script"). Fix: chmod +x .asdlc_worker/scripts/*.sh"
   fi
 }
 
@@ -193,16 +171,16 @@ ensure_history_file() {
 }
 
 ensure_ai_context_files() {
-  ensure_dir_writable "$ROOT/ai"
-  ensure_dir_writable "$ROOT/ai/step_designs"
-  ensure_dir_writable "$ROOT/ai/step_plans"
-  ensure_dir_writable "$ROOT/ai/step_review_results"
-  ensure_dir_writable "$ROOT/ai/logs"
-  ensure_dir_writable "$ROOT/ai/prompts/design_prompts"
-  ensure_dir_writable "$ROOT/ai/prompts/plan_prompts"
-  ensure_dir_writable "$ROOT/ai/prompts/impl_prompts"
-  ensure_dir_writable "$ROOT/ai/prompts/user_review_prompts"
-  ensure_dir_writable "$ROOT/ai/prompts/ai_audit_prompts"
+  ensure_dir_writable "$ASDLC_WORKER_HOME"
+  ensure_dir_writable "$ASDLC_STEP_DESIGNS_DIR"
+  ensure_dir_writable "$ASDLC_STEP_PLANS_DIR"
+  ensure_dir_writable "$ASDLC_STEP_REVIEW_RESULTS_DIR"
+  ensure_dir_writable "$ASDLC_LOGS_DIR"
+  ensure_dir_writable "$ASDLC_PROMPTS_DIR/design_prompts"
+  ensure_dir_writable "$ASDLC_PROMPTS_DIR/plan_prompts"
+  ensure_dir_writable "$ASDLC_PROMPTS_DIR/impl_prompts"
+  ensure_dir_writable "$ASDLC_PROMPTS_DIR/user_review_prompts"
+  ensure_dir_writable "$ASDLC_PROMPTS_DIR/ai_audit_prompts"
 
   # Skip file creation when the step plan branch already exists and we are not
   # on it — those files are tracked there, and creating them as untracked here
@@ -227,12 +205,12 @@ ensure_ai_context_files() {
 }
 
 ensure_orchestrator_prereqs() {
-  ensure_executable_script "$ROOT/ai/scripts/ai_design.sh"
-  ensure_executable_script "$ROOT/ai/scripts/ai_plan.sh"
-  ensure_executable_script "$ROOT/ai/scripts/ai_implementation.sh"
-  ensure_executable_script "$ROOT/ai/scripts/ai_user_review.sh"
-  ensure_executable_script "$ROOT/ai/scripts/ai_audit.sh"
-  ensure_executable_script "$ROOT/ai/scripts/post_review.sh"
+  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_design.sh"
+  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_plan.sh"
+  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_implementation.sh"
+  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_user_review.sh"
+  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_audit.sh"
+  ensure_executable_script "$ASDLC_SCRIPTS_DIR/post_review.sh"
 }
 
 extract_step_and_title_from_plan() {
@@ -352,9 +330,9 @@ resolve_log_path() {
   step_token="$(normalize_step_token "$step")"
 
   if [[ "$DEBUG_MODE" -eq 1 ]]; then
-    printf '%s/ai/logs/%s-%s-%s-log' "$ROOT" "$PROJECT" "$phase_token" "$step_token"
+    printf '%s/.asdlc_worker/logs/%s-%s-%s-log' "$ROOT" "$PROJECT" "$phase_token" "$step_token"
   else
-    printf '%s/ai/logs/%s-%s-latest-log' "$ROOT" "$PROJECT" "$phase_token"
+    printf '%s/.asdlc_worker/logs/%s-%s-latest-log' "$ROOT" "$PROJECT" "$phase_token"
   fi
 }
 
@@ -368,7 +346,7 @@ resolve_prompt_output_path() {
 
   case "$phase" in
     design)
-      base_dir="$ROOT/ai/prompts/design_prompts"
+      base_dir="$ASDLC_PROMPTS_DIR/design_prompts"
       if [[ "$DEBUG_MODE" -eq 1 ]]; then
         if [[ -n "$step" ]]; then
           file_name="${PROJECT}-step-$step.design.prompt.txt"
@@ -380,7 +358,7 @@ resolve_prompt_output_path() {
       fi
       ;;
     planning)
-      base_dir="$ROOT/ai/prompts/plan_prompts"
+      base_dir="$ASDLC_PROMPTS_DIR/plan_prompts"
       if [[ "$DEBUG_MODE" -eq 1 ]]; then
         if [[ -n "$step" ]]; then
           file_name="${PROJECT}-step-$step.planning.prompt.txt"
@@ -392,7 +370,7 @@ resolve_prompt_output_path() {
       fi
       ;;
     implementation)
-      base_dir="$ROOT/ai/prompts/impl_prompts"
+      base_dir="$ASDLC_PROMPTS_DIR/impl_prompts"
       if [[ "$DEBUG_MODE" -eq 1 ]]; then
         file_name="${PROJECT}-step-$step.prompt.txt"
       else
@@ -400,7 +378,7 @@ resolve_prompt_output_path() {
       fi
       ;;
     user_review)
-      base_dir="$ROOT/ai/prompts/user_review_prompts"
+      base_dir="$ASDLC_PROMPTS_DIR/user_review_prompts"
       if [[ "$DEBUG_MODE" -eq 1 ]]; then
         file_name="${PROJECT}-step-$step.user-review.prompt.txt"
       else
@@ -408,7 +386,7 @@ resolve_prompt_output_path() {
       fi
       ;;
     ai_audit)
-      base_dir="$ROOT/ai/prompts/ai_audit_prompts"
+      base_dir="$ASDLC_PROMPTS_DIR/ai_audit_prompts"
       if [[ "$DEBUG_MODE" -eq 1 ]]; then
         file_name="${PROJECT}-step-$step.ai-audit.prompt.txt"
       else
@@ -429,7 +407,7 @@ run_with_output_log() {
   shift 2
 
   local log_dir log_path
-  log_dir="$ROOT/ai/logs"
+  log_dir="$ASDLC_LOGS_DIR"
   ensure_dir_writable "$log_dir"
   log_path="$(resolve_log_path "$phase" "$step")"
   local err=""
@@ -583,7 +561,7 @@ run_planning_phase() {
   explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
   planning_prompt_out="$(resolve_prompt_output_path "planning" "$step")"
 
-  local plan_cmd=("$ROOT/ai/scripts/ai_plan.sh")
+  local plan_cmd=("$ASDLC_SCRIPTS_DIR/ai_plan.sh")
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
     plan_cmd+=("${PLAN_ARGS[@]}")
   fi
@@ -640,7 +618,7 @@ run_design_phase() {
   explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
   design_prompt_out="$(resolve_prompt_output_path "design" "$step")"
 
-  local design_cmd=("$ROOT/ai/scripts/ai_design.sh")
+  local design_cmd=("$ASDLC_SCRIPTS_DIR/ai_design.sh")
   if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
     design_cmd+=("${PLAN_ARGS[@]}")
   fi
@@ -710,7 +688,7 @@ make_sort_key() {
 }
 
 get_latest_step_plan() {
-  local dir="$ROOT/ai/step_plans"
+  local dir="$ASDLC_STEP_PLANS_DIR"
   if [[ ! -d "$dir" ]]; then
     echo "Step plan directory not found: $dir" >&2
     exit 1
@@ -828,7 +806,7 @@ load_project_binding() {
   fi
 
   if [[ ! -f "$PROJECT_BINDING_FILE" ]]; then
-    die "Required binding file is missing: $(repo_relpath "$PROJECT_BINDING_FILE"). Run ai/scripts/init_worker.sh first."
+    die "Required binding file is missing: $(repo_relpath "$PROJECT_BINDING_FILE"). Run .asdlc_worker/scripts/register_worker.sh first."
   fi
 
   BINDING_OVERMIND_SOURCE_PATH="$(yaml_get_scalar "$PROJECT_BINDING_FILE" "overmind_source_path" || true)"
@@ -855,7 +833,7 @@ load_project_binding() {
     die "Binding file is invalid: missing project_id in $(repo_relpath "$PROJECT_BINDING_FILE")."
   fi
   if [[ ! -d "$BINDING_OVERMIND_SOURCE_PATH" ]]; then
-    die "Bound overmind project repo does not exist: $BINDING_OVERMIND_SOURCE_PATH. Re-run ai/scripts/init_worker.sh."
+    die "Bound overmind project repo does not exist: $BINDING_OVERMIND_SOURCE_PATH. Re-run .asdlc_worker/scripts/register_worker.sh."
   fi
 
   BOUND_PROJECT_PATH="$BINDING_OVERMIND_SOURCE_PATH"
@@ -863,15 +841,15 @@ load_project_binding() {
 
   local _def_file="$BOUND_PROJECT_PATH/init_progress_definition.yaml"
   if [[ ! -f "$_def_file" ]]; then
-    die "Bound overmind project repo is missing init_progress_definition.yaml: $BOUND_PROJECT_PATH. Re-run ai/scripts/init_worker.sh against the correct project repo."
+    die "Bound overmind project repo is missing init_progress_definition.yaml: $BOUND_PROJECT_PATH. Re-run .asdlc_worker/scripts/register_worker.sh against the correct project repo."
   fi
   local _def_project_id=""
   _def_project_id="$(read_init_progress_project_id "$_def_file")"
   if [[ -z "$_def_project_id" ]]; then
-    die "init_progress_definition.yaml in bound project repo is missing meta_info.project_id: $BOUND_PROJECT_PATH. Re-run ai/scripts/init_worker.sh."
+    die "init_progress_definition.yaml in bound project repo is missing meta_info.project_id: $BOUND_PROJECT_PATH. Re-run .asdlc_worker/scripts/register_worker.sh."
   fi
   if [[ "$_def_project_id" != "$BINDING_PROJECT_ID" ]]; then
-    die "Bound project_id '$BINDING_PROJECT_ID' does not match meta_info.project_id '$_def_project_id' in init_progress_definition.yaml. Re-run ai/scripts/init_worker.sh against the correct project repo."
+    die "Bound project_id '$BINDING_PROJECT_ID' does not match meta_info.project_id '$_def_project_id' in init_progress_definition.yaml. Re-run .asdlc_worker/scripts/register_worker.sh against the correct project repo."
   fi
 }
 
@@ -1160,7 +1138,7 @@ mirror_selected_feature_to_runtime() {
     die "Selected feature requirements_ears.md is unusable (empty): $SELECTED_SOURCE_EARS_PATH"
   fi
 
-  ensure_dir_writable "$ROOT/overmind"
+  ensure_dir_writable "$ASDLC_OVERMIND_DIR"
   cp "$SELECTED_SOURCE_PLAN_PATH" "$IMPLEMENTATION_PLAN_PRIMARY"
   cp "$SELECTED_SOURCE_EARS_PATH" "$RUNTIME_REQUIREMENTS_PATH"
   IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
@@ -1217,7 +1195,7 @@ ensure_standalone_runtime_context() {
   fi
 
   SELECTED_FEATURE_ID=""
-  SELECTED_FEATURE_PATH="$ROOT/overmind"
+  SELECTED_FEATURE_PATH="$ASDLC_OVERMIND_DIR"
   SELECTED_SOURCE_PLAN_PATH=""
   SELECTED_SOURCE_EARS_PATH=""
   SELECTED_SELECTION_MODE="standalone_local"
@@ -1537,7 +1515,7 @@ get_preferred_step_plan() {
   local branch step plan
   branch="$(get_current_branch_name)"
   if step="$(get_step_from_branch_name "$branch")"; then
-    plan="$ROOT/ai/step_plans/step-$step.md"
+    plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
     if [[ -f "$plan" ]]; then
       printf '%s' "$plan"
       return 0
@@ -1567,7 +1545,7 @@ run_implementation_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ROOT/ai/step_plans/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
@@ -1585,7 +1563,7 @@ run_implementation_phase() {
 
   prompt_out="$(resolve_prompt_output_path "implementation" "$step")"
 
-  local prompt_cmd=("$ROOT/ai/scripts/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1628,7 +1606,7 @@ run_user_review_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ROOT/ai/step_plans/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
@@ -1645,7 +1623,7 @@ run_user_review_phase() {
   fi
 
   prompt_out="$(resolve_prompt_output_path "user_review" "$step")"
-  local prompt_cmd=("$ROOT/ai/scripts/ai_user_review.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_user_review.sh" --step-plan "$latest_plan" --out "$prompt_out")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1688,7 +1666,7 @@ run_ai_audit_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ROOT/ai/step_plans/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
@@ -1706,12 +1684,12 @@ run_ai_audit_phase() {
 
   if [[ "$DRY_RUN" -eq 0 ]] && ! is_user_review_complete_for_step "$step"; then
     echo "Cannot start ai_audit for step $step: user_review phase is incomplete." >&2
-    echo "Run: ai/scripts/orchestrator.sh --resume $step" >&2
+    echo "Run: .asdlc_worker/scripts/orchestrator.sh --resume $step" >&2
     exit 1
   fi
 
   prompt_out="$(resolve_prompt_output_path "ai_audit" "$step")"
-  local prompt_cmd=("$ROOT/ai/scripts/ai_audit.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_audit.sh" --step-plan "$latest_plan" --out "$prompt_out")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1751,7 +1729,7 @@ run_post_review_phase() {
   local latest_plan step
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ROOT/ai/step_plans/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
@@ -1768,15 +1746,15 @@ run_post_review_phase() {
   fi
 
   if [[ "$DRY_RUN" -eq 0 ]]; then
-    local review_artifact="$ROOT/ai/step_review_results/review_result-$step.md"
+    local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
     if [[ ! -f "$review_artifact" ]]; then
       echo "Cannot start post_review for step $step: ai_audit phase is incomplete." >&2
-      echo "Run: ai/scripts/orchestrator.sh --resume $step" >&2
+      echo "Run: .asdlc_worker/scripts/orchestrator.sh --resume $step" >&2
       exit 1
     fi
   fi
 
-  local cmd=("$ROOT/ai/scripts/post_review.sh" --step "$step")
+  local cmd=("$ASDLC_SCRIPTS_DIR/post_review.sh" --step "$step")
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "post_review" "$step")")"
     echo "$(shell_join "${cmd[@]}")"
@@ -1843,8 +1821,8 @@ compute_runtime_plan_digest() {
   local digest=""
   if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
     && git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH" \
-    && git -C "$ROOT" cat-file -e "$RUNTIME_BRANCH:overmind/implementation_plan.md" 2>/dev/null; then
-    digest="$(git -C "$ROOT" show "$RUNTIME_BRANCH:overmind/implementation_plan.md" | cksum | awk '{print $1 ":" $2}' || true)"
+    && git -C "$ROOT" cat-file -e "$RUNTIME_BRANCH:.asdlc_worker/overmind/implementation_plan.md" 2>/dev/null; then
+    digest="$(git -C "$ROOT" show "$RUNTIME_BRANCH:.asdlc_worker/overmind/implementation_plan.md" | cksum | awk '{print $1 ":" $2}' || true)"
     if [[ -n "$digest" ]]; then
       printf '%s' "$digest"
       return 0
@@ -1862,8 +1840,8 @@ copy_runtime_plan_to_file() {
   local target_file="$1"
   if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
     && git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH" \
-    && git -C "$ROOT" cat-file -e "$RUNTIME_BRANCH:overmind/implementation_plan.md" 2>/dev/null; then
-    git -C "$ROOT" show "$RUNTIME_BRANCH:overmind/implementation_plan.md" >"$target_file"
+    && git -C "$ROOT" cat-file -e "$RUNTIME_BRANCH:.asdlc_worker/overmind/implementation_plan.md" 2>/dev/null; then
+    git -C "$ROOT" show "$RUNTIME_BRANCH:.asdlc_worker/overmind/implementation_plan.md" >"$target_file"
     return 0
   fi
   if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
@@ -1884,7 +1862,7 @@ sync_runtime_plan_back_to_selected_feature_source() {
   tmp_runtime="$(mktemp)"
   if ! copy_runtime_plan_to_file "$tmp_runtime"; then
     rm -f "$tmp_runtime"
-    die "Cannot sync runtime plan after phase '$phase': overmind/implementation_plan.md is unavailable."
+    die "Cannot sync runtime plan after phase '$phase': .asdlc_worker/overmind/implementation_plan.md is unavailable."
   fi
 
   if [[ -f "$SELECTED_SOURCE_PLAN_PATH" ]] && cmp -s "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH"; then
@@ -2206,7 +2184,7 @@ list_unchecked_functional_requirement_items() {
 
 phase_eval_functional_requirements_counts() {
   local step="$1"
-  local step_plan="$ROOT/ai/step_plans/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
   local functional_section normalized_items
   local total=0
   local done=0
@@ -2243,7 +2221,7 @@ ensure_implementation_phase_completion_gate() {
   local ordered_counts ordered_state ordered_total ordered_checked
   local functional_counts functional_state functional_total functional_done
   local rerun_cmd
-  rerun_cmd="ai/scripts/orchestrator.sh --resume $step"
+  rerun_cmd=".asdlc_worker/scripts/orchestrator.sh --resume $step"
   ordered_counts="$(phase_eval_ordered_plan_counts "$step")"
   IFS='|' read -r ordered_state ordered_total ordered_checked _ <<<"$ordered_counts"
   functional_counts="$(phase_eval_functional_requirements_counts "$step")"
@@ -2251,7 +2229,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "missing_step_plan" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan not found: $ROOT/ai/step_plans/step-$step.md" >&2
+    echo "Step plan not found: $ASDLC_STEP_PLANS_DIR/step-$step.md" >&2
     echo "Implementation phase was not finished correctly because step plan is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2259,7 +2237,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "missing_section" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan gate requires section '## Plan (ordered)' in ai/step_plans/step-$step.md." >&2
+    echo "Step plan gate requires section '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step.md." >&2
     echo "Implementation phase was not finished correctly because ordered checklist section is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2267,7 +2245,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "no_checklist_items" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "No ordered plan checklist items were found under '## Plan (ordered)' in ai/step_plans/step-$step.md." >&2
+    echo "No ordered plan checklist items were found under '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step.md." >&2
     echo "Add ordered bullets as checklist items and mark them [x] only when each is proven complete." >&2
     echo "Implementation phase was not finished correctly because ordered checklist items are missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
@@ -2276,7 +2254,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
     local step_plan ordered_section normalized_items unchecked
-    step_plan="$ROOT/ai/step_plans/step-$step.md"
+    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
     ordered_section="$(get_markdown_section_body "$step_plan" "## Plan (ordered)")"
     normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
     unchecked="$(list_unchecked_ordered_plan_items "$normalized_items")"
@@ -2294,7 +2272,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_state" == "missing_section" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in ai/step_plans/step-$step.md." >&2
+    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-$step.md." >&2
     echo "Implementation phase was not finished correctly because functional requirements section is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2302,7 +2280,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_state" == "no_items" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "No translated functional requirements were found in ai/step_plans/step-$step.md." >&2
+    echo "No translated functional requirements were found in .asdlc_worker/step_plans/step-$step.md." >&2
     echo "Add entries like: - [ ] FR-$step-001 The system SHALL ... EARS[REQ-...]." >&2
     echo "Implementation phase was not finished correctly because functional requirements checklist is empty." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
@@ -2311,7 +2289,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_done" -ne "$functional_total" ]]; then
     local step_plan functional_section normalized_fr unchecked_fr
-    step_plan="$ROOT/ai/step_plans/step-$step.md"
+    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
     functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
     normalized_fr="$(list_normalized_functional_requirement_items "$functional_section")"
     unchecked_fr="$(list_unchecked_functional_requirement_items "$normalized_fr")"
@@ -2331,7 +2309,7 @@ ensure_implementation_phase_completion_gate() {
 
 phase_eval_ordered_plan_counts() {
   local step="$1"
-  local step_plan="$ROOT/ai/step_plans/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
   local ordered_section normalized_items
   local total=0
   local checked=0
@@ -2395,9 +2373,9 @@ check_required_sections() {
 
 evaluate_design_phase() {
   local step="$1"
-  local design_file="$ROOT/ai/step_designs/step-$step-design.md"
+  local design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-design.md"
   if [[ ! -f "$design_file" ]]; then
-    phase_eval_set "design" "incomplete" "missing ai/step_designs/step-$step-design.md"
+    phase_eval_set "design" "incomplete" "missing .asdlc_worker/step_designs/step-$step-design.md"
     return 0
   fi
 
@@ -2408,7 +2386,7 @@ evaluate_planning_phase() {
   local step="$1"
   local counts="$2"
   local plan_checked have_review review_checked impl_total impl_checked
-  local step_plan="$ROOT/ai/step_plans/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
 
   IFS='|' read -r _ plan_checked have_review review_checked impl_total impl_checked <<<"$counts"
 
@@ -2432,7 +2410,7 @@ implementation_branch_exists_for_step() {
 
 is_implementation_complete_for_step() {
   local step="$1"
-  local review_file="$ROOT/ai/step_review_results/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
 
   if [[ -f "$review_file" ]]; then
     return 0
@@ -2451,10 +2429,10 @@ is_implementation_complete_for_step() {
 
 evaluate_implementation_phase() {
   local step="$1"
-  local step_plan="$ROOT/ai/step_plans/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
 
   if [[ ! -f "$step_plan" ]]; then
-    phase_eval_set "implementation" "invalid" "missing ai/step_plans/step-$step.md"
+    phase_eval_set "implementation" "invalid" "missing .asdlc_worker/step_plans/step-$step.md"
     return 0
   fi
 
@@ -2476,7 +2454,7 @@ user_review_branch_exists_for_step() {
 
 is_user_review_complete_for_step() {
   local step="$1"
-  local review_file="$ROOT/ai/step_review_results/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
 
   if [[ -f "$review_file" ]]; then
     return 0
@@ -2500,9 +2478,9 @@ evaluate_user_review_phase() {
 
 evaluate_ai_audit_phase() {
   local step="$1"
-  local review_file="$ROOT/ai/step_review_results/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
   if [[ ! -f "$review_file" ]]; then
-    phase_eval_set "ai_audit" "incomplete" "missing ai/step_review_results/review_result-$step.md"
+    phase_eval_set "ai_audit" "incomplete" "missing .asdlc_worker/step_review_results/review_result-$step.md"
     return 0
   fi
 
@@ -2520,9 +2498,9 @@ evaluate_post_review_phase() {
     return 0
   fi
 
-  local history_file="$ROOT/ai/history.md"
+  local history_file="$ASDLC_HISTORY_FILE"
   if [[ ! -f "$history_file" ]]; then
-    phase_eval_set "post_review" "incomplete" "missing ai/history.md"
+    phase_eval_set "post_review" "incomplete" "missing .asdlc_worker/history.md"
     return 0
   fi
 
@@ -2786,11 +2764,11 @@ if [[ "$DRY_RUN" -eq 0 && "$RAN_AI_AUDIT" -eq 1 ]]; then
     if [[ -n "$step" ]]; then
       echo "ai_audit phase completed for step $step." >&2
       echo "Run to continue this step:" >&2
-      echo "  ai/scripts/orchestrator.sh --resume $step" >&2
+      echo "  .asdlc_worker/scripts/orchestrator.sh --resume $step" >&2
     else
       echo "ai_audit phase completed." >&2
       echo "Run to continue this step:" >&2
-      echo "  ai/scripts/orchestrator.sh" >&2
+      echo "  .asdlc_worker/scripts/orchestrator.sh" >&2
     fi
   else
     if [[ -n "$step" ]]; then
@@ -2800,13 +2778,13 @@ if [[ "$DRY_RUN" -eq 0 && "$RAN_AI_AUDIT" -eq 1 ]]; then
     fi
   fi
   if [[ "$DEBUG_MODE" -eq 1 ]]; then
-    echo "Logs: ai/logs (<project>-<phase>-<step>-log)." >&2
+    echo "Logs: .asdlc_worker/logs (<project>-<phase>-<step>-log)." >&2
   else
-    echo "Logs: ai/logs (<project>-<phase>-latest-log, overwritten each run)." >&2
+    echo "Logs: .asdlc_worker/logs (<project>-<phase>-latest-log, overwritten each run)." >&2
   fi
   if [[ "$RAN_POST_REVIEW" -eq 1 ]]; then
-    echo "History: ai/history.md (single consolidated step record updated)." >&2
+    echo "History: .asdlc_worker/history.md (single consolidated step record updated)." >&2
   else
-    echo "History: ai/history.md (no update; run post_review to consolidate step metrics)." >&2
+    echo "History: .asdlc_worker/history.md (no update; run post_review to consolidate step metrics)." >&2
   fi
 fi

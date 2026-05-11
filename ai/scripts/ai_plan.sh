@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/helpers/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
 PROJECT="$(basename "$ROOT")"
-PLAN="$ROOT/overmind/implementation_plan.md"
-PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
-DECISIONS="$ROOT/ai/decisions.md"
-BLOCKER_LOG="$ROOT/ai/blocker_log.md"
-OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
+PLAN="$ASDLC_RUNTIME_PLAN_PATH"
+PROCESS="$ASDLC_PROCESS_FILE"
+DECISIONS="$ASDLC_DECISIONS_FILE"
+BLOCKER_LOG="$ASDLC_BLOCKER_LOG_FILE"
+OPEN_QUESTIONS="$ASDLC_OPEN_QUESTIONS_FILE"
 AGENTS="$ROOT/AGENTS.md"
-PLANNING_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_planning_readiness.sh"
-STEP_PLAN_TEMPLATE="$ROOT/ai/templates/step_plan_TEMPLATE.md"
-STEP_PLAN_GOLDEN="$ROOT/ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md"
+PLANNING_READINESS_HELPER="$ASDLC_HELPERS_DIR/check_planning_readiness.sh"
+STEP_PLAN_TEMPLATE="$ASDLC_TEMPLATES_DIR/step_plan_TEMPLATE.md"
+STEP_PLAN_GOLDEN="$ASDLC_GOLDEN_EXAMPLES_DIR/step_plan_GOLDEN_EXAMPLE.md"
 
 STEP=""
 OUT=""
@@ -22,13 +25,13 @@ FEATURE_RICH_DESIGN_PLANNING=0
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_plan.sh [--step 1.3] [--out file] [--design file] [--include-agents] [--branch-name name] [--feature-rich-design-planning]
+Usage: .asdlc_worker/scripts/ai_plan.sh [--step 1.3] [--out file] [--design file] [--include-agents] [--branch-name name] [--feature-rich-design-planning]
 
 Defaults:
-  - If --step is omitted, uses the first unchecked bullet in overmind/implementation_plan.md.
-  - If --out is omitted, uses ai/step_plans/step-<step>.md (created from ai/templates/step_plan_TEMPLATE.md if missing).
-  - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required; hard fail if missing).
-  - ai/decisions.md is pointer-only by default.
+  - If --step is omitted, uses the first unchecked bullet in .asdlc_worker/overmind/implementation_plan.md.
+  - If --out is omitted, uses .asdlc_worker/step_plans/step-<step>.md (created from .asdlc_worker/templates/step_plan_TEMPLATE.md if missing).
+  - If --design is omitted, uses .asdlc_worker/step_designs/step-<step>-design.md (required; hard fail if missing).
+  - .asdlc_worker/decisions.md is pointer-only by default.
   - AGENTS.md is referenced by default (pointer-only); use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-plan unless --branch-name is provided.
   - --feature-rich-design-planning enables opt-in richer planning guidance for optional hardening decisions.
@@ -193,8 +196,8 @@ get_markdown_section_body() {
 
 get_design_adr_heading() {
   local file="$1"
-  if grep -Fq "## Applicable ADR Shortlist (from ai/decisions.md)" "$file"; then
-    printf '## Applicable ADR Shortlist (from ai/decisions.md)'
+  if grep -Fq "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "$file"; then
+    printf '## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)'
     return 0
   fi
   if grep -Fq "## Applicable ADR Shortlist" "$file"; then
@@ -528,14 +531,14 @@ done
 if [[ -z "$STEP" ]]; then
   line="$(get_next_unchecked)"
   if [[ -z "$line" ]]; then
-    echo "No unchecked bullets found in overmind/implementation_plan.md." >&2
+    echo "No unchecked bullets found in .asdlc_worker/overmind/implementation_plan.md." >&2
     exit 1
   fi
   IFS='|' read -r STEP STEP_TITLE BULLET <<<"$line"
 else
   STEP_TITLE="$(get_step_title "$STEP")"
   if [[ -z "$STEP_TITLE" ]]; then
-    echo "Step $STEP not found in overmind/implementation_plan.md." >&2
+    echo "Step $STEP not found in .asdlc_worker/overmind/implementation_plan.md." >&2
     exit 1
   fi
   BULLET="$(get_step_first_unchecked "$STEP")"
@@ -545,16 +548,16 @@ else
 fi
 
 if [[ -z "$OUT" ]]; then
-  OUT="$ROOT/ai/step_plans/step-$STEP.md"
+  OUT="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
 fi
 
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ROOT/ai/step_designs/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
   echo "Feature design artifact not found at $DESIGN_FILE." >&2
-  echo "Run ai/scripts/ai_design.sh --step $STEP first." >&2
+  echo "Run .asdlc_worker/scripts/ai_design.sh --step $STEP first." >&2
   exit 1
 fi
 
@@ -571,7 +574,7 @@ ensure_planning_branch
 
 STEP_SECTION="$(get_step_section "$STEP")"
 if [[ -z "$STEP_SECTION" ]]; then
-  echo "Step $STEP section not found in overmind/implementation_plan.md." >&2
+  echo "Step $STEP section not found in .asdlc_worker/overmind/implementation_plan.md." >&2
   exit 1
 fi
 
@@ -601,23 +604,23 @@ fi
 
 DESIGN_AGENTS_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints")"
 if [[ -z "$DESIGN_AGENTS_SECTION" ]]; then
-  DESIGN_AGENTS_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+  DESIGN_AGENTS_SECTION="- (missing in design artifact; update .asdlc_worker/step_designs/step-$STEP-design.md)"
 fi
 if DESIGN_UR_HEADING="$(get_design_ur_heading "$DESIGN_FILE")"; then
   DESIGN_UR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_UR_HEADING")"
 else
-  DESIGN_UR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+  DESIGN_UR_SECTION="- (missing in design artifact; update .asdlc_worker/step_designs/step-$STEP-design.md)"
 fi
 if [[ -z "$DESIGN_UR_SECTION" ]]; then
-  DESIGN_UR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+  DESIGN_UR_SECTION="- (missing in design artifact; update .asdlc_worker/step_designs/step-$STEP-design.md)"
 fi
 if DESIGN_ADR_HEADING="$(get_design_adr_heading "$DESIGN_FILE")"; then
   DESIGN_ADR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_ADR_HEADING")"
 else
-  DESIGN_ADR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+  DESIGN_ADR_SECTION="- (missing in design artifact; update .asdlc_worker/step_designs/step-$STEP-design.md)"
 fi
 if [[ -z "$DESIGN_ADR_SECTION" ]]; then
-  DESIGN_ADR_SECTION="- (missing in design artifact; update ai/step_designs/step-$STEP-design.md)"
+  DESIGN_ADR_SECTION="- (missing in design artifact; update .asdlc_worker/step_designs/step-$STEP-design.md)"
 fi
 if DESIGN_THINGS_TO_DECIDE_HEADING="$(get_design_things_to_decide_heading "$DESIGN_FILE")"; then
   DESIGN_THINGS_TO_DECIDE_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_THINGS_TO_DECIDE_HEADING")"
@@ -668,18 +671,18 @@ emit() {
   fi
 
   printf 'Planning phase for Step %s.\n' "$STEP"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 2, Estimation Gates, Prompt governance) as the process rules for this phase.\n'
+  printf 'Use .asdlc_worker/AI_DEVELOPMENT_PROCESS.md (Section 2, Estimation Gates, Prompt governance) as the process rules for this phase.\n'
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     printf 'Feature-rich design/planning mode: ENABLED (planning-only add-on).\n'
     printf 'Derive up to 5 optional hardening candidates from design risks/trade-offs and record each in `## Decisions Needed` as `Accepted` or `Deferred` with rationale.\n'
     printf 'If any optional item materially changes implementation path and remains unresolved, ask one explicit two-option prompt (`1.` recommended, `2.` alternative) before planning closure.\n'
   fi
   if [[ -n "$DESIGN_LAR_SECTION" ]]; then
-    printf 'Linked Artifacts (in scope): after writing the step plan, invoke `ai/scripts/helpers/sync_step_lars.sh %s %s` to sync the ## Linked Artifacts (in scope) section deterministically; do not echo the block textually into the step plan.\n' "$STEP" "$out_label"
-    printf 'Fetch rule (planning): at the start of context-gathering, fetch each in-scope LAR locator using available web/MCP tooling and treat the fetched content as one more context input alongside overmind/implementation_plan.md, overmind/reqirements_ears.md, the design artifact, and ADRs. Route any fetch failure through existing ask-user mechanisms (ai/open_questions.md, ai/blocker_log.md, two-option prompts) using the standard "cannot resolve LAR-NNN (locator: ...). How should I proceed?" question pattern.\n'
+    printf 'Linked Artifacts (in scope): after writing the step plan, invoke `.asdlc_worker/scripts/helpers/sync_step_lars.sh %s %s` to sync the ## Linked Artifacts (in scope) section deterministically; do not echo the block textually into the step plan.\n' "$STEP" "$out_label"
+    printf 'Fetch rule (planning): at the start of context-gathering, fetch each in-scope LAR locator using available web/MCP tooling and treat the fetched content as one more context input alongside .asdlc_worker/overmind/implementation_plan.md, .asdlc_worker/overmind/reqirements_ears.md, the design artifact, and ADRs. Route any fetch failure through existing ask-user mechanisms (.asdlc_worker/open_questions.md, .asdlc_worker/blocker_log.md, two-option prompts) using the standard "cannot resolve LAR-NNN (locator: ...). How should I proceed?" question pattern.\n'
   fi
   printf 'Before ending the planning phase, run `%s %s`.\n' "${PLANNING_READINESS_HELPER#"$ROOT"/}" "$STEP"
-  printf 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.\n'
+  printf 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.\n'
   printf 'Only after the Planning Readiness Gate is satisfied, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Commit gate: when you commit planning artifacts, include both the step plan and the feature design artifact (do not commit only %s).\n' "$out_label"
   printf 'Minimum commit set (if changed): %s, %s\n' "$out_label" "$design_label"
@@ -693,9 +696,9 @@ emit() {
   printf 'Use golden examples from the context pack.\n'
   printf '\n'
   printf 'Context pack\n'
-  printf '== overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
+  printf '== .asdlc_worker/overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
-  printf '== ai/step_designs/step-%s-design.md ==\n' "$STEP"
+  printf '== .asdlc_worker/step_designs/step-%s-design.md ==\n' "$STEP"
   cat "$DESIGN_FILE"
   printf '\n\n'
   printf '== Design-extracted target bullets ==\n'
@@ -722,21 +725,21 @@ emit() {
   cat "$OUT"
   printf '\n\n'
   if [[ -f "$STEP_PLAN_GOLDEN" ]]; then
-    printf '== ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md ==\n'
+    printf '== .asdlc_worker/golden_examples/step_plan_GOLDEN_EXAMPLE.md ==\n'
     printf 'Read directly from repo as example reference.\n'
-    printf 'Path: ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md\n\n'
+    printf 'Path: .asdlc_worker/golden_examples/step_plan_GOLDEN_EXAMPLE.md\n\n'
   fi
-  printf '== overmind/reqirements_ears.md ==\n'
+  printf '== .asdlc_worker/overmind/reqirements_ears.md ==\n'
   printf 'Pointer-only by default. Translate from the design-selected EARS section above into plan functional requirements.\n'
-  printf 'Path: overmind/reqirements_ears.md\n\n'
-  printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
+  printf 'Path: .asdlc_worker/overmind/reqirements_ears.md\n\n'
+  printf '== .asdlc_worker/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
-  printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"
+  printf '== .asdlc_worker/open_questions.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$OPEN_QUESTIONS_SECTION"
-  printf '== ai/decisions.md (Accepted ADRs) ==\n'
+  printf '== .asdlc_worker/decisions.md (Accepted ADRs) ==\n'
   printf 'Pointer-only by default: rely on design-extracted ADR shortlist above.\n'
-  printf 'Path: ai/decisions.md\n\n'
-  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Planning + Estimation) ==\n'
+  printf 'Path: .asdlc_worker/decisions.md\n\n'
+  printf '== .asdlc_worker/AI_DEVELOPMENT_PROCESS.md (Planning + Estimation) ==\n'
   planning_sections="$(get_process_planning_sections)"
   estimation_gates="$(get_process_estimation_gates)"
   if [[ -n "$planning_sections" ]]; then

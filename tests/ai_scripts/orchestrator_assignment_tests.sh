@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -67,42 +68,45 @@ assert_file_not_exists() {
 
 setup_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
-  cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
-  chmod +x "$repo_dir/ai/scripts/orchestrator.sh"
-  cat >"$repo_dir/ai/scripts/ai_design.sh" <<'EOF'
+  cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_design.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "design"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_plan.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "planning"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_implementation.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "implementation"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_user_review.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "user_review"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_audit.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "ai_audit"
 EOF
-  cat >"$repo_dir/ai/scripts/post_review.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/post_review.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "post_review"
 EOF
-  chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" \
-    "$repo_dir/ai/scripts/ai_audit.sh" "$repo_dir/ai/scripts/post_review.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_design.sh" "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
+    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" \
+    "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'MODELS'
 design | echo | mock-model
 MODELS
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo
@@ -121,7 +125,7 @@ EOF
     git config user.name "Test User"
     git config user.email "test@example.com"
     echo "seed" >README.md
-    git add README.md ai
+    git add README.md .asdlc_worker ai overmind
     git commit -qm "seed"
   )
 }
@@ -182,12 +186,12 @@ write_local_overmind_runtime() {
   local worker_uuid="$2"
   local step="${3:-1.7}"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<EOF
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<EOF
 ### Step $step Local runtime step
 #### Assigned: $worker_uuid
 - [ ] Plan and discuss the step (SP=1)
 EOF
-  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Local runtime requirement
 - The system SHALL support local standalone behavior.
 EOF
@@ -222,17 +226,17 @@ test_bound_project_single_feature_auto_selected() {
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled"
   assert_contains "$out" "orchestrator: selected feature 'feature-a' (mode=auto_single, project=project-alpha, step=2.2)."
   assert_contains "$out" "orchestrator: resolved routed step '2.2' for design; injecting --step into ai_design.sh."
-  assert_contains "$out" "dry-run log: ai/logs/repo-single-feature-design-2-2-log"
-  assert_contains "$out" "ai/scripts/ai_design.sh --step 2.2"
+  assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-single-feature-design-2-2-log"
+  assert_contains "$out" ".asdlc_worker/scripts/ai_design.sh --step 2.2"
   assert_not_contains "$out" "design-1-1-log"
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
-  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "feature_id: 'feature-a'"
-  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "selection_mode: 'auto_single'"
-  assert_file_contains "$repo_dir/overmind/implementation_plan.md" "### Step 2.2 Worker step"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "feature_id: 'feature-a'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "selection_mode: 'auto_single'"
+  assert_file_contains "$repo_dir/.asdlc_worker/overmind/implementation_plan.md" "### Step 2.2 Worker step"
 }
 
 test_bound_project_path_equals_overmind_source_path() {
@@ -251,11 +255,11 @@ test_bound_project_path_equals_overmind_source_path() {
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "selected feature 'feature-x'"
   assert_contains "$out" "step=1.5"
-  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "bound_project_path: '$source_dir'"
-  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "overmind_source_path: '$source_dir'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "bound_project_path: '$source_dir'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "overmind_source_path: '$source_dir'"
 }
 
 test_git_directory_is_skipped_during_feature_enumeration() {
@@ -277,7 +281,7 @@ test_git_directory_is_skipped_during_feature_enumeration() {
   echo "ref: refs/heads/main" >"$source_dir/.git/HEAD"
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "selected feature 'feature-real'"
   assert_contains "$out" "step=3.1"
   assert_not_contains "$out" "feature '.git'"
@@ -302,7 +306,7 @@ test_non_feature_subdirectory_is_skipped() {
   echo "documentation" >"$source_dir/docs/readme.md"
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "selected feature 'feature-valid'"
   assert_not_contains "$out" "feature 'docs'"
 }
@@ -327,11 +331,11 @@ test_requested_step_filters_candidate_features() {
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run -- --step 2.2 2>&1)"
-  assert_contains "$out" "dry-run log: ai/logs/repo-step-filter-design-2-2-log"
-  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "feature_id: 'feature-b'"
-  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "requested_step: '2.2'"
-  assert_file_contains "$repo_dir/ai/feature_sync.yaml" "selected_step: '2.2'"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run -- --step 2.2 2>&1)"
+  assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-step-filter-design-2-2-log"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "feature_id: 'feature-b'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "requested_step: '2.2'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "selected_step: '2.2'"
 }
 
 test_multiple_candidate_features_require_explicit_interactive_selection() {
@@ -356,7 +360,7 @@ test_multiple_candidate_features_require_explicit_interactive_selection() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run -- --step 1.1 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
@@ -382,7 +386,7 @@ test_fails_when_no_assigned_worker_steps_exist() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
@@ -409,7 +413,7 @@ EOF
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
@@ -437,7 +441,7 @@ EOF
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
@@ -459,7 +463,7 @@ test_fails_when_project_id_mismatch_in_init_progress_definition() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
@@ -483,13 +487,13 @@ test_planning_syncs_runtime_plan_back_to_selected_feature_source() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
   feature_plan="$source_dir/feature-sync/implementation_plan.md"
 
-  cat >"$repo_dir/ai/scripts/ai_plan.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "# planning prompt"
-echo "# synced-by-planning" >> overmind/implementation_plan.md
+echo "# synced-by-planning" >> .asdlc_worker/overmind/implementation_plan.md
 EOF
-  chmod +x "$repo_dir/ai/scripts/ai_plan.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh"
   set_single_phase_model "$repo_dir" "planning"
   cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
 # Review Result: Step 1.1
@@ -497,7 +501,7 @@ EOF
 - None.
 EOF
 
-  (cd "$repo_dir" && ai/scripts/orchestrator.sh -- --step 1.1 >/dev/null 2>/dev/null)
+  (cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/dev/null 2>/dev/null)
   assert_file_contains "$feature_plan" "# synced-by-planning"
 }
 
@@ -518,9 +522,9 @@ test_planning_dry_run_injects_resolved_step_when_not_explicit() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
   set_single_phase_model "$repo_dir" "planning"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
-  assert_contains "$out" "ai/scripts/ai_plan.sh --step 3.4"
-  assert_contains "$out" "dry-run log: ai/logs/repo-planning-step-injection-planning-latest-log"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  assert_contains "$out" ".asdlc_worker/scripts/ai_plan.sh --step 3.4"
+  assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-planning-step-injection-planning-latest-log"
 }
 
 test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation() {
@@ -535,13 +539,13 @@ test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation()
   write_local_overmind_runtime "$repo_dir" "$worker_uuid" "7.3"
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --standalone --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone --debug --dry-run 2>&1)"
   assert_contains "$out" "orchestrator: standalone mode enabled; bypassing ASDLC feature discovery, remote validation, and artifact mirroring."
-  assert_contains "$out" "orchestrator: standalone mode runtime inputs: overmind/implementation_plan.md, overmind/reqirements_ears.md."
-  assert_contains "$out" "orchestrator: selected standalone step '7.3' for worker '$worker_uuid' from overmind/implementation_plan.md."
-  assert_contains "$out" "ai/scripts/ai_design.sh --step 7.3"
-  assert_contains "$out" "dry-run log: ai/logs/repo-standalone-local-routing-design-7-3-log"
-  assert_file_not_exists "$repo_dir/ai/feature_sync.yaml"
+  assert_contains "$out" "orchestrator: standalone mode runtime inputs: .asdlc_worker/overmind/implementation_plan.md, .asdlc_worker/overmind/reqirements_ears.md."
+  assert_contains "$out" "orchestrator: selected standalone step '7.3' for worker '$worker_uuid' from .asdlc_worker/overmind/implementation_plan.md."
+  assert_contains "$out" ".asdlc_worker/scripts/ai_design.sh --step 7.3"
+  assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-standalone-local-routing-design-7-3-log"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
 }
 
 test_standalone_fails_fast_when_local_runtime_ears_missing() {
@@ -554,7 +558,7 @@ test_standalone_fails_fast_when_local_runtime_ears_missing() {
 
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
-  cat >"$repo_dir/overmind/implementation_plan.md" <<EOF
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<EOF
 ### Step 1.2 Missing local ears
 #### Assigned: $worker_uuid
 - [ ] Plan and discuss the step (SP=1)
@@ -562,11 +566,11 @@ EOF
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --standalone --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
-  assert_contains "$out" "Standalone mode requires local runtime EARS: overmind/reqirements_ears.md."
+  assert_contains "$out" "Standalone mode requires local runtime EARS: .asdlc_worker/overmind/reqirements_ears.md."
 }
 
 test_dep_none_step_is_selected() {
@@ -590,7 +594,7 @@ test_dep_none_step_is_selected() {
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "selected feature 'feature-dep-none'"
   assert_contains "$out" "step=2.1"
 }
@@ -611,7 +615,7 @@ test_dep_missing_line_step_is_selected() {
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "step=3.1"
 }
 
@@ -636,7 +640,7 @@ test_dep_satisfied_step_is_selected() {
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "step=2.1"
 }
 
@@ -665,7 +669,7 @@ test_dep_not_satisfied_skips_step_selects_next() {
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "step=2.2"
   assert_not_contains "$out" "step=2.1"
 }
@@ -693,7 +697,7 @@ test_all_assigned_steps_blocked_exits_nonzero_with_blocked_message() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
@@ -719,7 +723,7 @@ test_dep_nonexistent_step_id_is_plan_error() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
@@ -749,7 +753,7 @@ test_dep_zero_bullet_step_is_plan_error() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"
@@ -782,7 +786,7 @@ test_multi_dep_all_satisfied_step_selected() {
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --debug --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "step=2.1"
 }
 
@@ -813,7 +817,7 @@ test_multi_dep_one_unsatisfied_step_skipped() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/orchestrator.sh --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   status=$?
   set -e
   assert_nonzero_status "$status"

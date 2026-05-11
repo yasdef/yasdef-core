@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-PLAN="$ROOT/overmind/implementation_plan.md"
-REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
+PLAN="$ASDLC_RUNTIME_PLAN_PATH"
+REQUIREMENTS="$ASDLC_RUNTIME_EARS_PATH"
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/helpers/sync_step_lars.sh <step> <target-artifact-path>
+Usage: .asdlc_worker/scripts/helpers/sync_step_lars.sh <step> <target-artifact-path>
 
-Recomputes the per-step LAR funnel from overmind/implementation_plan.md and
-overmind/reqirements_ears.md and idempotently writes/replaces the
+Recomputes the per-step LAR funnel from .asdlc_worker/overmind/implementation_plan.md and
+.asdlc_worker/overmind/reqirements_ears.md and idempotently writes/replaces the
 ## Linked Artifacts (in scope) section in the target artifact.
 
 When no LARs are in scope the target artifact is left unchanged (no-op).
