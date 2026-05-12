@@ -60,6 +60,26 @@ assert_line_count() {
   assert_equal "$expected" "$actual"
 }
 
+assert_file_tracked_at_head() {
+  local repo_dir="$1"
+  local path="$2"
+  if ! git -C "$repo_dir" ls-tree -r --name-only HEAD | grep -Fxq "$path"; then
+    echo "Assertion failed: expected HEAD to track file: $path" >&2
+    exit 1
+  fi
+}
+
+assert_git_status_clean() {
+  local repo_dir="$1"
+  local status=""
+  status="$(git -C "$repo_dir" status --porcelain --untracked-files=all)"
+  if [[ -n "$status" ]]; then
+    echo "Assertion failed: expected clean git status in $repo_dir" >&2
+    echo "$status" >&2
+    exit 1
+  fi
+}
+
 resolved_path() {
   local path="$1"
   (cd "$path" && pwd -P)
@@ -67,7 +87,12 @@ resolved_path() {
 
 run_init_runtime() {
   local target_path="$1"
-  printf '%s\n' "$target_path" | "$INIT_RUNTIME_SRC"
+  printf '%s\n' "$target_path" | \
+    GIT_AUTHOR_NAME="Test User" \
+    GIT_AUTHOR_EMAIL="test@example.com" \
+    GIT_COMMITTER_NAME="Test User" \
+    GIT_COMMITTER_EMAIL="test@example.com" \
+    "$INIT_RUNTIME_SRC"
 }
 
 seed_repo() {
@@ -158,6 +183,14 @@ test_init_bootstraps_existing_git_root() {
   assert_contains "$(cat "$runtime_dir/asdlc_worker.yaml")" "worker_repo_root: '$repo_resolved'"
   assert_line_count "1" ".asdlc_worker/scripts" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md" "$repo_dir/.git/info/exclude"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/blocker_log.md"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/decisions.md"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/history.md"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/open_questions.md"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/user_review.md"
+  assert_equal "asdlc worker added" "$(git -C "$repo_dir" log -1 --pretty=%s)"
+  assert_git_status_clean "$repo_dir"
 }
 
 test_init_git_inits_repo_when_missing() {
@@ -170,6 +203,7 @@ test_init_git_inits_repo_when_missing() {
   assert_contains "$out" "ASDLC worker runtime install complete."
   assert_equal "true" "$(git -C "$repo_dir" rev-parse --is-inside-work-tree 2>/dev/null)"
   assert_dir_exists "$repo_dir/.git"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
 }
 
 test_update_preserves_local_state_and_is_idempotent() {
@@ -204,6 +238,27 @@ test_update_preserves_local_state_and_is_idempotent() {
   assert_line_count "1" ".asdlc_worker/scripts/helpers" "$repo_dir/.git/info/exclude"
 }
 
+test_init_stashes_unrelated_changes_after_install_commit() {
+  local repo_dir="$TMP_ROOT/repo-dirty-before-init"
+  local out=""
+  local stash_list=""
+
+  mkdir -p "$repo_dir"
+  seed_repo "$repo_dir"
+  echo "dirty" >>"$repo_dir/README.md"
+  echo "local note" >"$repo_dir/local-note.txt"
+
+  out="$(run_init_runtime "$repo_dir" 2>&1)"
+  assert_contains "$out" "ASDLC worker runtime install complete."
+  assert_contains "$out" "Stashed unrelated worktree changes: asdlc worker init unrelated changes"
+  assert_equal "asdlc worker added" "$(git -C "$repo_dir" log -1 --pretty=%s)"
+  assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
+  assert_git_status_clean "$repo_dir"
+
+  stash_list="$(git -C "$repo_dir" stash list)"
+  assert_contains "$stash_list" "asdlc worker init unrelated changes"
+}
+
 test_init_fails_when_target_input_is_empty() {
   local out=""
   local status=0
@@ -223,6 +278,7 @@ test_init_fails_when_target_is_nested_inside_git_repo
 test_init_bootstraps_existing_git_root
 test_init_git_inits_repo_when_missing
 test_update_preserves_local_state_and_is_idempotent
+test_init_stashes_unrelated_changes_after_install_commit
 test_init_fails_when_target_input_is_empty
 
 echo "init_asdlc_worker_tests: PASS"

@@ -27,6 +27,14 @@ GENERATED_EXCLUDE_PATHS=(
   ".asdlc_worker/prompts"
   ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
 )
+DURABLE_COMMIT_PATHS=(
+  ".asdlc_worker/asdlc_worker.yaml"
+  ".asdlc_worker/blocker_log.md"
+  ".asdlc_worker/decisions.md"
+  ".asdlc_worker/history.md"
+  ".asdlc_worker/open_questions.md"
+  ".asdlc_worker/user_review.md"
+)
 
 SOURCE_ROOT=""
 SOURCE_AI_DIR=""
@@ -206,6 +214,34 @@ ensure_exclude_entries() {
   done
 }
 
+commit_durable_runtime_files() {
+  local path=""
+
+  for path in "${DURABLE_COMMIT_PATHS[@]}"; do
+    if [[ -e "$TARGET_REPO_ROOT/$path" ]]; then
+      git -C "$TARGET_REPO_ROOT" add "$path"
+    fi
+  done
+
+  if ! git -C "$TARGET_REPO_ROOT" diff --cached --quiet -- "${DURABLE_COMMIT_PATHS[@]}"; then
+    if ! git -C "$TARGET_REPO_ROOT" commit -m "asdlc worker added" -- "${DURABLE_COMMIT_PATHS[@]}" >/dev/null 2>&1; then
+      die "Failed to commit ASDLC worker state files. Configure git user.name/user.email and rerun."
+    fi
+  fi
+}
+
+stash_remaining_worktree_changes() {
+  if [[ -z "$(git -C "$TARGET_REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null || true)" ]]; then
+    return 0
+  fi
+
+  if ! git -C "$TARGET_REPO_ROOT" stash push --include-untracked -m "asdlc worker init unrelated changes" >/dev/null 2>&1; then
+    die "Failed to stash unrelated worktree changes after ASDLC worker init."
+  fi
+
+  echo "Stashed unrelated worktree changes: asdlc worker init unrelated changes"
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -238,6 +274,10 @@ fi
 ensure_runtime_support_dirs
 write_worker_root_binding
 ensure_exclude_entries
+commit_durable_runtime_files
+if [[ "$MODE" == "install" ]]; then
+  stash_remaining_worktree_changes
+fi
 
 echo "ASDLC worker runtime $MODE complete."
 echo "Target repo root: $TARGET_REPO_ROOT"
