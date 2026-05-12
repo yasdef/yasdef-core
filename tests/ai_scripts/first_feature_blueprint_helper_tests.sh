@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/helper_find_blueprints.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -22,11 +23,12 @@ setup_repo() {
   local repo_dir="$1"
   local worker_class="$2"
 
-  mkdir -p "$repo_dir/ai/scripts/helpers" "$repo_dir/source-project/feature-a"
-  cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh"
-  chmod +x "$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/source-project/feature-a"
+  cp "$HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/helper_find_blueprints.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/helpers/helper_find_blueprints.sh"
 
-  cat >"$repo_dir/ai/project_overmind.yaml" <<EOF
+  cat >"$repo_dir/.asdlc_worker/project_overmind.yaml" <<EOF
 worker_uuid: 'worker-1'
 class: '$worker_class'
 status: 'active'
@@ -45,7 +47,7 @@ run_helper_from_feature_dir() {
   local repo_dir="$1"
   (
     cd "$repo_dir/source-project/feature-a"
-    "$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh"
+    "$repo_dir/.asdlc_worker/scripts/helpers/helper_find_blueprints.sh"
   )
 }
 

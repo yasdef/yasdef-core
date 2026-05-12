@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SYNC_LARS_SRC="$SOURCE_ROOT/ai/scripts/helpers/sync_step_lars.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -31,15 +32,16 @@ assert_not_contains() {
 
 setup_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" \
-    "$repo_dir/ai/step_designs" "$repo_dir/overmind"
-  cp "$SYNC_LARS_SRC" "$repo_dir/ai/scripts/helpers/sync_step_lars.sh"
-  chmod +x "$repo_dir/ai/scripts/helpers/sync_step_lars.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_plans" \
+    "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/overmind"
+  cp "$SYNC_LARS_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/sync_step_lars.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/helpers/sync_step_lars.sh"
 }
 
 make_plan() {
   local dir="$1"
-  cat >"$dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Feature with LAR
 - [ ] Plan and discuss the step.
 - [ ] Implement the menu. [REQ-5]
@@ -49,7 +51,7 @@ EOF
 
 make_requirements() {
   local dir="$1"
-  cat >"$dir/overmind/reqirements_ears.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 5 Menu
 - The system SHALL render the menu.
 **Linked Artifacts:** LAR-002
@@ -66,15 +68,15 @@ setup_repo "$TEST_DIR"
 make_plan "$TEST_DIR"
 make_requirements "$TEST_DIR"
 
-cat >"$TEST_DIR/ai/step_designs/step-1.1-design.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Render the menu.
 EOF
 
-bash "$TEST_DIR/ai/scripts/helpers/sync_step_lars.sh" 1.1 \
-  "$TEST_DIR/ai/step_designs/step-1.1-design.md"
+bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+  "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 
-CONTENT="$(cat "$TEST_DIR/ai/step_designs/step-1.1-design.md")"
+CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 assert_contains "$CONTENT" "## Linked Artifacts (in scope)"
 assert_contains "$CONTENT" "LAR-002"
 assert_contains "$CONTENT" "Figma"
@@ -89,7 +91,7 @@ setup_repo "$TEST_DIR"
 make_plan "$TEST_DIR"
 make_requirements "$TEST_DIR"
 
-cat >"$TEST_DIR/ai/step_designs/step-1.1-design.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Render the menu.
 
@@ -100,10 +102,10 @@ cat >"$TEST_DIR/ai/step_designs/step-1.1-design.md" <<'EOF'
 - No old entries.
 EOF
 
-bash "$TEST_DIR/ai/scripts/helpers/sync_step_lars.sh" 1.1 \
-  "$TEST_DIR/ai/step_designs/step-1.1-design.md"
+bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+  "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 
-CONTENT="$(cat "$TEST_DIR/ai/step_designs/step-1.1-design.md")"
+CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 assert_contains "$CONTENT" "LAR-002"
 assert_not_contains "$CONTENT" "LAR-999"
 assert_contains "$CONTENT" "## Non-goals"
@@ -116,18 +118,18 @@ setup_repo "$TEST_DIR"
 make_plan "$TEST_DIR"
 make_requirements "$TEST_DIR"
 
-cat >"$TEST_DIR/ai/step_designs/step-1.1-design.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Render the menu.
 EOF
 
-bash "$TEST_DIR/ai/scripts/helpers/sync_step_lars.sh" 1.1 \
-  "$TEST_DIR/ai/step_designs/step-1.1-design.md"
-FIRST_RUN="$(cat "$TEST_DIR/ai/step_designs/step-1.1-design.md")"
+bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+  "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
+FIRST_RUN="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 
-bash "$TEST_DIR/ai/scripts/helpers/sync_step_lars.sh" 1.1 \
-  "$TEST_DIR/ai/step_designs/step-1.1-design.md"
-SECOND_RUN="$(cat "$TEST_DIR/ai/step_designs/step-1.1-design.md")"
+bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+  "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
+SECOND_RUN="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 
 if [[ "$FIRST_RUN" != "$SECOND_RUN" ]]; then
   echo "Assertion failed: repeated invocations should produce byte-equivalent output" >&2
@@ -144,14 +146,14 @@ TEST_DIR="$TMP_ROOT/test_noop"
 mkdir -p "$TEST_DIR"
 setup_repo "$TEST_DIR"
 
-cat >"$TEST_DIR/overmind/implementation_plan.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Feature without LAR
 - [ ] Plan and discuss the step.
 - [ ] Implement something. [REQ-3]
 - [ ] Review step implementation.
 EOF
 
-cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 3 Basic
 - The system SHALL respond.
 
@@ -159,16 +161,16 @@ cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
 - LAR-001 | Figma | Unrelated | https://figma.com/file/unrelated
 EOF
 
-cat >"$TEST_DIR/ai/step_designs/step-1.1-design.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Respond to requests.
 EOF
-ORIGINAL_CONTENT="$(cat "$TEST_DIR/ai/step_designs/step-1.1-design.md")"
+ORIGINAL_CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 
-bash "$TEST_DIR/ai/scripts/helpers/sync_step_lars.sh" 1.1 \
-  "$TEST_DIR/ai/step_designs/step-1.1-design.md"
+bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+  "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 
-AFTER_CONTENT="$(cat "$TEST_DIR/ai/step_designs/step-1.1-design.md")"
+AFTER_CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 if [[ "$ORIGINAL_CONTENT" != "$AFTER_CONTENT" ]]; then
   echo "Assertion failed: no-LAR step should leave artifact unchanged" >&2
   echo "Before:" >&2
@@ -183,18 +185,18 @@ echo "PASS: no-LAR step is a no-op that leaves the artifact unchanged"
 TEST_DIR="$TMP_ROOT/test_missing_plan"
 mkdir -p "$TEST_DIR"
 setup_repo "$TEST_DIR"
-cp /dev/null "$TEST_DIR/overmind/reqirements_ears.md"
-echo "### Step 1.1 Missing Plan" > "$TEST_DIR/overmind/implementation_plan.md"
+cp /dev/null "$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md"
+echo "### Step 1.1 Missing Plan" > "$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md"
 
-cat >"$TEST_DIR/ai/step_designs/step-1.1-design.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Test.
 EOF
 
 # Step doesn't exist in plan
 RC=0
-bash "$TEST_DIR/ai/scripts/helpers/sync_step_lars.sh" 1.9 \
-  "$TEST_DIR/ai/step_designs/step-1.1-design.md" 2>/dev/null || RC=$?
+bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.9 \
+  "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" 2>/dev/null || RC=$?
 if [[ "$RC" -eq 0 ]]; then
   echo "Assertion failed: missing step should exit non-zero" >&2
   exit 1

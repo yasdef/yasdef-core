@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_PLAN_SRC="$SOURCE_ROOT/ai/scripts/ai_plan.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 PROCESS_SRC="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 TEMPLATE_SRC="$SOURCE_ROOT/ai/templates/step_plan_TEMPLATE.md"
 
@@ -35,20 +36,21 @@ setup_repo() {
   local repo_dir="$1"
   local open_questions_line="$2"
 
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans" "$repo_dir/ai/templates" "$repo_dir/overmind"
-  cp "$AI_PLAN_SRC" "$repo_dir/ai/scripts/ai_plan.sh"
-  cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
-  cp "$TEMPLATE_SRC" "$repo_dir/ai/templates/step_plan_TEMPLATE.md"
-  chmod +x "$repo_dir/ai/scripts/ai_plan.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/templates" "$repo_dir/.asdlc_worker/overmind"
+  cp "$AI_PLAN_SRC" "$repo_dir/.asdlc_worker/scripts/ai_plan.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$PROCESS_SRC" "$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
+  cp "$TEMPLATE_SRC" "$repo_dir/.asdlc_worker/templates/step_plan_TEMPLATE.md"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [ ] Plan and discuss the step. [REQ-1]
 - [ ] Implement the feature endpoint. [REQ-1]
 - [ ] Review step implementation.
 EOF
 
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature endpoint.
 
@@ -73,22 +75,22 @@ EOF
 - ADR-0001 - Preserve existing API contract.
 EOF
 
-  cat >"$repo_dir/ai/open_questions.md" <<EOF
+  cat >"$repo_dir/.asdlc_worker/open_questions.md" <<EOF
 ## Step 1.1 Demo
 $open_questions_line
 EOF
 
-  cat >"$repo_dir/ai/blocker_log.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/blocker_log.md" <<'EOF'
 ## Step 1.1 Demo
 - No blockers.
 EOF
 
-  cat >"$repo_dir/ai/decisions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/decisions.md" <<'EOF'
 ## ADR-0001 - Baseline
 - **Status**: Accepted
 EOF
 
-  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 API behavior
 - Endpoint returns deterministic response.
 EOF
@@ -112,7 +114,7 @@ run_plan() {
   shift
   (
     cd "$repo_dir"
-    ai/scripts/ai_plan.sh --step 1.1 --out ai/step_plans/step-1.1.md "$@"
+    .asdlc_worker/scripts/ai_plan.sh --step 1.1 --out .asdlc_worker/step_plans/step-1.1.md "$@"
   )
 }
 
@@ -123,7 +125,7 @@ test_decision_prompt_contract_and_numeric_reply() {
   local out
   out="$(run_plan "$repo_dir")"
 
-  assert_contains "$out" 'Use ai/AI_DEVELOPMENT_PROCESS.md (Section 2, Estimation Gates, Prompt governance) as the process rules for this phase.'
+  assert_contains "$out" 'Use .asdlc_worker/AI_DEVELOPMENT_PROCESS.md (Section 2, Estimation Gates, Prompt governance) as the process rules for this phase.'
   assert_not_contains "$out" 'Treat design `## Things to Decide (for final planning discussion)` as required handoff input for user-facing clarification and decision resolution; do not invent a parallel structure.'
   assert_not_contains "$out" 'Decision prompts (required for unresolved design decisions): for each unresolved item in design `## Things to Decide`, ask exactly two options (`1.` recommended, `2.` alternative) and accept numeric reply `1` or `2`.'
   assert_not_contains "$out" 'Bootstrap source-of-truth contract: only use an explicit design bootstrap section if it is present; otherwise treat the step as normal feature work and do not re-investigate repo emptiness on your own.'

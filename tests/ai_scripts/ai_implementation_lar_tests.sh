@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 PLANNING_READINESS_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 IMPLEMENTATION_READINESS_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 
@@ -33,24 +34,25 @@ assert_not_contains() {
 
 setup_impl_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/step_plans" "$repo_dir/ai/prompts/impl_prompts" \
-    "$repo_dir/overmind"
-  cp "$AI_IMPL_SRC" "$repo_dir/ai/scripts/ai_implementation.sh"
-  cp "$PLANNING_READINESS_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-  cp "$IMPLEMENTATION_READINESS_SRC" "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" \
-    "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh" \
-    "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_designs" \
+    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/prompts/impl_prompts" \
+    "$repo_dir/.asdlc_worker/overmind"
+  cp "$AI_IMPL_SRC" "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$PLANNING_READINESS_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
+  cp "$IMPLEMENTATION_READINESS_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [x] Plan and discuss the step. [REQ-1]
 - [ ] Implement the feature. [REQ-1]
 - [ ] Review step implementation.
 EOF
 
-  touch "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
+  touch "$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
   touch "$repo_dir/AGENTS.md"
 
   (
@@ -65,7 +67,7 @@ EOF
 
 make_ready_step_plan_with_lar() {
   local dir="$1"
-  cat >"$dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 ## Linked Artifacts (in scope)
 - LAR-003 | Figma | Feature Mockup | http://example.com
 
@@ -82,7 +84,7 @@ EOF
 
 make_ready_step_plan_without_lar() {
   local dir="$1"
-  cat >"$dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 ## Applicable UR Shortlist
 - None.
 
@@ -96,7 +98,7 @@ EOF
 
 make_design() {
   local dir="$1"
-  cat >"$dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Do the thing.
 ## In Scope
@@ -128,7 +130,7 @@ make_design "$TEST_DIR"
 make_ready_step_plan_with_lar "$TEST_DIR"
 
 OUT_FILE="$TEST_DIR/out.txt"
-bash "$TEST_DIR/ai/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
+bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
 OUTPUT="$(cat "$OUT_FILE")"
 assert_contains "$OUTPUT" "LAR-003"
 assert_contains "$OUTPUT" "Figma"
@@ -145,7 +147,7 @@ make_design "$TEST_DIR"
 make_ready_step_plan_without_lar "$TEST_DIR"
 
 OUT_FILE="$TEST_DIR/out.txt"
-bash "$TEST_DIR/ai/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
+bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
 OUTPUT="$(cat "$OUT_FILE")"
 assert_not_contains "$OUTPUT" "Fetch rule (implementation)"
 assert_not_contains "$OUTPUT" "LAR-"
@@ -159,7 +161,7 @@ make_design "$TEST_DIR"
 make_ready_step_plan_with_lar "$TEST_DIR"
 
 OUT_FILE="$TEST_DIR/out.txt"
-bash "$TEST_DIR/ai/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
+bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
 OUTPUT="$(cat "$OUT_FILE")"
 LAR_LINE="$(printf '%s\n' "$OUTPUT" | grep -n "^## Linked Artifacts" | head -1 | cut -d: -f1)"
 FR_LINE="$(printf '%s\n' "$OUTPUT" | grep -n "^## Functional Requirements" | head -1 | cut -d: -f1)"
@@ -178,9 +180,9 @@ make_ready_step_plan_with_lar "$TEST_DIR"
 
 OUT_FILE1="$TEST_DIR/run1.txt"
 OUT_FILE2="$TEST_DIR/run2.txt"
-bash "$TEST_DIR/ai/scripts/ai_implementation.sh" --step 1.1 --no-branch \
+bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch \
   --out "$OUT_FILE1" 2>/dev/null
-bash "$TEST_DIR/ai/scripts/ai_implementation.sh" --step 1.1 --no-branch \
+bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch \
   --out "$OUT_FILE2" 2>/dev/null
 
 if ! diff -q "$OUT_FILE1" "$OUT_FILE2" >/dev/null 2>&1; then

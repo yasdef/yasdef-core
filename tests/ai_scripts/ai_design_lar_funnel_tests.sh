@@ -4,6 +4,7 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_DESIGN_SRC="$SOURCE_ROOT/ai/scripts/ai_design.sh"
 SYNC_LARS_SRC="$SOURCE_ROOT/ai/scripts/helpers/sync_step_lars.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -34,28 +35,29 @@ assert_not_contains() {
 
 setup_design_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/step_plans" "$repo_dir/ai/templates" \
-    "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
-  cp "$AI_DESIGN_SRC" "$repo_dir/ai/scripts/ai_design.sh"
-  cp "$SYNC_LARS_SRC" "$repo_dir/ai/scripts/helpers/sync_step_lars.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_design.sh" \
-    "$repo_dir/ai/scripts/helpers/sync_step_lars.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_designs" \
+    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/templates" \
+    "$repo_dir/.asdlc_worker/golden_examples" "$repo_dir/.asdlc_worker/overmind"
+  cp "$AI_DESIGN_SRC" "$repo_dir/.asdlc_worker/scripts/ai_design.sh"
+  cp "$SYNC_LARS_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/sync_step_lars.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_design.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/sync_step_lars.sh"
 
-  cat >"$repo_dir/ai/templates/feature_design_TEMPLATE.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/templates/feature_design_TEMPLATE.md" <<'EOF'
 ---
 # Feature Design: <step> - <step title>
 Date: <YYYY-MM-DD>
 Designer model/session: <fill>
 EOF
 
-  touch "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
-  touch "$repo_dir/ai/decisions.md"
-  touch "$repo_dir/ai/blocker_log.md"
-  touch "$repo_dir/ai/open_questions.md"
-  touch "$repo_dir/ai/user_review.md"
+  touch "$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
+  touch "$repo_dir/.asdlc_worker/decisions.md"
+  touch "$repo_dir/.asdlc_worker/blocker_log.md"
+  touch "$repo_dir/.asdlc_worker/open_questions.md"
+  touch "$repo_dir/.asdlc_worker/user_review.md"
   touch "$repo_dir/AGENTS.md"
-  touch "$repo_dir/ai/feature_sync.yaml"
+  touch "$repo_dir/.asdlc_worker/feature_sync.yaml"
 
   (
     cd "$repo_dir"
@@ -72,14 +74,14 @@ TEST_DIR="$TMP_ROOT/test_lar_present"
 mkdir -p "$TEST_DIR"
 setup_design_repo "$TEST_DIR"
 
-cat >"$TEST_DIR/overmind/implementation_plan.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Feature with LAR
 - [ ] Plan and discuss the step.
 - [ ] Implement the main menu endpoint. [REQ-5]
 - [ ] Review step implementation.
 EOF
 
-cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 5 Main menu
 - The system SHALL render the main menu.
 **Linked Artifacts:** LAR-002
@@ -88,7 +90,7 @@ cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
 - LAR-002 | Figma | Main Menu Mockup | https://figma.com/file/abc/main-menu
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/ai/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
 assert_contains "$OUTPUT" "LAR-002"
 assert_contains "$OUTPUT" "Figma"
 assert_contains "$OUTPUT" "Main Menu Mockup"
@@ -101,14 +103,14 @@ TEST_DIR="$TMP_ROOT/test_no_lar"
 mkdir -p "$TEST_DIR"
 setup_design_repo "$TEST_DIR"
 
-cat >"$TEST_DIR/overmind/implementation_plan.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Feature without LAR
 - [ ] Plan and discuss the step.
 - [ ] Implement the basic endpoint. [REQ-3]
 - [ ] Review step implementation.
 EOF
 
-cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 3 Basic endpoint
 - The system SHALL respond to requests.
 
@@ -116,7 +118,7 @@ cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
 - LAR-001 | Confluence | Schema Doc | https://confluence.example.com/schema
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/ai/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
 assert_not_contains "$OUTPUT" "LAR-001"
 assert_contains "$OUTPUT" "none"
 echo "PASS: no LAR-tagged requirements produces empty/absent block"
@@ -126,14 +128,14 @@ TEST_DIR="$TMP_ROOT/test_dedup_order"
 mkdir -p "$TEST_DIR"
 setup_design_repo "$TEST_DIR"
 
-cat >"$TEST_DIR/overmind/implementation_plan.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Feature with multiple LARs
 - [ ] Plan and discuss the step.
 - [ ] Implement menu and schema. [REQ-7]
 - [ ] Review step implementation.
 EOF
 
-cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 7 Menu and schema
 - The system SHALL render the menu.
 **Linked Artifacts:** LAR-005, LAR-001, LAR-005
@@ -143,7 +145,7 @@ cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
 - LAR-005 | Figma | Menu Mockup | https://figma.com/file/abc/menu
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/ai/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
 # Check ordering within the LAR section using "LAR-NNN |" format unique to section entries
 assert_contains "$OUTPUT" "LAR-001 |"
 assert_contains "$OUTPUT" "LAR-005 |"
@@ -166,14 +168,14 @@ TEST_DIR="$TMP_ROOT/test_missing_lar"
 mkdir -p "$TEST_DIR"
 setup_design_repo "$TEST_DIR"
 
-cat >"$TEST_DIR/overmind/implementation_plan.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Feature with missing LAR
 - [ ] Plan and discuss the step.
 - [ ] Implement something. [REQ-9]
 - [ ] Review step implementation.
 EOF
 
-cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 9 Missing LAR
 - The system SHALL do something.
 **Linked Artifacts:** LAR-099
@@ -182,7 +184,7 @@ cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
 - LAR-001 | Figma | Unrelated | https://figma.com/file/unrelated
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/ai/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
+OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
 assert_not_contains "$OUTPUT" "LAR-099 |"
 echo "PASS: LAR missing from registry is omitted from block without error"
 
@@ -191,14 +193,14 @@ TEST_DIR="$TMP_ROOT/test_sync_instruction"
 mkdir -p "$TEST_DIR"
 setup_design_repo "$TEST_DIR"
 
-cat >"$TEST_DIR/overmind/implementation_plan.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Feature with LAR
 - [ ] Plan and discuss the step.
 - [ ] Implement the menu. [REQ-5]
 - [ ] Review step implementation.
 EOF
 
-cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 5 Menu
 - The system SHALL render the menu.
 **Linked Artifacts:** LAR-002
@@ -207,7 +209,7 @@ cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
 - LAR-002 | Figma | Menu | https://figma.com/file/abc/menu
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/ai/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
+OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
 assert_contains "$OUTPUT" "sync_step_lars.sh"
 assert_contains "$OUTPUT" "1.1"
 echo "PASS: prompt contains sync_step_lars.sh invocation instruction"

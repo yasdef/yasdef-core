@@ -5,6 +5,7 @@ SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_DESIGN_SRC="$SOURCE_ROOT/ai/scripts/ai_design.sh"
 HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_design_readiness.sh"
 BLUEPRINT_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/helper_find_blueprints.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 PROCESS_SRC="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 TEMPLATE_SRC="$SOURCE_ROOT/ai/templates/feature_design_TEMPLATE.md"
 
@@ -62,40 +63,41 @@ assert_order() {
 setup_repo() {
   local repo_dir="$1"
 
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/templates" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
-  cp "$AI_DESIGN_SRC" "$repo_dir/ai/scripts/ai_design.sh"
-  cp "$HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_design_readiness.sh"
-  cp "$BLUEPRINT_HELPER_SRC" "$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh"
-  cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
-  cp "$TEMPLATE_SRC" "$repo_dir/ai/templates/feature_design_TEMPLATE.md"
-  chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/helpers/check_design_readiness.sh" "$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/templates" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/overmind"
+  cp "$AI_DESIGN_SRC" "$repo_dir/.asdlc_worker/scripts/ai_design.sh"
+  cp "$HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_design_readiness.sh"
+  cp "$BLUEPRINT_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/helper_find_blueprints.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$PROCESS_SRC" "$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
+  cp "$TEMPLATE_SRC" "$repo_dir/.asdlc_worker/templates/feature_design_TEMPLATE.md"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_design.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_design_readiness.sh" "$repo_dir/.asdlc_worker/scripts/helpers/helper_find_blueprints.sh"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [ ] Plan and discuss the step. [REQ-1]
 - [ ] Implement design scope. [REQ-1]
 - [ ] Review step implementation.
 EOF
 
-  cat >"$repo_dir/ai/blocker_log.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/blocker_log.md" <<'EOF'
 ## Step 1.1 Demo
 - No blockers.
 EOF
 
-  cat >"$repo_dir/ai/open_questions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/open_questions.md" <<'EOF'
 ## Step 1.1 Demo
 - No open questions.
 EOF
 
-  cat >"$repo_dir/ai/decisions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/decisions.md" <<'EOF'
 # ADRs
 EOF
 
-  cat >"$repo_dir/ai/user_review.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/user_review.md" <<'EOF'
 # User review rules
 EOF
 
-  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Demo
 - Demo requirement.
 EOF
@@ -105,13 +107,13 @@ EOF
 - Demo constraint.
 EOF
 
-  cat >"$repo_dir/ai/project_overmind.yaml" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/project_overmind.yaml" <<'EOF'
 worker_uuid: 'worker-1'
 class: 'backend'
 status: 'active'
 EOF
 
-  cat >"$repo_dir/ai/feature_sync.yaml" <<EOF
+  cat >"$repo_dir/.asdlc_worker/feature_sync.yaml" <<EOF
 source_feature_path: '$repo_dir/source-project/feature-a'
 bound_project_path: '$repo_dir/source-project'
 EOF
@@ -139,7 +141,7 @@ run_design() {
   shift
   (
     cd "$repo_dir"
-    ai/scripts/ai_design.sh --step 1.1 --design-out ai/step_designs/step-1.1-design.md "$@"
+    .asdlc_worker/scripts/ai_design.sh --step 1.1 --design-out .asdlc_worker/step_designs/step-1.1-design.md "$@"
   )
 }
 
@@ -173,22 +175,24 @@ test_design_prompt_includes_readiness_contract() {
 
   local out
   out="$(run_design "$repo_dir")"
-  assert_contains "$out" 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh ai/step_designs/step-1.1-design.md`.'
+  assert_contains "$out" 'Before ending the design phase, run `.asdlc_worker/scripts/helpers/check_design_readiness.sh .asdlc_worker/step_designs/step-1.1-design.md`.'
   assert_contains "$out" 'If the readiness check fails, do not emit the final completion line yet.'
   assert_contains "$out" 'ask exactly two options: `1.` continue iterating and re-check, `2.` force the design phase done and proceed.'
   assert_contains "$out" 'If option `2` is chosen, record that forced-done outcome in the design artifact before using the completion line.'
-  assert_order "$out" 'Before ending the design phase, run `ai/scripts/helpers/check_design_readiness.sh ai/step_designs/step-1.1-design.md`.' 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  assert_order "$out" 'Before ending the design phase, run `.asdlc_worker/scripts/helpers/check_design_readiness.sh .asdlc_worker/step_designs/step-1.1-design.md`.' 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
 }
 
 test_design_prompt_includes_bootstrap_helper_contract() {
   local repo_dir="$TMP_ROOT/repo-design-bootstrap-contract"
   setup_repo "$repo_dir"
+  local resolved_repo_dir
+  resolved_repo_dir="$(cd "$repo_dir" && pwd -P)"
 
   local out
   out="$(run_design "$repo_dir")"
   assert_contains "$out" 'Apply `#### Bootstrap decision algorithm` from Section 1 before design handoff.'
-  assert_contains "$out" 'Blueprint helper contract: when bootstrap is required and stack/architecture guidance is needed, run `ai/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context where `implementation_plan.md` and `requirements_ears.md` live; it searches the parent project-level directory for `project_stack_blueprint_*.md`.'
-  assert_contains "$out" "Suggested bootstrap lookup command for this run: \`cd \"$repo_dir/source-project/feature-a\" && \"$repo_dir/ai/scripts/helpers/helper_find_blueprints.sh\"\`."
+  assert_contains "$out" 'Blueprint helper contract: when bootstrap is required and stack/architecture guidance is needed, run `.asdlc_worker/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context where `implementation_plan.md` and `requirements_ears.md` live; it searches the parent project-level directory for `project_stack_blueprint_*.md`.'
+  assert_contains "$out" "Suggested bootstrap lookup command for this run: \`cd \"$repo_dir/source-project/feature-a\" && \"$resolved_repo_dir/.asdlc_worker/scripts/helpers/helper_find_blueprints.sh\"\`."
 }
 
 test_design_prompt_includes_missing_discussion_points_gates() {
@@ -206,7 +210,7 @@ test_design_readiness_helper_exit_codes() {
   local repo_dir="$TMP_ROOT/repo-design-readiness-helper"
   setup_repo "$repo_dir"
 
-  cat >"$repo_dir/ai/step_designs/ready.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/ready.md" <<'EOF'
 ## Goal
 - Ready.
 ## In Scope
@@ -216,10 +220,10 @@ test_design_readiness_helper_exit_codes() {
 EOF
 
   local ready_out
-  ready_out="$(cd "$repo_dir" && ai/scripts/helpers/check_design_readiness.sh ai/step_designs/ready.md)"
-  assert_contains "$ready_out" "Design readiness check passed: ai/step_designs/ready.md"
+  ready_out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_design_readiness.sh .asdlc_worker/step_designs/ready.md)"
+  assert_contains "$ready_out" "Design readiness check passed: .asdlc_worker/step_designs/ready.md"
 
-  cat >"$repo_dir/ai/step_designs/not-ready.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/not-ready.md" <<'EOF'
 ## Goal
 - Missing scope sections.
 EOF
@@ -227,7 +231,7 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_design_readiness.sh ai/step_designs/not-ready.md 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_design_readiness.sh .asdlc_worker/step_designs/not-ready.md 2>&1)"
   status=$?
   set -e
   assert_not_equal "$status" "0"
@@ -238,7 +242,7 @@ test_design_readiness_helper_blocks_unresolved_bootstrap() {
   local repo_dir="$TMP_ROOT/repo-design-bootstrap-readiness"
   setup_repo "$repo_dir"
 
-  cat >"$repo_dir/ai/step_designs/bootstrap-unresolved.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/bootstrap-unresolved.md" <<'EOF'
 ## Goal
 - Bootstrap the first backend feature.
 ## In Scope
@@ -257,7 +261,7 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_design_readiness.sh ai/step_designs/bootstrap-unresolved.md 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_design_readiness.sh .asdlc_worker/step_designs/bootstrap-unresolved.md 2>&1)"
   status=$?
   set -e
   assert_not_equal "$status" "0"

@@ -4,6 +4,7 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 POST_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/post_review.sh"
 AI_AUDIT_DISPOSITION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -42,12 +43,15 @@ assert_equals() {
 setup_post_review_repo() {
   local repo_dir="$1"
   local include_seed_python_class="${2:-0}"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" \
-    "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_plans" \
+    "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
-  cp "$POST_REVIEW_SRC" "$repo_dir/ai/scripts/post_review.sh"
-  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  cp "$POST_REVIEW_SRC" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
@@ -104,7 +108,7 @@ run_post_review_dry_run() {
   local repo_dir="$1"
   (
     cd "$repo_dir"
-    ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1
+    .asdlc_worker/scripts/post_review.sh --step 1.1 --dry-run 2>&1
   )
 }
 
@@ -112,22 +116,22 @@ run_post_review() {
   local repo_dir="$1"
   (
     cd "$repo_dir"
-    ai/scripts/post_review.sh --step 1.1 2>&1
+    .asdlc_worker/scripts/post_review.sh --step 1.1 2>&1
   )
 }
 
-extract_new_classes_added() {
+extract_new_files_added() {
   local output="$1"
-  printf '%s\n' "$output" | sed -n 's/^new classes added: \([0-9][0-9]*\)$/\1/p' | tail -n 1
+  printf '%s\n' "$output" | sed -n 's/^new files added: \([0-9][0-9]*\)$/\1/p' | tail -n 1
 }
 
-assert_new_classes_added_equals() {
+assert_new_files_added_equals() {
   local output="$1"
   local expected="$2"
   local actual
-  actual="$(extract_new_classes_added "$output")"
+  actual="$(extract_new_files_added "$output")"
   if [[ -z "$actual" ]]; then
-    echo "Assertion failed: could not extract 'new classes added' from output" >&2
+    echo "Assertion failed: could not extract 'new files added' from output" >&2
     echo "$output" >&2
     exit 1
   fi
@@ -164,7 +168,7 @@ EOF
 
   local out
   out="$(run_post_review_dry_run "$repo_dir")"
-  assert_new_classes_added_equals "$out" "5"
+  assert_new_files_added_equals "$out" "5"
 }
 
 test_counts_remaining_baseline_extensions_and_skips_unsupported() {
@@ -214,7 +218,7 @@ EOF
 
   local out
   out="$(run_post_review_dry_run "$repo_dir")"
-  assert_new_classes_added_equals "$out" "10"
+  assert_new_files_added_equals "$out" "11"
 }
 
 test_modified_existing_file_is_not_counted() {
@@ -233,7 +237,7 @@ EOF
 
   local out
   out="$(run_post_review_dry_run "$repo_dir")"
-  assert_new_classes_added_equals "$out" "0"
+  assert_new_files_added_equals "$out" "0"
 }
 
 test_working_tree_snapshot_includes_pending_new_files() {
@@ -249,19 +253,21 @@ EOF
   local out
   out="$(run_post_review "$repo_dir")"
   assert_contains "$out" "+ working-tree snapshot"
-  assert_contains "$out" "New classes added: 1"
+  assert_contains "$out" "New files added: 1"
   assert_contains "$out" "metrics were already captured"
 
   local history
   history="$(cat "$repo_dir/ai/history.md")"
-  assert_contains "$history" "- New classes added: 1"
+  assert_contains "$history" "- New files added: 1"
 }
 
 test_help_text_describes_multilang_scope() {
+  local repo_dir="$TMP_ROOT/repo-help"
+  setup_post_review_repo "$repo_dir"
   local out
-  out="$(bash "$POST_REVIEW_SRC" --help)"
-  assert_contains "$out" "default 10-language baseline"
-  assert_not_contains "$out" "new Java type files under src/main/java only"
+  out="$(bash "$repo_dir/.asdlc_worker/scripts/post_review.sh" --help)"
+  assert_contains "$out" "New files added (newly created files, excludes .asdlc_worker/**), measured from the same delta."
+  assert_contains "$out" "Files touched (modified existing files, excludes .asdlc_worker/**), measured from the same delta."
 }
 
 test_counts_required_minimum_extensions

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_PLAN_SRC="$SOURCE_ROOT/ai/scripts/ai_plan.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 PROCESS_SRC="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
 TEMPLATE_SRC="$SOURCE_ROOT/ai/templates/step_plan_TEMPLATE.md"
 
@@ -34,20 +35,21 @@ assert_not_contains() {
 setup_repo() {
   local repo_dir="$1"
 
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans" "$repo_dir/ai/templates" "$repo_dir/overmind"
-  cp "$AI_PLAN_SRC" "$repo_dir/ai/scripts/ai_plan.sh"
-  cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
-  cp "$TEMPLATE_SRC" "$repo_dir/ai/templates/step_plan_TEMPLATE.md"
-  chmod +x "$repo_dir/ai/scripts/ai_plan.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/templates" "$repo_dir/.asdlc_worker/overmind"
+  cp "$AI_PLAN_SRC" "$repo_dir/.asdlc_worker/scripts/ai_plan.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$PROCESS_SRC" "$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
+  cp "$TEMPLATE_SRC" "$repo_dir/.asdlc_worker/templates/step_plan_TEMPLATE.md"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [ ] Plan and discuss the step. [REQ-1]
 - [ ] Implement the feature endpoint. [REQ-1]
 - [ ] Review step implementation.
 EOF
 
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature endpoint.
 
@@ -61,22 +63,22 @@ EOF
 - ADR-0001 - Preserve existing API contract.
 EOF
 
-  cat >"$repo_dir/ai/open_questions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/open_questions.md" <<'EOF'
 ## Step 1.1 Demo
 - No open questions.
 EOF
 
-  cat >"$repo_dir/ai/blocker_log.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/blocker_log.md" <<'EOF'
 ## Step 1.1 Demo
 - No blockers.
 EOF
 
-  cat >"$repo_dir/ai/decisions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/decisions.md" <<'EOF'
 ## ADR-0001 - Baseline
 - **Status**: Accepted
 EOF
 
-  cat >"$repo_dir/overmind/reqirements_ears.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 API behavior
 - Endpoint returns deterministic response.
 EOF
@@ -98,14 +100,14 @@ EOF
 write_step_plan_with_shortlist() {
   local repo_dir="$1"
   local shortlist="$2"
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<EOF
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<EOF
 # Step Plan: 1.1 - Demo
 Date: 2026-02-27
 Planner model/session: test
 Execution model/session (intended): test
 
 ## Design Anchor (scope source of truth)
-- Feature design: \`ai/step_designs/step-1.1-design.md\`
+- Feature design: \`.asdlc_worker/step_designs/step-1.1-design.md\`
 - Requirement-translation source: \`## Selected EARS Requirements (for planning translation)\`
 
 ## Applicable UR Shortlist
@@ -136,14 +138,14 @@ EOF
 
 write_step_plan_missing_shortlist_section() {
   local repo_dir="$1"
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 Date: 2026-02-27
 Planner model/session: test
 Execution model/session (intended): test
 
 ## Design Anchor (scope source of truth)
-- Feature design: `ai/step_designs/step-1.1-design.md`
+- Feature design: `.asdlc_worker/step_designs/step-1.1-design.md`
 - Requirement-translation source: `## Selected EARS Requirements (for planning translation)`
 
 ## Plan (ordered)
@@ -159,7 +161,7 @@ run_plan_capture() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/ai_plan.sh --step 1.1 --out ai/step_plans/step-1.1.md 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/ai_plan.sh --step 1.1 --out .asdlc_worker/step_plans/step-1.1.md 2>&1)"
   status=$?
   set -e
   printf '%s\n%s' "$status" "$out"
@@ -258,7 +260,7 @@ test_ur_cap_overflow_is_rejected() {
 test_deprecated_step_plan_sections_are_rejected() {
   local repo_dir="$TMP_ROOT/repo-deprecated-sections"
   setup_repo "$repo_dir"
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 Date: 2026-02-27
 Planner model/session: test
@@ -286,7 +288,7 @@ EOF
     echo "Assertion failed: expected deprecated sections to fail planning contract validation." >&2
     exit 1
   fi
-  assert_contains "$out" "Planning gate failed for step plan contract in ai/step_plans/step-1.1.md"
+  assert_contains "$out" "Planning gate failed for step plan contract in .asdlc_worker/step_plans/step-1.1.md"
   assert_contains "$out" "the feature design may still contain \`## Target Bullets\`"
   assert_contains "$out" "deprecated section present: ## Target Bullets"
 }

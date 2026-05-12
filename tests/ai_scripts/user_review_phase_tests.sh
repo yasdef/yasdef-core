@@ -177,6 +177,14 @@ EOF
 - none
 EOF
 
+  cat >"$repo_dir/.asdlc_worker/decisions.md" <<'EOF'
+# ADRs
+EOF
+
+  cat >"$repo_dir/.asdlc_worker/history.md" <<'EOF'
+# History
+EOF
+
   cat >"$repo_dir/.asdlc_worker/user_review.md" <<'EOF'
 # User review rules
 EOF
@@ -356,6 +364,11 @@ UR
 echo "model-ran"
 EOF
   chmod +x "$repo_dir/.asdlc_worker/scripts/fake_model.sh"
+  (
+    cd "$repo_dir"
+    git add .asdlc_worker/scripts/fake_model.sh
+    git commit -qm "override fake user review model"
+  )
 
   local status=0
   set +e

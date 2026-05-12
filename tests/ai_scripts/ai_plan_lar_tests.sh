@@ -3,6 +3,7 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_PLAN_SRC="$SOURCE_ROOT/ai/scripts/ai_plan.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 PLANNING_READINESS_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 SYNC_LARS_SRC="$SOURCE_ROOT/ai/scripts/helpers/sync_step_lars.sh"
 PROCESS_SRC="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
@@ -35,28 +36,29 @@ assert_not_contains() {
 
 setup_plan_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/step_plans" "$repo_dir/ai/templates" \
-    "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
-  cp "$AI_PLAN_SRC" "$repo_dir/ai/scripts/ai_plan.sh"
-  cp "$PLANNING_READINESS_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-  cp "$SYNC_LARS_SRC" "$repo_dir/ai/scripts/helpers/sync_step_lars.sh"
-  cp "$PROCESS_SRC" "$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md"
-  cp "$STEP_PLAN_TEMPLATE_SRC" "$repo_dir/ai/templates/step_plan_TEMPLATE.md"
-  chmod +x "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh" \
-    "$repo_dir/ai/scripts/helpers/sync_step_lars.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_designs" \
+    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/templates" \
+    "$repo_dir/.asdlc_worker/golden_examples" "$repo_dir/.asdlc_worker/overmind"
+  cp "$AI_PLAN_SRC" "$repo_dir/.asdlc_worker/scripts/ai_plan.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$PLANNING_READINESS_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
+  cp "$SYNC_LARS_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/sync_step_lars.sh"
+  cp "$PROCESS_SRC" "$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
+  cp "$STEP_PLAN_TEMPLATE_SRC" "$repo_dir/.asdlc_worker/templates/step_plan_TEMPLATE.md"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/sync_step_lars.sh"
 
-  cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
 - [x] Plan and discuss the step. [REQ-1]
 - [ ] Implement the feature. [REQ-1]
 - [ ] Review step implementation.
 EOF
 
-  touch "$repo_dir/ai/decisions.md"
-  touch "$repo_dir/ai/blocker_log.md"
-  touch "$repo_dir/ai/open_questions.md"
+  touch "$repo_dir/.asdlc_worker/decisions.md"
+  touch "$repo_dir/.asdlc_worker/blocker_log.md"
+  touch "$repo_dir/.asdlc_worker/open_questions.md"
   touch "$repo_dir/AGENTS.md"
 
   (
@@ -71,7 +73,7 @@ EOF
 
 make_step_plan() {
   local dir="$1"
-  cat >"$dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 ## Applicable UR Shortlist
 - None.
 
@@ -85,7 +87,7 @@ EOF
 
 make_design_with_lar() {
   local dir="$1"
-  cat >"$dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature.
 
@@ -108,7 +110,7 @@ EOF
 
 make_design_without_lar() {
   local dir="$1"
-  cat >"$dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature.
 
@@ -133,7 +135,7 @@ setup_plan_repo "$TEST_DIR"
 make_step_plan "$TEST_DIR"
 make_design_with_lar "$TEST_DIR"
 
-OUTPUT="$(bash "$TEST_DIR/ai/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
 assert_contains "$OUTPUT" "LAR-003"
 assert_contains "$OUTPUT" "Figma"
 assert_contains "$OUTPUT" "Feature Mockup"
@@ -148,7 +150,7 @@ setup_plan_repo "$TEST_DIR"
 make_step_plan "$TEST_DIR"
 make_design_without_lar "$TEST_DIR"
 
-OUTPUT="$(bash "$TEST_DIR/ai/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
 assert_not_contains "$OUTPUT" "Fetch rule (planning):"
 echo "PASS: absent LAR shortlist suppresses fetch rule"
 
@@ -160,7 +162,7 @@ make_step_plan "$TEST_DIR"
 make_design_with_lar "$TEST_DIR"
 
 # Provide reqirements_ears.md with different LAR data
-cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
+cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Feature
 - The system SHALL work.
 **Linked Artifacts:** LAR-099
@@ -169,7 +171,7 @@ cat >"$TEST_DIR/overmind/reqirements_ears.md" <<'EOF'
 - LAR-099 | Confluence | Schema | https://confluence.example.com/should-not-appear
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/ai/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
 # Should contain design's LAR-003, not registry's LAR-099
 assert_contains "$OUTPUT" "LAR-003"
 assert_not_contains "$OUTPUT" "LAR-099"

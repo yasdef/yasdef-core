@@ -9,6 +9,7 @@ AI_AUDIT_SRC="$SOURCE_ROOT/ai/scripts/ai_audit.sh"
 AI_AUDIT_DISPOSITION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 POST_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/post_review.sh"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
+RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -67,15 +68,18 @@ assert_line_before() {
 
 setup_impl_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" \
-    "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/templates" "$repo_dir/ai/golden_examples" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_designs" \
+    "$repo_dir/.asdlc_worker/templates" "$repo_dir/.asdlc_worker/golden_examples" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
-  cp "$AI_IMPL_SRC" "$repo_dir/ai/scripts/ai_implementation.sh"
-  cp "$PLANNING_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_implementation.sh" \
-    "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh" \
-    "$repo_dir/ai/scripts/helpers/check_implementation_readiness.sh"
+  cp "$AI_IMPL_SRC" "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$PLANNING_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
+  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh" \
+    "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
@@ -86,10 +90,10 @@ Est. step total: 5 SP
 - [ ] Review step implementation (SP=1)
 EOF
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
-- ai/step_designs/step-1.1-design.md
+- .asdlc_worker/step_designs/step-1.1-design.md
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -124,7 +128,7 @@ EOF
 - Fallback strategy: Deferred.
 EOF
 
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Keep implementation prompt deterministic and concise.
 ## In Scope
@@ -149,7 +153,7 @@ EOF
 ## Applicable ADR Shortlist
 - ADR-1
 ## References in Current Codebase
-- `ai/scripts/ai_implementation.sh` - prompt generation.
+- `.asdlc_worker/scripts/ai_implementation.sh` - prompt generation.
 - `tests/ai_scripts/implementation_evidence_tests.sh` - prompt assertions.
 ## Things to Decide (for final planning discussion)
 - none
@@ -168,7 +172,7 @@ EOF
 ## Step 1.1 Demo
 - No blockers.
 EOF
-  cat >"$repo_dir/ai/open_questions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/open_questions.md" <<'EOF'
 ## Step 1.1 Demo
 - No open questions.
 EOF
@@ -198,9 +202,12 @@ setup_orchestrator_repo() {
   local repo_dir="$1"
   local worker_uuid="11111111-1111-1111-1111-111111111111"
   local source_dir="$repo_dir/.tmp-asdlc-source"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/setup" "$repo_dir/ai/step_designs" "$repo_dir/ai/step_plans" "$repo_dir/overmind"
-  cp "$ORCH_SRC" "$repo_dir/ai/scripts/orchestrator.sh"
-  chmod +x "$repo_dir/ai/scripts/orchestrator.sh"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
+  cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
   cat >"$repo_dir/ai/scripts/ai_design.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -210,7 +217,7 @@ EOF
 #!/usr/bin/env bash
 echo "planning"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_implementation.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "implementation"
 EOF
@@ -218,17 +225,17 @@ EOF
 #!/usr/bin/env bash
 echo "user_review"
 EOF
-  cat >"$repo_dir/ai/scripts/ai_audit.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "review"
 EOF
-  cat >"$repo_dir/ai/scripts/post_review.sh" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/scripts/post_review.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "post_review"
 EOF
   chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/ai/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/ai/scripts/ai_audit.sh" \
-    "$repo_dir/ai/scripts/post_review.sh"
+    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
+    "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
 design | echo | mock-model
@@ -278,7 +285,7 @@ worker_uuid: '$worker_uuid'
 class: 'platform'
 status: 'ready'
 EOF
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - 1. demo
@@ -290,7 +297,7 @@ EOF
 - Verification: demo
 - Status: done
 EOF
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 test
 ## In Scope
@@ -335,11 +342,11 @@ test_ai_implementation_prompt_has_deterministic_structure() {
 
   (
     cd "$repo_dir"
-    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
   local prompt
-  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
+  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt")"
   assert_contains "$prompt" "Phase contract (read first)"
   assert_contains "$prompt" "Anti-regression checklist (max 8)"
   assert_contains "$prompt" "Execution list (step plan \`## Plan (ordered)\`)"
@@ -353,8 +360,8 @@ test_ai_implementation_prompt_has_deterministic_structure() {
   assert_contains "$prompt" "- [x] 2. Implement part B [REQ-1]."
   assert_contains "$prompt" "## Applicable UR Shortlist"
   assert_contains "$prompt" "UR-0100 - Validate JWT auth boundary handling."
-  assert_contains "$prompt" 'Before ending the implementation phase, run `ai/scripts/helpers/check_implementation_readiness.sh 1.1`.'
-  assert_contains "$prompt" 'If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
+  assert_contains "$prompt" 'Before ending the implementation phase, run `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh 1.1`.'
+  assert_contains "$prompt" 'If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.'
   assert_line_before "$prompt" "Phase contract (read first)" "Anti-regression checklist (max 8)"
   assert_line_before "$prompt" "Anti-regression checklist (max 8)" "Execution list (step plan \`## Plan (ordered)\`)"
   assert_line_before "$prompt" "Execution list (step plan \`## Plan (ordered)\`)" "Step-plan execution context"
@@ -370,7 +377,7 @@ test_implementation_readiness_helper_fails_on_unchecked_ordered_items() {
   local repo_dir="$TMP_ROOT/repo-impl-readiness-ordered-unchecked"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -383,7 +390,7 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_implementation_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_implementation_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
 
@@ -399,7 +406,7 @@ test_implementation_readiness_helper_fails_on_unchecked_functional_requirements(
   local repo_dir="$TMP_ROOT/repo-impl-readiness-fr-unchecked"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -412,7 +419,7 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_implementation_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_implementation_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
 
@@ -432,7 +439,7 @@ test_ai_implementation_allows_non_executable_planning_helper() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl.prompt.txt --no-branch 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl.prompt.txt --no-branch 2>&1)"
   status=$?
   set -e
 
@@ -448,10 +455,10 @@ test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
   local repo_dir="$TMP_ROOT/repo-ai-impl-step-plan-shortlist"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
-- ai/step_designs/step-1.1-design.md
+- .asdlc_worker/step_designs/step-1.1-design.md
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -482,7 +489,7 @@ test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
 ## Decisions Needed
 - None.
 EOF
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - Goal.
 ## In Scope
@@ -508,11 +515,11 @@ EOF
 
   (
     cd "$repo_dir"
-    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
   local prompt anti_block
-  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
+  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt")"
   anti_block="$(printf '%s\n' "$prompt" | awk '
     /^Anti-regression checklist \(max 8\)$/ { in_section=1; next }
     in_section && /^Execution list \(step plan `## Plan \(ordered\)`\)$/ { exit }
@@ -542,10 +549,10 @@ test_ai_implementation_prompt_caps_and_requirement_filtering() {
   local repo_dir="$TMP_ROOT/repo-ai-impl-caps"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
-- ai/step_designs/step-1.1-design.md
+- .asdlc_worker/step_designs/step-1.1-design.md
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -589,7 +596,7 @@ test_ai_implementation_prompt_caps_and_requirement_filtering() {
 - Choice: Accepted.
 EOF
 
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 ## Goal
 - goal-1
 - goal-2
@@ -645,11 +652,11 @@ EOF
 
   (
     cd "$repo_dir"
-    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
   local prompt
-  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
+  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt")"
   assert_contains "$prompt" "note-12"
   assert_not_contains "$prompt" "note-13-should-not-appear"
   assert_contains "$prompt" "risk-8"
@@ -669,18 +676,18 @@ test_ai_implementation_prompt_is_deterministic_and_compact() {
 
   (
     cd "$repo_dir"
-    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test-1.prompt.txt --no-branch
-    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test-2.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test-1.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test-2.prompt.txt --no-branch
   )
 
-  if ! cmp -s "$repo_dir/ai/prompts/impl_prompts/test-1.prompt.txt" "$repo_dir/ai/prompts/impl_prompts/test-2.prompt.txt"; then
+  if ! cmp -s "$repo_dir/.asdlc_worker/prompts/impl_prompts/test-1.prompt.txt" "$repo_dir/.asdlc_worker/prompts/impl_prompts/test-2.prompt.txt"; then
     echo "Assertion failed: prompt output is not byte-deterministic for identical inputs" >&2
     exit 1
   fi
 
   local prompt
   local prompt_bytes
-  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test-1.prompt.txt")"
+  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test-1.prompt.txt")"
   prompt_bytes="$(printf '%s' "$prompt" | wc -c | tr -d '[:space:]')"
   if (( prompt_bytes > 7000 )); then
     echo "Assertion failed: implementation prompt too large, expected <= 7000 bytes, got $prompt_bytes" >&2
@@ -692,10 +699,10 @@ test_ai_implementation_prompt_normalizes_plain_ordered_bullets() {
   local repo_dir="$TMP_ROOT/repo-ai-impl-normalized-ordered"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
-- ai/step_designs/step-1.1-design.md
+- .asdlc_worker/step_designs/step-1.1-design.md
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -722,11 +729,11 @@ EOF
 
   (
     cd "$repo_dir"
-    ai/scripts/ai_implementation.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/impl_prompts/test.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
   local prompt
-  prompt="$(cat "$repo_dir/ai/prompts/impl_prompts/test.prompt.txt")"
+  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt")"
   assert_contains "$prompt" "- [ ] 1. Implement part A [REQ-1]."
   assert_contains "$prompt" "- [ ] 2. Implement part B [REQ-1]."
 }
@@ -736,7 +743,7 @@ test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked() {
   setup_orchestrator_repo "$repo_dir"
   seed_review_result_artifact "$repo_dir" "1.1"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -754,7 +761,7 @@ EOF
   out="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "implementation" &&
-    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1
   )"
   assert_not_contains "$out" "Implementation exit gate failed for step 1.1."
 }
@@ -764,7 +771,7 @@ test_orchestrator_implementation_runs_when_all_ordered_items_checked() {
   setup_orchestrator_repo "$repo_dir"
   seed_review_result_artifact "$repo_dir" "1.1"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -781,7 +788,7 @@ EOF
   (
     cd "$repo_dir"
     set_single_phase_model "$repo_dir" "implementation"
-    ai/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-impl-gate-pass.out 2>/tmp/orch-impl-gate-pass.err
+    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-impl-gate-pass.out 2>/tmp/orch-impl-gate-pass.err
   )
 }
 
@@ -790,7 +797,7 @@ test_orchestrator_does_not_gate_implementation_when_functional_requirements_unch
   setup_orchestrator_repo "$repo_dir"
   seed_review_result_artifact "$repo_dir" "1.1"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -804,7 +811,7 @@ EOF
   out="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "implementation" &&
-    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1
   )"
   assert_not_contains "$out" "Implementation exit gate failed for step 1.1."
 }
@@ -847,11 +854,14 @@ test_process_doc_defines_evidence_reasoning_summary_gate() {
 
 setup_ai_audit_prompt_repo() {
   local repo_dir="$1"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" "$repo_dir/ai/step_designs" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
-  cp "$AI_AUDIT_SRC" "$repo_dir/ai/scripts/ai_audit.sh"
-  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/ai_audit.sh" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  cp "$AI_AUDIT_SRC" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
 ### Step 1.1 Demo
@@ -862,7 +872,7 @@ Est. step total: 5 SP
 - [ ] Review step implementation (SP=1)
 EOF
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. Implement part A.
@@ -882,7 +892,7 @@ EOF
 - Status: done
 EOF
 
-  cat >"$repo_dir/ai/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 # Feature Design: preamble should not leak
 Date: 2099-01-01
 Designer model/session: preamble-should-not-leak
@@ -921,7 +931,7 @@ EOF
 - none
 EOF
 
-  cat >"$repo_dir/ai/open_questions.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/open_questions.md" <<'EOF'
 ## Step 1.1 Demo
 - none
 EOF
@@ -1011,19 +1021,22 @@ setup_post_review_repo() {
   local review_mode="$2"
   local review_checked="${3:-1}"
   local impl_checked="${4:-1}"
-  mkdir -p "$repo_dir/ai/scripts" "$repo_dir/ai/scripts/helpers" "$repo_dir/ai/step_plans" \
-    "$repo_dir/ai/step_review_results" "$repo_dir/overmind"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_plans" \
+    "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind"
+  ln -s .asdlc_worker "$repo_dir/ai"
+  ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
-  cp "$POST_REVIEW_SRC" "$repo_dir/ai/scripts/post_review.sh"
-  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
-  chmod +x "$repo_dir/ai/scripts/post_review.sh" "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  cp "$POST_REVIEW_SRC" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
+  cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
   local review_box=" "
   [[ "$review_checked" == "1" ]] && review_box="x"
   local impl_box=" "
   [[ "$impl_checked" == "1" ]] && impl_box="x"
 
-  cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 EOF
 
@@ -1054,21 +1067,21 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   local repo_dir="$TMP_ROOT/repo-ai-audit-prompt"
   setup_ai_audit_prompt_repo "$repo_dir"
 
-  echo "- changed during review" >>"$repo_dir/ai/open_questions.md"
+  echo "- changed during review" >>"$repo_dir/.asdlc_worker/open_questions.md"
 
   (
     cd "$repo_dir"
-    ai/scripts/ai_audit.sh --step 1.1 --step-plan ai/step_plans/step-1.1.md --design ai/step_designs/step-1.1-design.md --out ai/prompts/ai_audit_prompts/test.prompt.txt >/dev/null
+    .asdlc_worker/scripts/ai_audit.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/ai_audit_prompts/test.prompt.txt >/dev/null
   )
 
   local prompt
-  prompt="$(cat "$repo_dir/ai/prompts/ai_audit_prompts/test.prompt.txt")"
+  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/ai_audit_prompts/test.prompt.txt")"
   assert_contains "$prompt" 'ai_audit phase for Step 1.1 - Demo'
-  assert_contains "$prompt" 'Follow `ai/AI_DEVELOPMENT_PROCESS.md` (Sections 6.0-6.4, Prompt governance) and `AGENTS.md` as the authoritative rules for this phase.'
+  assert_contains "$prompt" 'Follow `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md` (Sections 6.0-6.4, Prompt governance) and `AGENTS.md` as the authoritative rules for this phase.'
   assert_contains "$prompt" 'Primary context is the inline audit context below.'
   assert_contains "$prompt" 'Read these artifacts directly from the repo:'
-  assert_contains "$prompt" '- Step plan: ai/step_plans/step-1.1.md'
-  assert_contains "$prompt" '- Feature design: ai/step_designs/step-1.1-design.md'
+  assert_contains "$prompt" '- Step plan: .asdlc_worker/step_plans/step-1.1.md'
+  assert_contains "$prompt" '- Feature design: .asdlc_worker/step_designs/step-1.1-design.md'
   assert_contains "$prompt" '- Review result artifact: '
   assert_contains "$prompt" 'Optional references (open only if needed):'
   assert_contains "$prompt" '- Implementation plan: '
@@ -1076,13 +1089,13 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   assert_contains "$prompt" '- Blocker log: '
   assert_contains "$prompt" '- Open questions: '
   assert_contains "$prompt" '- Decisions: '
-  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.'
+  assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `.asdlc_worker/overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.'
   assert_contains "$prompt" 'Audit-loop rule: after each disposition or plan update, continue Sections 6.2-6.4 until every ai_audit gate passes; do not stop early because the user approved a follow-up bullet change.'
-  assert_contains "$prompt" 'Before ending the ai_audit phase, ensure all bullets in the current step section of `overmind/implementation_plan.md` are checklist bullets and marked `[x]`, then run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1`.'
-  assert_contains "$prompt" 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `overmind/implementation_plan.md`, then rerun the helper.'
-  assert_contains "$prompt" 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `overmind/implementation_plan.md`, the readiness helper passes, and the commit gate is satisfied (clean working tree).'
+  assert_contains "$prompt" 'Before ending the ai_audit phase, ensure all bullets in the current step section of `.asdlc_worker/overmind/implementation_plan.md` are checklist bullets and marked `[x]`, then run `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1`.'
+  assert_contains "$prompt" 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `.asdlc_worker/overmind/implementation_plan.md`, then rerun the helper.'
+  assert_contains "$prompt" 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `.asdlc_worker/overmind/implementation_plan.md`, the readiness helper passes, and the commit gate is satisfied (clean working tree).'
   assert_contains "$prompt" 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
-  assert_contains "$prompt" "== Target bullets (from overmind/implementation_plan.md) =="
+  assert_contains "$prompt" "== Target bullets (from .asdlc_worker/overmind/implementation_plan.md) =="
   assert_contains "$prompt" "- Implement part A (SP=2)"
   assert_contains "$prompt" "- Implement part B (SP=1)"
   assert_contains "$prompt" "== Linked EARS requirement blocks =="
@@ -1096,9 +1109,9 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   assert_contains "$prompt" "== Design shortlist: ADR shortlist =="
   assert_contains "$prompt" "- ADR-1"
   assert_contains "$prompt" "== Step delta file list =="
-  assert_contains "$prompt" " M ai/open_questions.md"
+  assert_contains "$prompt" " M .asdlc_worker/open_questions.md"
   assert_not_contains "$prompt" "## Plan (ordered)"
-  assert_not_contains "$prompt" "== ai/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4) =="
+  assert_not_contains "$prompt" "== .asdlc_worker/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4) =="
   assert_not_contains "$prompt" 'Run the ai_audit flow in this exact order: Section 6.0 proof-check, Section 6.1 TODO scan, Section 6.2 audit review, Section 6.3 per-finding disposition, Section 6.4 disposition gate.'
   assert_not_contains "$prompt" "# Feature Design: preamble should not leak"
   assert_not_contains "$prompt" "Designer model/session: preamble-should-not-leak"
@@ -1111,7 +1124,7 @@ test_ai_audit_disposition_helper_fails_when_section_missing() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
 
@@ -1130,7 +1143,7 @@ test_ai_audit_disposition_helper_fails_when_dispositions_are_insufficient() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
 
@@ -1149,7 +1162,7 @@ test_ai_audit_disposition_helper_fails_when_review_gate_is_open() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
 
@@ -1158,7 +1171,7 @@ test_ai_audit_disposition_helper_fails_when_review_gate_is_open() {
     exit 1
   fi
   assert_contains "$out" "AI audit disposition readiness failed for step 1.1."
-  assert_contains "$out" "Current step review gate in overmind/implementation_plan.md is not [x]."
+  assert_contains "$out" "Current step review gate in .asdlc_worker/overmind/implementation_plan.md is not [x]."
   assert_contains "$out" "Mark 'Review step implementation' complete before handing off ai_audit."
 }
 
@@ -1169,7 +1182,7 @@ test_ai_audit_disposition_helper_fails_when_non_review_bullet_is_open() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 2>&1)"
   status=$?
   set -e
 
@@ -1178,7 +1191,7 @@ test_ai_audit_disposition_helper_fails_when_non_review_bullet_is_open() {
     exit 1
   fi
   assert_contains "$out" "AI audit disposition readiness failed for step 1.1."
-  assert_contains "$out" "Current step has 1 unchecked checklist bullet(s) in overmind/implementation_plan.md."
+  assert_contains "$out" "Current step has 1 unchecked checklist bullet(s) in .asdlc_worker/overmind/implementation_plan.md."
   assert_contains "$out" "Mark all current-step checklist bullets [x] before handing off ai_audit."
 }
 
@@ -1189,7 +1202,7 @@ test_post_review_fails_when_disposition_section_is_missing() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -1209,7 +1222,7 @@ test_post_review_fails_when_dispositions_are_insufficient() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -1229,7 +1242,7 @@ test_post_review_fails_when_review_gate_is_open() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -1238,7 +1251,7 @@ test_post_review_fails_when_review_gate_is_open() {
     exit 1
   fi
   assert_contains "$out" "Post-review readiness failed for step 1.1."
-  assert_contains "$out" "Current step review gate in overmind/implementation_plan.md is not [x]."
+  assert_contains "$out" "Current step review gate in .asdlc_worker/overmind/implementation_plan.md is not [x]."
   assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
 }
 
@@ -1249,7 +1262,7 @@ test_post_review_fails_when_non_review_bullet_is_open() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -1258,19 +1271,19 @@ test_post_review_fails_when_non_review_bullet_is_open() {
     exit 1
   fi
   assert_contains "$out" "Post-review readiness failed for step 1.1."
-  assert_contains "$out" "Current step has 1 unchecked checklist bullet(s) in overmind/implementation_plan.md."
+  assert_contains "$out" "Current step has 1 unchecked checklist bullet(s) in .asdlc_worker/overmind/implementation_plan.md."
   assert_contains "$out" "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review."
 }
 
 test_post_review_allows_non_executable_disposition_helper() {
   local repo_dir="$TMP_ROOT/repo-post-review-helper-no-exec"
   setup_post_review_repo "$repo_dir" "complete"
-  chmod -x "$repo_dir/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod -x "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/post_review.sh --step 1.1 --dry-run 2>&1)"
   status=$?
   set -e
 
@@ -1298,7 +1311,7 @@ EOF
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && ai/scripts/post_review.sh --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/post_review.sh --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -1316,8 +1329,8 @@ EOF
   fi
 
   local review_plan overmind_plan overmind_head_files
-  review_plan="$(git -C "$repo_dir" show step-1.1-review:overmind/implementation_plan.md)"
-  overmind_plan="$(git -C "$repo_dir" show overmind:overmind/implementation_plan.md)"
+  review_plan="$(git -C "$repo_dir" show step-1.1-review:.asdlc_worker/overmind/implementation_plan.md)"
+  overmind_plan="$(git -C "$repo_dir" show overmind:.asdlc_worker/overmind/implementation_plan.md)"
   if [[ "$review_plan" != "$overmind_plan" ]]; then
     echo "Assertion failed: overmind implementation plan must match review branch after sync" >&2
     exit 1
@@ -1325,8 +1338,8 @@ EOF
   assert_contains "$overmind_plan" "Audit closure marker"
 
   overmind_head_files="$(git -C "$repo_dir" show --name-only --pretty=format: refs/heads/overmind --)"
-  assert_contains "$overmind_head_files" "overmind/implementation_plan.md"
-  assert_not_contains "$overmind_head_files" "ai/history.md"
+  assert_contains "$overmind_head_files" ".asdlc_worker/overmind/implementation_plan.md"
+  assert_not_contains "$overmind_head_files" ".asdlc_worker/history.md"
 }
 
 test_process_doc_defines_review_brief_mode() {
@@ -1367,7 +1380,7 @@ test_orchestrator_does_not_block_ai_audit_without_evidence() {
   out="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "ai_audit" &&
-    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1
   )"
   status=$?
   set -e
@@ -1399,7 +1412,7 @@ test_orchestrator_blocks_ai_audit_when_user_review_incomplete() {
   out="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "ai_audit" &&
-    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1
   )"
   status=$?
   set -e
@@ -1421,7 +1434,7 @@ test_orchestrator_post_review_requires_ai_audit_artifact() {
   out="$(
     cd "$repo_dir" &&
     set_single_phase_model "$repo_dir" "post_review" &&
-    ai/scripts/orchestrator.sh -- --step 1.1 2>&1
+    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1
   )"
   status=$?
   set -e
