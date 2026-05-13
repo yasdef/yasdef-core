@@ -19,28 +19,32 @@ This approach can be expressed in a few sentences:
 - ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that.
 - ✅ You need the Codex CLI (https://chatgpt.com/codex) available to run this framework, or you can change the model in `ai/setup/models.md` but scripts was not tested with another CLI's
 
-1. Copy-paste the `ai/` folder to the root of your project.
+1. Pull this repo to your local machine, then run ai/scripts/init_asdlc_worker.sh. Script will prompts you for the path to the repo we'll work on, it will copy necessary files from `ai/` folder to `.asdlc_worker` folder in the root of your project. Also it'll setup git repo (if not yet) and add the exclusions to .git/info/exclude)
 
-2. Make the bash scripts in `ai/scripts` executable:
-  `chmod +x ai/scripts/ai_design.sh ai/scripts/ai_implementation.sh ai/scripts/ai_plan.sh ai/scripts/ai_user_review.sh ai/scripts/ai_audit.sh ai/scripts/orchestrator.sh ai/scripts/post_review.sh ai/scripts/init_worker.sh`
+2. Make the bash scripts in `.asdlc_worker/scripts` executable:
+  `chmod -R +x .asdlc_worker/scripts`
 
 3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
 
-4. Run `bash ai/scripts/init_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
+4. Run `bash .asdlc_worker/scripts/register_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
    The script prompts for:
-   - worker UUID (must already exist in project-scoped `workers.yaml`),
-   - path to the ASDLC source root.
+   - worker UUID (must already exist in the project repo's root `workers.yaml`),
+   - path to the single ASDLC project repo (not a parent of many projects).
+   The script reads `project_id` from `<project_repo>/init_progress_definition.yaml` under `meta_info.project_id`.
+   Before switching branches, if the worker repo root has no `AGENTS.md`, the script prints a non-blocking reminder. When `<project_repo>/project_stack_blueprint_<worker-class>.md` exists, the reminder includes that blueprint path so a model can use it when drafting `AGENTS.md`.
    On success it creates/checks out local branch `overmind`, writes deterministic project binding `ai/project_overmind.yaml` (including `project_id`), and commits the change.
 
 5. Keep source-of-truth coordinator artifacts in ASDLC feature folders:
-   - `projects/<project-id>/<feature-id>/implementation_plan.md`
-   - `projects/<project-id>/<feature-id>/requirements_ears.md`
+   - `<project-repo>/<feature-id>/implementation_plan.md`
+   - `<project-repo>/<feature-id>/requirements_ears.md`
+   - optional project-level blueprint files one directory above feature folders: `<project-repo>/project_stack_blueprint_*.md`
    Worker runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` are mirrored copies managed by orchestrator on branch `overmind`.
+   During design, if the step must create the initial runnable scaffold/stack for the bound class because there is no meaningful existing implementation to extend, use `.asdlc_worker/project_overmind.yaml` class metadata plus those project-level blueprint files to produce a compact bootstrap handoff for planning.
 
 5.1 Workaround (`--standalone`) when ASDLC paths are temporarily unreachable:
-   - Default orchestrator mode tries to read source artifacts from ASDLC and mirror them to local runtime files.
-   - If ASDLC cannot be reached, default mode fails fast even when local `/overmind` files exist.
-   - Use `bash ai/scripts/orchestrator.sh --standalone` to skip ASDLC feature discovery/read-copy flow and run directly from local:
+   - Default orchestrator mode tries to read source artifacts from `<project-repo>/<feature-id>/` and mirror them to local runtime files.
+   - If the project repo cannot be reached, default mode fails fast even when local `/overmind` files exist.
+   - Use `bash .asdlc_worker/scripts/orchestrator.sh --standalone` to skip ASDLC feature discovery/read-copy flow and run directly from local:
      - `overmind/implementation_plan.md`
      - `overmind/reqirements_ears.md`
    - Trade-off: standalone mode can run on stale local runtime copies because remote source sync is intentionally bypassed.
@@ -55,16 +59,16 @@ This approach can be expressed in a few sentences:
 ```
 
 7. Run the orchestrator:
-  `bash ai/scripts/orchestrator.sh` and follow the instructions.
+  `bash .asdlc_worker/scripts/orchestrator.sh` and follow the instructions.
   Routing behavior:
-  - default mode tries to read/copy `projects/<project-id>/<feature-id>/implementation_plan.md` and `projects/<project-id>/<feature-id>/requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
-  - if you need local-runtime-only execution, run `bash ai/scripts/orchestrator.sh --standalone` to bypass ASDLC artifact flow immediately
-  - orchestrator scans bound project features from `ai/project_overmind.yaml`
+  - default mode tries to read/copy `<project-repo>/<feature-id>/implementation_plan.md` and `<project-repo>/<feature-id>/requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
+  - if you need local-runtime-only execution, run `bash .asdlc_worker/scripts/orchestrator.sh --standalone` to bypass ASDLC artifact flow immediately
+  - orchestrator scans bound project repo features (`<project-repo>/<feature-id>/implementation_plan.md`) from `.asdlc_worker/project_overmind.yaml`; `.git` and subdirectories without `implementation_plan.md` are skipped
   - `0` candidate features -> fail fast
   - `1` candidate feature -> auto-select
   - `>1` candidate features -> explicit user choice
   - after feature selection, orchestrator reads and copies source `implementation_plan.md` and `requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
-  Selected-feature traceability is recorded in `ai/feature_sync.yaml` and reused on valid `--resume <step>`.
+  Selected-feature traceability is recorded in `.asdlc_worker/feature_sync.yaml` and reused on valid `--resume <step>`.
   Use debug mode to keep per-step artifacts:
   `bash ai/scripts/orchestrator.sh --debug -- --step 1.3`
   To recover interrupted work for a specific step deterministically:
@@ -73,7 +77,7 @@ This approach can be expressed in a few sentences:
   `bash ai/scripts/orchestrator.sh --resume <step> --dry-run`
 
 8. OPTIONAL — allow your AI CLI to work with git (except merge to `main`/`master`) to avoid repeated permission prompts.
-  `bash ai/scripts/orchestrator.sh --dry-run`
+  `bash .asdlc_worker/scripts/orchestrator.sh --dry-run`
 
 ## Why we need yet another SDD framework?
 
@@ -98,15 +102,15 @@ This approach can be expressed in a few sentences:
 
 - **Orchestration:** Since each phase starts as a terminal command, we can orchestrate the whole process from top-level script `ai/scripts/orchestrator.sh`.
   - Worker/project binding rule: orchestrator reads `worker_uuid` and `project_id` from `ai/project_overmind.yaml` (legacy `ai/*_dont_touch.txt` is no longer used).
-  - Candidate discovery rule: orchestrator scans bound project features (`projects/<project-id>/<feature-id>/implementation_plan.md`) and considers only `#### Assigned: <worker-uuid>` blocks.
+  - Candidate discovery rule: orchestrator scans bound project repo features (`<project-repo>/<feature-id>/implementation_plan.md`), skipping `.git` and subdirectories without `implementation_plan.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
   - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
   - Runtime mirroring rule: selected feature artifacts are mirrored into local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` on branch `overmind` before phase execution.
   - Standalone override: `--standalone` bypasses ASDLC discovery/read-copy flow and uses existing local `overmind/implementation_plan.md` + `overmind/reqirements_ears.md` directly.
-  - Feature sync state: orchestrator records selected feature metadata in `ai/feature_sync.yaml`; valid metadata is reused for `--resume <step>`, stale metadata is discarded and recomputed.
+  - Feature sync state: orchestrator records selected feature metadata in `.asdlc_worker/feature_sync.yaml`; valid metadata is reused for `--resume <step>`, stale metadata is discarded and recomputed.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
-  - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`ai/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
-  - Default mode (without `--debug`): orchestrator writes only latest-per-phase artifacts (`ai/logs/<project>-<phase>-latest-log` and `ai/prompts/<phase>_prompts/<project>-latest-<phase>-prompt.txt`), overwriting those latest files each run.
+  - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`.asdlc_worker/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
+  - Default mode (without `--debug`): orchestrator writes only latest-per-phase artifacts (`.asdlc_worker/logs/<project>-<phase>-latest-log` and `.asdlc_worker/prompts/<phase>_prompts/<project>-latest-<phase>-prompt.txt`), overwriting those latest files each run.
   - Non-debug safeguard: previously generated step-specific prompt files are not modified when `--debug` is off.
 
 ## AI-dev process main rules
@@ -124,12 +128,12 @@ This approach can be expressed in a few sentences:
 
 Each artifact below serves a specific role in the AI-dev process:
 
-- **projects/<project-id>/<feature-id>/requirements_ears.md**: Source-of-truth behavioral requirements for each feature (EARS format).
-- **projects/<project-id>/<feature-id>/implementation_plan.md**: Source-of-truth execution plan for each feature; `#### Assigned:` routes work to workers.
+- **<project-repo>/<feature-id>/requirements_ears.md**: Source-of-truth behavioral requirements for each feature (EARS format).
+- **<project-repo>/<feature-id>/implementation_plan.md**: Source-of-truth execution plan for each feature; `#### Assigned:` routes work to workers.
 - **overmind/reqirements_ears.md**: Local mirrored runtime copy of selected feature EARS, consumed by worker phase scripts.
 - **overmind/implementation_plan.md**: Local mirrored runtime copy of selected feature plan, consumed by worker phase scripts.
-- **ai/project_overmind.yaml**: Durable local binding (`overmind_source_path`, `project_id`, worker metadata) created by `init_worker`.
-- **ai/feature_sync.yaml**: Per-run selected-feature metadata (selection mode, source/runtime paths, step context) used for traceability and resume reuse.
+- **project_overmind.yaml**: Durable local binding (`overmind_source_path`, `project_id`, worker metadata) created by `init_worker`.
+- **feature_sync.yaml**: Per-run selected-feature metadata (selection mode, source/runtime paths, step context) used for traceability and resume reuse.
 - **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
 - **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include `## Plan (ordered)`, translated functional requirements, preconditions, architecture, risks, and test strategy.
 - **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
@@ -147,35 +151,36 @@ Each artifact below serves a specific role in the AI-dev process:
 
 **Phase 1: Design**
 - Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, existing architecture/context docs.
-- Output: `ai/designs/feature-<N>.md` with feature-level design decisions and constraints.
-- Gate: Design assumptions and unknowns are captured before planning starts.
+- Output: `.asdlc_worker/designs/feature-<N>.md` with feature-level design decisions and constraints. If the step must create the initial runnable scaffold/stack because there is no meaningful existing implementation to extend, add a compact `## First-Feature Bootstrap (only if needed)` handoff section.
+- Gate: Design assumptions and unknowns are captured before planning starts; if bootstrap is explicitly raised in design, scaffold direction must be resolved through a relevant blueprint or explicit user stack decision before handoff.
 
 **Phase 2: Planning**
 - Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
-- Input (additional): `ai/designs/feature-<N>.md`.
-- Output: `ai/step_plans/step-<N>.md` with `## Plan (ordered)`, translated functional requirements from design-selected EARS blocks, architecture, test strategy, and execution command for the implementation phase.
-- Gate: All open questions must be answered before planning completion.
+- Input (additional): `.asdlc_worker/designs/feature-<N>.md`.
+- Output: `.asdlc_worker/step_plans/step-<N>.md` with `## Plan (ordered)`, translated functional requirements from design-selected EARS blocks, architecture, test strategy, and execution command for the implementation phase. If the design explicitly marks bootstrap required, planning also adds `## Scaffold Bootstrap Plan` and places scaffold creation before dependent feature work.
+- Gate: All open questions must be answered before planning completion, and bootstrap-required plans must preserve scaffold creation as mandatory ordered work.
 
 **Phase 3: Implementation**
-- Input: Step plan (`ai/step_plans/step-<N>.md`), design (`ai/designs/feature-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
+- Input: Step plan (`.asdlc_worker/step_plans/step-<N>.md`), design (`.asdlc_worker/designs/feature-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
 - Output: Implemented changes on a local topic branch (`step-<N>-implementation`), updated tests/docs/planning artifacts, plus Evidence Reasoning Summary and Review Brief handoff for the next phase.
 - Gate: All ordered bullets must be `[x]`, all translated functional requirement checklist items must be `[x]`, verification closure must pass, and implementation does not commit before user review starts.
 
 **Phase 4: User Review**
-- Input: Implementation outputs from Phase 3, step plan/design context, `ai/user_review.md`.
-- Output: User-requested adjustments on `step-<N>-user-review`, targeted tests/docs updates, and generalized review rules in `ai/user_review.md` when applicable.
+- Input: Implementation outputs from Phase 3, step plan/design context, `.asdlc_worker/user_review.md`.
+- Output: User-requested adjustments on `step-<N>-user-review`, targeted tests/docs updates, and generalized review rules in `.asdlc_worker/user_review.md` when applicable.
 - Gate: Entry precheck requires all `## Plan (ordered)` checklist items `[x]` and all translated functional requirement checklist items `[x]` before model execution.
 
 **Phase 5: Post-Step Audit & Review (AI)**
 - Input: Implemented + user-review changes, step plan, design, and user feedback outcomes.
-- Output: `ai/step_review_results/review_result-<N>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-review`). No push or merge to `main`/`master`.
+- Output: `.asdlc_worker/step_review_results/review_result-<N>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-review`). No push or merge to `main`/`master`.
 - Gate: Every finding must have an explicit disposition; all accepted work must be captured as follow-up steps or questions.
 
 **Phase 6: Post-Review**
-- Input: `ai/step_review_results/review_result-<N>.md`, updated plan artifacts, review branch state.
+- Input: `.asdlc_worker/step_review_results/review_result-<N>.md`, updated plan artifacts, review branch state.
 - Output: Post-review updates (for example metrics/history updates and follow-up step alignment), performed without AI model execution.
 - Gate: Review dispositions are reflected in planning artifacts before next step starts.
 
+**Worker cycle LAR flow:** `overmind/reqirements_ears.md` carries external artifact links (Figma mocks, Confluence schemas, OpenAPI specs, etc.) as a `## Linked Artifacts` registry. The design phase funnels the per-step LAR shortlist from that registry into the design artifact. Planning mirrors the shortlist into the step plan and fetches each LAR locator as one more clarification-loop input (structure, copy, field shapes); fetch failures are routed through the existing ask-user mechanisms (`.asdlc_worker/open_questions.md`, `.asdlc_worker/blocker_log.md`) using the standard "cannot resolve LAR-NNN" question pattern. Implementation re-fetches each LAR locator and uses the content as source of truth for whatever the artifact represents — UI details, schema structure, API contracts, architecture diagrams, or any other artifact-specific detail that FR text cannot encode.
 ## What's done + plans
 
 V-0.0.1

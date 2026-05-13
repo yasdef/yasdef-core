@@ -1,6 +1,6 @@
 # User Review Insights - Template
 
-Use this schema when adding durable user-review rules to `ai/user_review.md`.
+Use this schema when adding durable user-review rules to `.asdlc_worker/user_review.md`.
 
 Rules:
 - Write generalizable rules only (avoid one-off local fixes).
@@ -27,4 +27,4 @@ Example block:
 - **Rule**: Record only reusable review rules and keep one canonical entry per rule intent.
 - **How to verify**: Confirm required fields are present and no overlapping Trigger+Rule exists under another UR ID.
 - **Example(s)**: Update existing `UR-0001` with refined verification notes instead of adding `UR-0042` for the same rule.
-- **References**: `ai/user_review.md` `ai/templates/user_review_TEMPLATE.md`
+- **References**: `.asdlc_worker/user_review.md` `.asdlc_worker/templates/user_review_TEMPLATE.md`

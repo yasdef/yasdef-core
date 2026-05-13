@@ -1,6 +1,6 @@
 # AI Run History - Golden Example
 
-This file demonstrates the preferred entry format for `ai/history.md`.
+This file demonstrates the preferred entry format for `.asdlc_worker/history.md`.
 
 ## 2026-02-11T18:05:42Z
 - Step: 1.6e - Example step title
@@ -14,4 +14,4 @@ This file demonstrates the preferred entry format for `ai/history.md`.
 - post_review note: non-model consolidation phase (no model token usage line expected).
 - New lines of code added: 312
 - New classes added: 4
-- Step plan: ai/step_plans/step-1.6e.md
+- Step plan: .asdlc_worker/step_plans/step-1.6e.md

@@ -29,6 +29,16 @@ setup_staged_workspace() {
     "$repo_dir/asdlc/.golden_examples" \
     "$repo_dir/asdlc/projects/p1/feature-a"
 
+  # Root project repo files (single-project layout)
+  cat >"$repo_dir/asdlc/workers.yaml" <<'OUT'
+workers: []
+OUT
+  cat >"$repo_dir/asdlc/init_progress_definition.yaml" <<'OUT'
+meta_info:
+  project_id: 'p1'
+steps: []
+OUT
+
   cp "$SCAFFOLD_SCRIPT" "$repo_dir/asdlc/.commands/feature_br_scaffold.sh"
   cp "$SCAN_SCRIPT" "$repo_dir/asdlc/.commands/feature_scan_repo_for_br.sh"
   cp "$TASK_SCRIPT" "$repo_dir/asdlc/.commands/feature_task_to_br.sh"
@@ -62,14 +72,6 @@ OUT
 repo_analyse | codex | gpt-5.4
 task_to_br | codex | gpt-5.4
 user_br_clarification | codex | gpt-5.4
-OUT
-
-  cat >"$repo_dir/asdlc/projects/p1/init_progress_definition.yaml" <<'OUT'
-meta_info:
-  project_type_code: "B"
-  project_type_label: "Existing project with partial context"
-
-steps: []
 OUT
 
   (

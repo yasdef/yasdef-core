@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-PLAN_FILE="$ROOT/overmind/implementation_plan.md"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
+PLAN_FILE="$ASDLC_RUNTIME_PLAN_PATH"
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>
+Usage: .asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>
 
 Exit codes:
   0  ai_audit completion handoff is ready
@@ -84,11 +87,11 @@ if [[ $# -ne 1 ]]; then
 fi
 
 STEP="$1"
-REVIEW_FILE="$ROOT/ai/step_review_results/review_result-$STEP.md"
+REVIEW_FILE="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP.md"
 
 if [[ ! -f "$REVIEW_FILE" ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2
-  echo "Review artifact not found: ai/step_review_results/review_result-$STEP.md" >&2
+  echo "Review artifact not found: .asdlc_worker/step_review_results/review_result-$STEP.md" >&2
   echo "ai_audit dispositions were not finished correctly because the review artifact is missing." >&2
   exit 1
 fi
@@ -112,7 +115,7 @@ fi
 
 if [[ ! -f "$PLAN_FILE" ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2
-  echo "Implementation plan not found: overmind/implementation_plan.md" >&2
+  echo "Implementation plan not found: .asdlc_worker/overmind/implementation_plan.md" >&2
   echo "ai_audit cannot finish until the current step review gate is closed in the implementation plan." >&2
   exit 1
 fi
@@ -122,35 +125,35 @@ IFS='|' read -r FOUND_STEP HAVE_REVIEW REVIEW_CHECKED UNCHECKED_COUNT PLAIN_COUN
 
 if [[ "$FOUND_STEP" -ne 1 ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2
-  echo "Step $STEP section was not found in overmind/implementation_plan.md." >&2
+  echo "Step $STEP section was not found in .asdlc_worker/overmind/implementation_plan.md." >&2
   echo "Add/update the current step section in the implementation plan before handing off ai_audit." >&2
   exit 1
 fi
 
 if [[ "$HAVE_REVIEW" -ne 1 ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2
-  echo "Current step review gate was not found in overmind/implementation_plan.md." >&2
+  echo "Current step review gate was not found in .asdlc_worker/overmind/implementation_plan.md." >&2
   echo "Add the current step bullet 'Review step implementation' to the implementation plan before handing off ai_audit." >&2
   exit 1
 fi
 
 if [[ "$REVIEW_CHECKED" -ne 1 ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2
-  echo "Current step review gate in overmind/implementation_plan.md is not [x]." >&2
+  echo "Current step review gate in .asdlc_worker/overmind/implementation_plan.md is not [x]." >&2
   echo "Mark 'Review step implementation' complete before handing off ai_audit." >&2
   exit 1
 fi
 
 if [[ "$PLAIN_COUNT" -gt 0 ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2
-  echo "Current step has $PLAIN_COUNT non-checklist bullet(s) in overmind/implementation_plan.md." >&2
+  echo "Current step has $PLAIN_COUNT non-checklist bullet(s) in .asdlc_worker/overmind/implementation_plan.md." >&2
   echo "Normalize current-step bullets to checklist form and mark all of them [x] before handing off ai_audit." >&2
   exit 1
 fi
 
 if [[ "$UNCHECKED_COUNT" -gt 0 ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2
-  echo "Current step has $UNCHECKED_COUNT unchecked checklist bullet(s) in overmind/implementation_plan.md." >&2
+  echo "Current step has $UNCHECKED_COUNT unchecked checklist bullet(s) in .asdlc_worker/overmind/implementation_plan.md." >&2
   echo "Mark all current-step checklist bullets [x] before handing off ai_audit." >&2
   exit 1
 fi

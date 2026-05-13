@@ -50,7 +50,10 @@ Designer model/session: gpt-5.3-codex, session=<fill>
 ## Alternatives
 - Use projection-derived idempotent replay -> rejected due to instability after subsequent events.
 
-## Applicable ADR Shortlist (from ai/decisions.md)
+## Linked Artifacts (in scope)
+- LAR-003 | Figma | Close Command UI Mockup | https://figma.com/file/example/close-command
+
+## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)
 - ADR-0001 — idempotent duplicate response behavior is directly relevant for close retries.
 - ADR-0005 — event stream routing constraints apply to any new close-command writes.
 
@@ -71,3 +74,7 @@ Optional in design phase. Required for non-trivial behavior changes; this exampl
 
 ## Unknowns / Assumptions to Validate (optional)
 - None.
+
+## First-Feature Bootstrap (only if needed)
+- Not needed for this step.
+- This optional section is filled only when the step must create the initial scaffold/stack handoff before normal feature implementation planning.

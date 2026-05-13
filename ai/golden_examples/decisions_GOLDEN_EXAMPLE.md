@@ -1,6 +1,6 @@
 # Decisions (ADR-lite) - Golden Example
 
-This file demonstrates the preferred structure for entries in `ai/decisions.md`.
+This file demonstrates the preferred structure for entries in `.asdlc_worker/decisions.md`.
 
 Rules:
 - Keep the decision concise and focused on the "why".
@@ -27,4 +27,4 @@ Template:
   - Include key rules or constraints.
 - **Consequences**:
   - Note the impact on behavior, risk, or maintenance.
-- **Related**: `reqirements_ears.md` (REQ-XX), `ai/implementation_plan.md` (Step X.Y), `src/main/java/...`
+- **Related**: `.asdlc_worker/overmind/reqirements_ears.md` (REQ-XX), `.asdlc_worker/overmind/implementation_plan.md` (Step X.Y), `src/main/java/...`

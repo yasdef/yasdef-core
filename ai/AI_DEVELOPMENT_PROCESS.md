@@ -20,7 +20,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - `overmind/implementation_plan.md`: step-level backlog and target-bullet contract artifact; Implementation/User Review do not use it as the execution state machine, and `ai_audit` starts with explicit target-bullet proof-check against it.
 - `ai/step_designs/`: feature design artifacts created before planning for user review.
 - `ai/templates/feature_design_TEMPLATE.md` and `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`: structure and example for feature design artifacts.
-- `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts and the only mid-phase execution contract (`## Plan (ordered)` + translated functional requirements).
+- `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts and the only mid-phase execution contract (`## Plan (ordered)` + translated functional requirements + `## Linked Artifacts (in scope)` shortlist propagated from the design artifact).
 - `ai/blocker_log.md`: unknowns/blockers discovered while working an in-progress step.
 - `ai/templates/blocker_log_TEMPLATE.md` and `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`: structure and example for blocker log entries.
 - `ai/decisions.md`: durable technical decisions (“why we chose X”).
@@ -57,12 +57,27 @@ Before step planning:
 - Design must include both:
   - step scope bullets (`## Target Bullets (excluding planning/review)`), and
   - selected EARS requirement blocks for planning translation (`## Selected EARS Requirements (for planning translation)`).
+- After extracting `### Requirement N` blocks, perform the third-stage LAR funnel: scan the extracted blocks for `**Linked Artifacts:** LAR-NNN` lines, dedup IDs, look each up in the `## Linked Artifacts` registry of `overmind/reqirements_ears.md`, and propagate the result as a `## Linked Artifacts (in scope)` shortlist into the design artifact via `ai/scripts/helpers/sync_step_lars.sh`; do not fetch LAR content in the design phase.
+- Apply `#### Bootstrap decision algorithm` before design handoff.
+- If bootstrap is required and stack/architecture guidance is needed, run `ai/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context and evaluate class-relevant `project_stack_blueprint_*.md` files from the project-level directory above that feature folder.
+- Use project class metadata from `ai/project_overmind.yaml` to scope blueprint relevance; if class metadata is missing/unsupported or no relevant blueprint exists, stop and ask the user for stack/scaffold direction instead of inventing one.
 - Include only relevant constraints from `AGENTS.md` and relevant insights from `ai/user_review.md` (do not dump all rules).
 - Shortlist only relevant accepted ADRs from `ai/decisions.md` and capture them in the design artifact (do not dump all ADRs).
 - In this phase, do not finalize durable decisions and do not update `ai/decisions.md`; capture candidate decisions under "Things to Decide" in the design artifact for final planning discussion.
 - In feature design, perform `#### Missing discussion points gates` before handoff to planning and add all meaningful unresolved findings to `## Things to Decide (for final planning discussion)`.
 - Design decision quality gate: make "Things to Decide" entries concrete and action-driving (decision-shaped, not generic questions), with mutually exclusive options and explicit trade-offs so planning can present clear `1`/`2` choices.
 - Design decision depth gate: for non-trivial scope, capture at least 1-3 plan-critical "Things to Decide" items. If there are truly no plan-critical choices, explicitly record `- None.` with short rationale.
+#### Bootstrap decision algorithm
+- Inspect the current step goal and the current implementation evidence in the bound repo for the current class.
+- Treat the step as first-feature bootstrap only when it must create the initial runnable scaffold/stack for that class because there is no meaningful existing implementation to extend.
+- Main evidence to inspect:
+  - existing source files for the class
+  - existing app/module scaffold
+  - existing dependency/build setup
+  - existing runtime entrypoints
+  - whether the step bullets are scaffold-creation work versus normal feature-extension work
+- If the step is first-feature bootstrap, add one compact section: `## First-Feature Bootstrap (only if needed)`.
+- In that section, record `Bootstrap required: yes`, the blueprint lookup result, blueprint evidence or explicit user stack decision, and a short planning handoff.
 #### Missing discussion points gates
 - Before design handoff, run a lightweight missing-discussion-points ambiguity scan focused on planning-relevant gaps.
 - Use this structured taxonomy when scanning:
@@ -88,12 +103,15 @@ Before step planning:
 - Use `ai/templates/step_plan_TEMPLATE.md` as the default structure and follow the style in `ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md`.
 - The plan may be produced in a separate session/model. Record planner and intended execution model/session IDs in the plan.
 - Use web research for best practices when needed; record sources in the plan to reduce hallucinations.
+- Mirror the design's `## Linked Artifacts (in scope)` block verbatim into the step plan via `ai/scripts/helpers/sync_step_lars.sh`; also fetch each in-scope LAR locator using available web/MCP tooling at the start of context-gathering and treat the fetched content as one more context input alongside `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, the design artifact, and ADRs. Route any fetch failure through existing ask-user mechanisms (`ai/open_questions.md`, `ai/blocker_log.md`, two-option prompts) using the standard "cannot resolve LAR-NNN (locator: ...). How should I proceed?" question pattern. Skip this fetch step when the design's LAR shortlist is empty.
 - The plan must be concise and execution-focused: ordered steps, constraints, decisions, tests, and docs/artifacts to update.
 - Scope contract lives in the feature design artifact: `## Goal`, `## In Scope`, and `## Out of Scope`. Do not restate those sections in the step plan; instead add a pointer to the design and focus the plan on execution.
+- If present, the optional design bootstrap section is the source of truth for bootstrap handling; planning must not re-investigate repo emptiness or independently re-decide bootstrap need.
 - Step-plan structure contract:
   - Do not include `## Target Bullets` in step plans.
   - Do not include `## Requirement Tags` in step plans.
   - Require `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)` (in that order).
+- Only when design records `Bootstrap required: yes`, require `## Scaffold Bootstrap Plan` in the step plan and place scaffold creation before dependent feature implementation work in `## Plan (ordered)`.
 - Functional-requirement translation contract (Design -> Plan):
   - Planning translates the design-selected EARS into plain step-plan FRs. Design keeps the EARS source context; implementation and user_review operate on FRs only.
   - Resolve planning decisions that change runtime behavior before translating design EARS into final FR wording.
@@ -154,6 +172,7 @@ Before step planning:
 - Ordered bullets are checkbox lifecycle items (`[ ]` / `[x]`). If a bullet is plain text without checkbox syntax, treat it as unchecked until normalized/closed.
 - Implementation strategy is adaptive: batch work in the most coherent order when needed, but close checklist state per ordered bullet and mark `[x]` only when that specific bullet is proven complete.
 - Review the step plan, design artifact, and supporting artifacts before coding: translated functional requirements, `ai/decisions.md`, `ai/blocker_log.md`, and `ai/open_questions.md`.
+- Fetch in-scope LAR locators: before implementing any FR that references a LAR-NNN, fetch the locator using available web/MCP tooling and use the fetched content as source of truth for whatever the artifact represents — UI details (spacing, icons, hover states, micro-interactions, breakpoints), schema structure (field names, types, constraints), API contracts (endpoints, payloads, error codes), architecture diagrams, or any other artifact-specific detail that FR text cannot fully encode. Stop and ask the user instead of inventing content when fetch fails or fetched content is ambiguous. Skip if the step plan's `## Linked Artifacts (in scope)` section is empty or absent.
 - If implementation must deviate from the step plan, update the step plan first, then continue implementation.
 - If design "Things to Decide" are still unresolved in the step plan during implementation: do not decide unilaterally in implementation. Recommend rerunning planning to resolve decisions first, then follow the user's instruction on whether to return to planning or proceed with explicit risk acceptance.
 - If a required project decision/blocker appears during implementation, stop and ask the user before proceeding.
@@ -199,32 +218,34 @@ Entry precondition:
 - Before prompt generation/model start, `ai/scripts/ai_user_review.sh` runs `ai/scripts/helpers/check_implementation_readiness.sh <step>` and fails fast if implementation was not finished correctly.
 - User review operates on ordered-plan completion state only; do not use `overmind/implementation_plan.md` target bullets as user_review phase-state gating.
 
-1. Before starting the user review loop, review `ai/user_review.md` for applicable rules and known pitfalls, then re-check the implemented code against those rules once again (including any rules not shortlisted earlier but now relevant based on actual changes). If there is room to improve the last changes (without scope creep), propose those improvements first.
-2. Before asking for review feedback, provide a concise `Review Brief` (plain language, product-level) covering exactly:
+1. Before starting the user review loop, review the current-step patch as a code reviewer: inspect changed files/diff and nearby code patterns, then check for defects, regressions, missing verification, and drift from the step plan, translated requirements, design scope, accepted decisions, `AGENTS.md`, and applicable `ai/user_review.md` rules. Prioritize previous user decisions and accepted user-review rules that apply to the current changes/scope, including newly relevant rules not shortlisted earlier.
+2. Triage self-check findings before asking for user review: fix immediately only when a finding is current-scope and clear/objective or review-blocking; rerun relevant verification after any fix. Otherwise, leave the code unchanged and highlight the finding in the `Review Brief` as a focused hotspot/question.
+3. Before asking for review feedback, provide a concise `Review Brief` (plain language, product-level) covering exactly:
    1. what was changed and how (concrete system flow),
    2. how to start code review (where to begin and recommended order),
    3. what should be checked first (top correctness/risk hotspots).
-3. Review Brief output constraints:
+4. Review Brief output constraints:
    - Keep it concise (short checklist-style summary; avoid long narrative).
    - Scope it to current-step changes only.
    - Reference concrete changed entrypoints/files/components/tests when available.
+   - Derive "what should be checked first" from the pre-review self-check, including any unfixed current-scope hotspots/questions.
    - Do not narrate artifact creation; focus on reviewer onboarding.
    - Do not guess review ordering/entrypoints. If specific entrypoints are unclear, use cautious non-speculative guidance.
    - Keep the ai_audit entry `Evidence Reasoning Summary` separate; do not merge proof-gate entries into the Review Brief.
    - Use `ai/golden_examples/review_brief_GOLDEN_EXAMPLE.md` as the tone/structure anchor.
-4. Ask the user for the next review item (a question or a change request). The user may provide feedback one-by-one; if they have multiple items, a short bullet list helps.
-5. When the user responds, do this in order:
+5. Ask the user for the next review item (a question or a change request). The user may provide feedback one-by-one; if they have multiple items, a short bullet list helps.
+6. When the user responds, do this in order:
    1. Clarify ambiguous requests (ask questions if needed). If the user asked "why", answer the question first.
    2. Implement the requested changes (and any directly necessary test/doc updates). Do not implement changes that were not requested; propose them as suggestions and ask.
    3. Immediately update `ai/user_review.md` with any generalizable rule(s) derived from the user feedback and the implementation change (include references). If there are no generalizable rules, explicitly state that and do not change `ai/user_review.md`.
       - UR-schema gate: new UR entries must be template-complete using `ai/templates/user_review_TEMPLATE.md` required fields: `Trigger`, `Rule`, `How to verify`, `Example(s)`, and `References`.
       - Fallback gate: if feedback is useful but cannot populate the required UR fields with sufficient quality, do not create a UR entry; record a step-specific note in the active step plan instead.
       - De-dup gate: if new feedback overlaps an existing UR rule, update the existing UR entry instead of adding a duplicate/new UR ID.
-6. Summarize what changed and ask for the next review round.
-7. Repeat steps 4-6 until the user explicitly confirms the review is complete (e.g., "done", "no more comments").
-8. Only after the user confirms completion:
+7. Summarize what changed and ask for the next review round.
+8. Repeat steps 5-7 until the user explicitly confirms the review is complete (e.g., "done", "no more comments").
+9. Only after the user confirms completion:
    - Run one final verification test command for the step (prefer the repo’s full verification gate from `AGENTS.md`) and report the result.
-9. If the final verification passes, propose the next step: Post-step audit/review (Section 6).
+10. If the final verification passes, propose the next step: Post-step audit/review (Section 6).
 - Do not run Section 6 in the implementation phase; Section 6 is executed in the `ai_audit` phase.
 
 ### 6) Post-step ai_audit/review (required before moving to the next step)

@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/helpers/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
 PROJECT="$(basename "$ROOT")"
-PLAN="$ROOT/overmind/implementation_plan.md"
-PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
+PLAN="$ASDLC_RUNTIME_PLAN_PATH"
+PROCESS="$ASDLC_PROCESS_FILE"
 AGENTS="$ROOT/AGENTS.md"
-PLANNING_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_planning_readiness.sh"
-IMPLEMENTATION_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
+PLANNING_READINESS_HELPER="$ASDLC_HELPERS_DIR/check_planning_readiness.sh"
+IMPLEMENTATION_READINESS_HELPER="$ASDLC_HELPERS_DIR/check_implementation_readiness.sh"
 
 STEP=""
 OUT=""
@@ -18,14 +21,14 @@ SKIP_BRANCH=0
 
 usage() {
   cat <<'USAGE'
-Usage: ai/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents] [--no-branch]
+Usage: .asdlc_worker/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents] [--no-branch]
 
 Defaults:
-  - If --step is omitted, uses the first unchecked bullet in overmind/implementation_plan.md.
-  - If --step-plan is omitted, uses ai/step_plans/step-<step>.md (required).
-  - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required).
-  - If --out is omitted, writes to ai/prompts/impl_prompts/<project>-step-<step>.prompt.txt.
-  - ai/decisions.md and ai/user_review.md are pointer-only by default; rely on design/step-plan extracted sections.
+  - If --step is omitted, uses the first unchecked bullet in .asdlc_worker/overmind/implementation_plan.md.
+  - If --step-plan is omitted, uses .asdlc_worker/step_plans/step-<step>.md (required).
+  - If --design is omitted, uses .asdlc_worker/step_designs/step-<step>-design.md (required).
+  - If --out is omitted, writes to .asdlc_worker/prompts/impl_prompts/<project>-step-<step>.prompt.txt.
+  - .asdlc_worker/decisions.md and .asdlc_worker/user_review.md are pointer-only by default; rely on design/step-plan extracted sections.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - --no-include-agents is accepted for compatibility and keeps pointer-only behavior.
   - Always creates/switches to branch step-<step>-implementation.
@@ -410,14 +413,14 @@ fi
 if [[ -z "$STEP" ]]; then
   line="$(get_next_unchecked)"
   if [[ -z "$line" ]]; then
-    echo "No unchecked bullets found in overmind/implementation_plan.md." >&2
+    echo "No unchecked bullets found in .asdlc_worker/overmind/implementation_plan.md." >&2
     exit 1
   fi
   IFS='|' read -r STEP STEP_TITLE BULLET <<<"$line"
 else
   STEP_TITLE="$(get_step_title "$STEP")"
   if [[ -z "$STEP_TITLE" ]]; then
-    echo "Step $STEP not found in overmind/implementation_plan.md." >&2
+    echo "Step $STEP not found in .asdlc_worker/overmind/implementation_plan.md." >&2
     exit 1
   fi
   BULLET="$(get_step_first_unchecked "$STEP")"
@@ -427,18 +430,18 @@ else
 fi
 
 if [[ -z "$STEP_PLAN" ]]; then
-  STEP_PLAN="$ROOT/ai/step_plans/step-$STEP.md"
+  STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
 fi
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ROOT/ai/step_designs/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
 fi
 if [[ -z "$OUT" ]]; then
-  OUT="$ROOT/ai/prompts/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"
+  OUT="$ASDLC_PROMPTS_DIR/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
   echo "Feature design not found at $DESIGN_FILE." >&2
-  echo "Run ai/scripts/ai_design.sh --step $STEP first." >&2
+  echo "Run .asdlc_worker/scripts/ai_design.sh --step $STEP first." >&2
   exit 1
 fi
 
@@ -474,6 +477,8 @@ if [[ -z "$STEP_PLAN_ORDERED_PLAN_SECTION" ]]; then
   STEP_PLAN_ORDERED_PLAN_SECTION="- (missing in step plan)"
 fi
 
+STEP_PLAN_LAR_SECTION="$(get_step_plan_section "## Linked Artifacts (in scope)")"
+
 STEP_PLAN_UR_SHORTLIST_SECTION="$(get_step_plan_section "## Applicable UR Shortlist")"
 if [[ -z "$STEP_PLAN_UR_SHORTLIST_SECTION" ]]; then
   STEP_PLAN_UR_SHORTLIST_SECTION="- None."
@@ -506,63 +511,63 @@ if [[ -z "$STEP_PLAN_ACCEPTED_DECISIONS_SECTION" ]]; then
   STEP_PLAN_ACCEPTED_DECISIONS_SECTION="- None explicitly marked as Accepted."
 fi
 
-DESIGN_GOAL_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Goal")"
+DESIGN_GOAL_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Goal" || true)"
 if [[ -z "$DESIGN_GOAL_SECTION" ]]; then
   DESIGN_GOAL_SECTION="- (missing in design artifact)"
 else
   DESIGN_GOAL_SECTION="$(cap_first_n_lines "$DESIGN_GOAL_SECTION" 10)"
 fi
 
-DESIGN_IN_SCOPE_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## In Scope")"
+DESIGN_IN_SCOPE_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## In Scope" || true)"
 if [[ -z "$DESIGN_IN_SCOPE_SECTION" ]]; then
   DESIGN_IN_SCOPE_SECTION="- (missing in design artifact)"
 else
   DESIGN_IN_SCOPE_SECTION="$(cap_first_n_lines "$DESIGN_IN_SCOPE_SECTION" 10)"
 fi
 
-DESIGN_OUT_OF_SCOPE_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Out of Scope")"
+DESIGN_OUT_OF_SCOPE_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Out of Scope" || true)"
 if [[ -z "$DESIGN_OUT_OF_SCOPE_SECTION" ]]; then
   DESIGN_OUT_OF_SCOPE_SECTION="- (missing in design artifact)"
 else
   DESIGN_OUT_OF_SCOPE_SECTION="$(cap_first_n_lines "$DESIGN_OUT_OF_SCOPE_SECTION" 10)"
 fi
 
-DESIGN_NON_GOALS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Non-goals" "## Non-Goals")"
+DESIGN_NON_GOALS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Non-goals" "## Non-Goals" || true)"
 if [[ -z "$DESIGN_NON_GOALS_SECTION" ]]; then
   DESIGN_NON_GOALS_SECTION="- (missing in design artifact)"
 else
   DESIGN_NON_GOALS_SECTION="$(cap_first_n_lines "$DESIGN_NON_GOALS_SECTION" 10)"
 fi
 
-DESIGN_PROPOSAL_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Proposal / Design Details")"
+DESIGN_PROPOSAL_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Proposal / Design Details" || true)"
 if [[ -z "$DESIGN_PROPOSAL_SECTION" ]]; then
   DESIGN_PROPOSAL_SECTION="- (missing in design artifact)"
 else
   DESIGN_PROPOSAL_SECTION="$(cap_first_n_lines "$DESIGN_PROPOSAL_SECTION" 20)"
 fi
 
-DESIGN_RISKS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Risks and Mitigations")"
+DESIGN_RISKS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Risks and Mitigations" || true)"
 if [[ -z "$DESIGN_RISKS_SECTION" ]]; then
   DESIGN_RISKS_SECTION="- (missing in design artifact)"
 else
   DESIGN_RISKS_SECTION="$(cap_top_n_bullets "$DESIGN_RISKS_SECTION" 10)"
 fi
 
-DESIGN_ADR_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Applicable ADR Shortlist (from ai/decisions.md)" "## Applicable ADR Shortlist")"
+DESIGN_ADR_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "## Applicable ADR Shortlist (from ai/decisions.md)" "## Applicable ADR Shortlist" || true)"
 if [[ -z "$DESIGN_ADR_SECTION" ]]; then
   DESIGN_ADR_SECTION="- (missing in design artifact)"
 else
   DESIGN_ADR_SECTION="$(cap_first_n_lines "$DESIGN_ADR_SECTION" 10)"
 fi
 
-DESIGN_AGENTS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints")"
+DESIGN_AGENTS_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## Applicable AGENTS.md Constraints" || true)"
 if [[ -z "$DESIGN_AGENTS_SECTION" ]]; then
   DESIGN_AGENTS_SECTION="- (missing in design artifact)"
 else
   DESIGN_AGENTS_SECTION="$(cap_first_n_lines "$DESIGN_AGENTS_SECTION" 12)"
 fi
 
-DESIGN_REFERENCES_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## References in Current Codebase")"
+DESIGN_REFERENCES_SECTION="$(get_first_existing_section_body "$DESIGN_FILE" "## References in Current Codebase" || true)"
 if [[ -z "$DESIGN_REFERENCES_SECTION" ]]; then
   DESIGN_REFERENCES_SECTION="- (missing in design artifact)"
 fi
@@ -588,19 +593,22 @@ emit() {
   printf 'Implementation phase for Step %s\n' "$STEP"
   printf '\n'
   printf 'Phase contract (read first)\n'
-  printf '%s\n' '- Authoritative rules: ai/AI_DEVELOPMENT_PROCESS.md (Sections 3-4, verification gates, Definition of Done, prompt governance).'
-  printf '%s\n' '- Artifact precedence: step plan (`ai/step_plans/step-<N>.md`) is primary execution source; feature design (`ai/step_designs/step-<N>-design.md`) supplies scope/design constraints.'
+  printf '%s\n' '- Authoritative rules: .asdlc_worker/AI_DEVELOPMENT_PROCESS.md (Sections 3-4, verification gates, Definition of Done, prompt governance).'
+  printf '%s\n' '- Artifact precedence: step plan (`.asdlc_worker/step_plans/step-<N>.md`) is primary execution source; feature design (`.asdlc_worker/step_designs/step-<N>-design.md`) supplies scope/design constraints.'
   printf '%s\n' '- Execution state machine: step plan `## Plan (ordered)` only; preserve order and checkbox semantics.'
   printf '%s\n' '- Execution requirements: implement against step-plan `## Functional Requirements (translated from design EARS)` and keep requirement-to-plan linkage intact.'
-  printf '%s\n' '- Update `ai/step_plans/step-<N>.md` checklist state during implementation: mark each ordered bullet `[x]` only when that bullet is proven complete.'
-  printf '%s\n' '- Update `ai/step_plans/step-<N>.md` functional requirement checklist: mark each FR line `[x]` only when implemented and verified; keep `[ ]` otherwise.'
+  printf '%s\n' '- Update `.asdlc_worker/step_plans/step-<N>.md` checklist state during implementation: mark each ordered bullet `[x]` only when that bullet is proven complete.'
+  printf '%s\n' '- Update `.asdlc_worker/step_plans/step-<N>.md` functional requirement checklist: mark each FR line `[x]` only when implemented and verified; keep `[ ]` otherwise.'
   printf '%s\n' '- Verification strategy: targeted checks as needed per bullet; run full AGENTS.md verification once after all ordered bullets are `[x]`, before Section 5/User Review.'
   printf '%s\n' '- Section 4 gate requirement: before Section 5, all translated functional requirement checklist lines must be `[x]` with supporting evidence/tests.'
-  printf '%s\n' '- Completion protocol: report progress against ordered bullets only; do not use `overmind/implementation_plan.md` target bullets as implementation-phase gating.'
-  printf '%s\n' "- Before ending the implementation phase, run \`ai/scripts/helpers/check_implementation_readiness.sh $STEP\`."
-  printf '%s\n' '- If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `ai/AI_DEVELOPMENT_PROCESS.md`.'
+  printf '%s\n' '- Completion protocol: report progress against ordered bullets only; do not use `.asdlc_worker/overmind/implementation_plan.md` target bullets as implementation-phase gating.'
+  printf '%s\n' "- Before ending the implementation phase, run \`.asdlc_worker/scripts/helpers/check_implementation_readiness.sh $STEP\`."
+  printf '%s\n' '- If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.'
   printf '%s\n' '- The `implementation_plan.md` target-bullet proof-check runs first in ai_audit entry gate.'
   printf '%s\n' '- Only after the Implementation Readiness Gate is satisfied, end your final response with: "Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  if [[ -n "$STEP_PLAN_LAR_SECTION" ]]; then
+    printf '%s\n' '- Fetch rule (implementation): before implementing any FR that references a LAR-NNN, fetch the locator using available web/MCP tooling and use the fetched content as source of truth for whatever the artifact represents — UI details (spacing, icons, hover states, micro-interactions, breakpoints), schema structure (field names, types, constraints), API contracts (endpoints, payloads, error codes), architecture diagrams, or any other artifact-specific detail that FR text cannot fully encode. Stop and ask the user instead of inventing content when fetch fails or fetched content is ambiguous.'
+  fi
   printf '\n'
 
   printf 'Anti-regression checklist (max 8)\n'
@@ -611,6 +619,10 @@ emit() {
   printf '%s\n\n' "$STEP_PLAN_ORDERED_PLAN_SECTION"
 
   printf 'Step-plan execution context\n'
+  if [[ -n "$STEP_PLAN_LAR_SECTION" ]]; then
+    printf '## Linked Artifacts (in scope)\n'
+    printf '%s\n\n' "$STEP_PLAN_LAR_SECTION"
+  fi
   printf '## Functional Requirements (translated from design EARS)\n'
   printf '%s\n\n' "$STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION"
   printf '## Applicable UR Shortlist\n'

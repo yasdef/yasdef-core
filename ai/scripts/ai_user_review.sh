@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/helpers/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
 PROJECT="$(basename "$ROOT")"
-PLAN="$ROOT/overmind/implementation_plan.md"
-PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
-BLOCKER_LOG="$ROOT/ai/blocker_log.md"
-OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
+PLAN="$ASDLC_RUNTIME_PLAN_PATH"
+PROCESS="$ASDLC_PROCESS_FILE"
+BLOCKER_LOG="$ASDLC_BLOCKER_LOG_FILE"
+OPEN_QUESTIONS="$ASDLC_OPEN_QUESTIONS_FILE"
 AGENTS="$ROOT/AGENTS.md"
-USER_REVIEW="$ROOT/ai/user_review.md"
-IMPLEMENTATION_READINESS_HELPER="$ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
+USER_REVIEW="$ASDLC_USER_REVIEW_FILE"
+IMPLEMENTATION_READINESS_HELPER="$ASDLC_HELPERS_DIR/check_implementation_readiness.sh"
 
 STEP=""
 OUT=""
@@ -21,16 +24,16 @@ DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_user_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents]
+Usage: .asdlc_worker/scripts/ai_user_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents]
 
 Defaults:
-  - If --step-plan is omitted, uses the latest ai/step_plans/step-*.md.
+  - If --step-plan is omitted, uses the latest .asdlc_worker/step_plans/step-*.md.
   - If --step is omitted, derives it from --step-plan filename.
-  - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required).
-  - If --out is omitted, writes to ai/prompts/user_review_prompts/<project>-step-<step>.user-review.prompt.txt.
+  - If --design is omitted, uses .asdlc_worker/step_designs/step-<step>-design.md (required).
+  - If --out is omitted, writes to .asdlc_worker/prompts/user_review_prompts/<project>-step-<step>.user-review.prompt.txt.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-user-review from step-<step>-implementation.
-  - Hard gate (before prompt/model): `ai/scripts/helpers/check_implementation_readiness.sh <step>` must pass.
+  - Hard gate (before prompt/model): `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh <step>` must pass.
 EOF
 }
 
@@ -54,7 +57,7 @@ ensure_user_review_branch() {
     if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null || true)" ]]; then
       echo "User review branch must be created from $implementation_branch to carry implementation changes." >&2
       echo "Current branch has uncommitted changes: ${current:-<detached>}." >&2
-      echo "Switch to $implementation_branch and rerun ai/scripts/ai_user_review.sh." >&2
+      echo "Switch to $implementation_branch and rerun .asdlc_worker/scripts/ai_user_review.sh." >&2
       exit 1
     fi
     if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$implementation_branch"; then
@@ -66,7 +69,7 @@ ensure_user_review_branch() {
       echo "Switched to implementation branch: $implementation_branch" >&2
     else
       echo "Implementation branch not found: $implementation_branch" >&2
-      echo "Run ai/scripts/ai_implementation.sh for step $STEP first." >&2
+      echo "Run .asdlc_worker/scripts/ai_implementation.sh for step $STEP first." >&2
       exit 1
     fi
   fi
@@ -118,7 +121,7 @@ make_sort_key() {
 }
 
 get_latest_step_plan() {
-  local dir="$ROOT/ai/step_plans"
+  local dir="$ASDLC_STEP_PLANS_DIR"
   if [[ ! -d "$dir" ]]; then
     echo "Step plan directory not found: $dir" >&2
     exit 1
@@ -172,7 +175,7 @@ get_preferred_step_plan() {
   local branch step plan
   branch="$(get_current_branch_name)"
   if step="$(get_step_from_branch_name "$branch")"; then
-    plan="$ROOT/ai/step_plans/step-$step.md"
+    plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
     if [[ -f "$plan" ]]; then
       printf '%s' "$plan"
       return 0
@@ -252,11 +255,11 @@ get_step_plan_title() {
 
 get_design_ur_heading() {
   local file="$1"
-  if grep -Fq "## Applicable UR Shortlist" "$file"; then
+  if grep -Fqx "## Applicable UR Shortlist" "$file"; then
     printf '## Applicable UR Shortlist'
     return 0
   fi
-  if grep -Fq "## Applicable User Review Rules" "$file"; then
+  if grep -Fqx "## Applicable User Review Rules" "$file"; then
     printf '## Applicable User Review Rules'
     return 0
   fi
@@ -265,11 +268,15 @@ get_design_ur_heading() {
 
 get_design_adr_heading() {
   local file="$1"
-  if grep -Fq "## Applicable ADR Shortlist (from ai/decisions.md)" "$file"; then
+  if grep -Fqx "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "$file"; then
+    printf '## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)'
+    return 0
+  fi
+  if grep -Fqx "## Applicable ADR Shortlist (from ai/decisions.md)" "$file"; then
     printf '## Applicable ADR Shortlist (from ai/decisions.md)'
     return 0
   fi
-  if grep -Fq "## Applicable ADR Shortlist" "$file"; then
+  if grep -Fqx "## Applicable ADR Shortlist" "$file"; then
     printf '## Applicable ADR Shortlist'
     return 0
   fi
@@ -444,12 +451,12 @@ if [[ -z "$STEP" ]]; then
 fi
 
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ROOT/ai/step_designs/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
   echo "Feature design not found at $DESIGN_FILE." >&2
-  echo "Run ai/scripts/ai_design.sh --step $STEP first." >&2
+  echo "Run .asdlc_worker/scripts/ai_design.sh --step $STEP first." >&2
   exit 1
 fi
 
@@ -519,8 +526,8 @@ fi
 
 emit() {
   printf 'User review phase for Step %s\n' "$STEP"
-  printf 'Use ai/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
-  printf 'Entry gate already verified by script: `ai/scripts/helpers/check_implementation_readiness.sh %s` passed.\n' "$STEP"
+  printf 'Use .asdlc_worker/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
+  printf 'Entry gate already verified by script: `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh %s` passed.\n' "$STEP"
   printf 'User review phase-state source is step plan `## Plan (ordered)` only.\n'
   printf 'User review functional-requirement source is step plan `## Functional Requirements (translated from design EARS)`.\n'
   printf 'Do not start post-step audit/review in this phase.\n'
@@ -531,19 +538,19 @@ emit() {
   printf '%s\n\n' "$STEP_PLAN_ORDERED_PLAN_SECTION"
   printf '== translated functional requirements (from step plan) ==\n'
   printf '%s\n\n' "$STEP_PLAN_FUNCTIONAL_REQUIREMENTS_SECTION"
-  printf '== ai/step_designs/step-%s-design.md (key excerpts) ==\n' "$STEP"
+  printf '== .asdlc_worker/step_designs/step-%s-design.md (key excerpts) ==\n' "$STEP"
   printf 'Proposal / Design Details:\n%s\n\n' "$DESIGN_PROPOSAL_SECTION"
   printf 'Risks and Mitigations:\n%s\n\n' "$DESIGN_RISKS_SECTION"
   printf 'Applicable UR shortlist:\n%s\n\n' "$DESIGN_UR_SECTION"
   printf 'Applicable ADR shortlist:\n%s\n\n' "$DESIGN_ADR_SECTION"
-  printf '== ai/AI_DEVELOPMENT_PROCESS.md (Section 5) ==\n'
+  printf '== .asdlc_worker/AI_DEVELOPMENT_PROCESS.md (Section 5) ==\n'
   printf '%s\n\n' "$USER_REVIEW_PROCESS_SECTION"
-  printf '== ai/blocker_log.md (Step %s) ==\n' "$STEP"
+  printf '== .asdlc_worker/blocker_log.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$BLOCKER_LOG_SECTION"
-  printf '== ai/open_questions.md (Step %s) ==\n' "$STEP"
+  printf '== .asdlc_worker/open_questions.md (Step %s) ==\n' "$STEP"
   printf '%s\n\n' "$OPEN_QUESTIONS_SECTION"
-  printf '== ai/user_review.md ==\n'
-  printf 'Path: ai/user_review.md\n\n'
+  printf '== .asdlc_worker/user_review.md ==\n'
+  printf 'Path: .asdlc_worker/user_review.md\n\n'
   if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
     printf '== AGENTS.md ==\n'
     cat "$AGENTS"
@@ -555,7 +562,7 @@ emit() {
 }
 
 if [[ -z "$OUT" ]]; then
-  OUT="$ROOT/ai/prompts/user_review_prompts/${PROJECT}-step-$STEP.user-review.prompt.txt"
+  OUT="$ASDLC_PROMPTS_DIR/user_review_prompts/${PROJECT}-step-$STEP.user-review.prompt.txt"
 fi
 
 mkdir -p "$(dirname "$OUT")"

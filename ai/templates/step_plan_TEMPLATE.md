@@ -1,6 +1,6 @@
 # Step plan template
 
-This file is the template for `ai/step_plans/step-<step>.md`.
+This file is the template for `.asdlc_worker/step_plans/step-<step>.md`.
 
 ---
 
@@ -10,14 +10,17 @@ Planner model/session: <fill>
 Execution model/session (intended): <fill>
 
 ## Design Anchor (scope source of truth)
-- Feature design: `ai/step_designs/step-<step>-design.md`
+- Feature design: `.asdlc_worker/step_designs/step-<step>-design.md`
 - Scope contract lives in design sections: `## Target Bullets`, `## Goal`, `## In Scope`, `## Out of Scope`
 - Requirement-translation source lives in design section: `## Selected EARS Requirements (for planning translation)`
 - If scope changes, update the feature design first, then update this step plan.
 
 ## Preconditions / Dependencies
-- Review `ai/blocker_log.md` and `ai/open_questions.md` for the current step.
+- Review `.asdlc_worker/blocker_log.md` and `.asdlc_worker/open_questions.md` for the current step.
 - <missing prerequisites or required decisions>
+
+## Linked Artifacts (in scope)
+- <LAR-NNN | type | title | locator> (omit or leave empty when no LARs are in scope for this step)
 
 ## Applicable UR Shortlist
 - None.
@@ -34,7 +37,7 @@ Execution model/session (intended): <fill>
 - <overview of helper/service design and call flow>
 
 ## Implementation Notes / Constraints
-- Must follow `AGENTS.md` and `ai/AI_DEVELOPMENT_PROCESS.md`.
+- Must follow `AGENTS.md` and `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.
 - <constraints specific to this step>
 
 ## Tests

@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PLAN="$ROOT/overmind/implementation_plan.md"
-PROCESS="$ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
-BLOCKER_LOG="$ROOT/ai/blocker_log.md"
-OPEN_QUESTIONS="$ROOT/ai/open_questions.md"
-REQUIREMENTS="$ROOT/overmind/reqirements_ears.md"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$SCRIPT_DIR/helpers/runtime_layout.sh"
+asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
+ROOT="$WORKER_REPO_ROOT"
+PLAN="$ASDLC_RUNTIME_PLAN_PATH"
+PROCESS="$ASDLC_PROCESS_FILE"
+BLOCKER_LOG="$ASDLC_BLOCKER_LOG_FILE"
+OPEN_QUESTIONS="$ASDLC_OPEN_QUESTIONS_FILE"
+REQUIREMENTS="$ASDLC_RUNTIME_EARS_PATH"
 AGENTS="$ROOT/AGENTS.md"
-AI_AUDIT_DISPOSITION_HELPER="$ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+AI_AUDIT_DISPOSITION_HELPER="$ASDLC_HELPERS_DIR/check_ai_audit_disposition_readiness.sh"
 
 STEP=""
 OUT=""
@@ -20,13 +23,13 @@ DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: ai/scripts/ai_audit.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--no-include-agents]
+Usage: .asdlc_worker/scripts/ai_audit.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--no-include-agents]
 
 Defaults:
-  - If --step-plan is omitted, uses the latest ai/step_plans/step-*.md.
+  - If --step-plan is omitted, uses the latest .asdlc_worker/step_plans/step-*.md.
   - If --step is omitted, derives it from --step-plan filename.
-  - If --design is omitted, uses ai/step_designs/step-<step>-design.md (required).
-  - ai/decisions.md is pointer-only by default; rely on design-extracted ADR shortlist.
+  - If --design is omitted, uses .asdlc_worker/step_designs/step-<step>-design.md (required).
+  - .asdlc_worker/decisions.md is pointer-only by default; rely on design-extracted ADR shortlist.
   - AGENTS.md is included by default; use --no-include-agents to omit.
   - Always creates/switches to branch step-<step>-review from step-<step>-user-review when available, otherwise step-<step>-implementation.
 EOF
@@ -58,7 +61,7 @@ ensure_review_branch() {
     if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null || true)" ]]; then
       echo "Review branch must be created from $source_branch to carry step changes." >&2
       echo "Current branch has uncommitted changes: ${current:-<detached>}." >&2
-      echo "Switch to $source_branch and rerun ai/scripts/ai_audit.sh." >&2
+      echo "Switch to $source_branch and rerun .asdlc_worker/scripts/ai_audit.sh." >&2
       exit 1
     fi
     if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$source_branch"; then
@@ -71,9 +74,9 @@ ensure_review_branch() {
     else
       echo "Source branch not found: $source_branch" >&2
       if [[ "$source_branch" == "$user_review_branch" ]]; then
-        echo "Run ai/scripts/ai_user_review.sh for step $STEP first." >&2
+        echo "Run .asdlc_worker/scripts/ai_user_review.sh for step $STEP first." >&2
       else
-        echo "Run ai/scripts/ai_implementation.sh for step $STEP first." >&2
+        echo "Run .asdlc_worker/scripts/ai_implementation.sh for step $STEP first." >&2
       fi
       exit 1
     fi
@@ -126,7 +129,7 @@ make_sort_key() {
 }
 
 get_latest_step_plan() {
-  local dir="$ROOT/ai/step_plans"
+  local dir="$ASDLC_STEP_PLANS_DIR"
   if [[ ! -d "$dir" ]]; then
     echo "Step plan directory not found: $dir" >&2
     exit 1
@@ -180,7 +183,7 @@ get_preferred_step_plan() {
   local branch step plan
   branch="$(get_current_branch_name)"
   if step="$(get_step_from_branch_name "$branch")"; then
-    plan="$ROOT/ai/step_plans/step-$step.md"
+    plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
     if [[ -f "$plan" ]]; then
       printf '%s' "$plan"
       return 0
@@ -246,7 +249,7 @@ get_step_target_bullets() {
     }
     END {
       if (count == 0) {
-        print "- (no non-review implementation bullets found in overmind/implementation_plan.md step section)"
+        print "- (no non-review implementation bullets found in .asdlc_worker/overmind/implementation_plan.md step section)"
       }
     }
   ' "$PLAN"
@@ -284,11 +287,11 @@ get_markdown_section_body() {
 
 get_design_ur_heading() {
   local file="$1"
-  if grep -Fq "## Applicable UR Shortlist" "$file"; then
+  if grep -Fqx "## Applicable UR Shortlist" "$file"; then
     printf '## Applicable UR Shortlist'
     return 0
   fi
-  if grep -Fq "## Applicable User Review Rules" "$file"; then
+  if grep -Fqx "## Applicable User Review Rules" "$file"; then
     printf '## Applicable User Review Rules'
     return 0
   fi
@@ -297,11 +300,15 @@ get_design_ur_heading() {
 
 get_design_adr_heading() {
   local file="$1"
-  if grep -Fq "## Applicable ADR Shortlist (from ai/decisions.md)" "$file"; then
+  if grep -Fqx "## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)" "$file"; then
+    printf '## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)'
+    return 0
+  fi
+  if grep -Fqx "## Applicable ADR Shortlist (from ai/decisions.md)" "$file"; then
     printf '## Applicable ADR Shortlist (from ai/decisions.md)'
     return 0
   fi
-  if grep -Fq "## Applicable ADR Shortlist" "$file"; then
+  if grep -Fqx "## Applicable ADR Shortlist" "$file"; then
     printf '## Applicable ADR Shortlist'
     return 0
   fi
@@ -353,7 +360,7 @@ get_requirements_section() {
     if [[ -n "$section" ]]; then
       output+="$section"$'\n\n'
     else
-      output+="Requirement $req not found in overmind/reqirements_ears.md"$'\n\n'
+      output+="Requirement $req not found in .asdlc_worker/overmind/reqirements_ears.md"$'\n\n'
     fi
   done <<<"$reqs"
 
@@ -461,12 +468,12 @@ if [[ -z "$STEP" ]]; then
 fi
 
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ROOT/ai/step_designs/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
   echo "Feature design not found at $DESIGN_FILE." >&2
-  echo "Run ai/scripts/ai_design.sh --step $STEP first." >&2
+  echo "Run .asdlc_worker/scripts/ai_design.sh --step $STEP first." >&2
   exit 1
 fi
 
@@ -474,7 +481,7 @@ ensure_review_branch
 
 STEP_TITLE="$(get_step_title "$STEP")"
 if [[ -z "$STEP_TITLE" ]]; then
-  echo "Step $STEP not found in overmind/implementation_plan.md." >&2
+  echo "Step $STEP not found in .asdlc_worker/overmind/implementation_plan.md." >&2
   exit 1
 fi
 
@@ -485,12 +492,12 @@ fi
 
 STEP_SECTION="$(get_step_section "$STEP")"
 if [[ -z "$STEP_SECTION" ]]; then
-  echo "Step $STEP section not found in overmind/implementation_plan.md." >&2
+  echo "Step $STEP section not found in .asdlc_worker/overmind/implementation_plan.md." >&2
   exit 1
 fi
 TARGET_PROOF_BULLETS="$(get_step_target_bullets "$STEP")"
 if [[ -z "$TARGET_PROOF_BULLETS" ]]; then
-  TARGET_PROOF_BULLETS="- (no non-review implementation bullets found in overmind/implementation_plan.md step section)"
+  TARGET_PROOF_BULLETS="- (no non-review implementation bullets found in .asdlc_worker/overmind/implementation_plan.md step section)"
 fi
 
 BLOCKER_LOG_SECTION="$(get_blocker_log_section "$STEP")"
@@ -526,18 +533,18 @@ fi
 if DESIGN_ADR_HEADING="$(get_design_adr_heading "$DESIGN_FILE")"; then
   DESIGN_ADR_SECTION="$(get_markdown_section_body "$DESIGN_FILE" "$DESIGN_ADR_HEADING")"
 else
-  DESIGN_ADR_HEADING="## Applicable ADR Shortlist (from ai/decisions.md)"
+  DESIGN_ADR_HEADING="## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)"
   DESIGN_ADR_SECTION="- (missing in design artifact)"
 fi
 if [[ -z "$DESIGN_ADR_SECTION" ]]; then
   DESIGN_ADR_SECTION="- (missing in design artifact)"
 fi
 STEP_DELTA_FILE_LIST="$(get_step_delta_file_list)"
-REVIEW_RESULT_PATH="$ROOT/ai/step_review_results/review_result-$STEP.md"
+REVIEW_RESULT_PATH="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP.md"
 
 emit() {
   printf 'ai_audit phase for Step %s - %s\n' "$STEP" "$STEP_TITLE"
-  printf 'Follow `ai/AI_DEVELOPMENT_PROCESS.md` (Sections 6.0-6.4, Prompt governance) and `AGENTS.md` as the authoritative rules for this phase.\n'
+  printf 'Follow `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md` (Sections 6.0-6.4, Prompt governance) and `AGENTS.md` as the authoritative rules for this phase.\n'
   printf 'Primary context is the inline audit context below.\n'
   printf 'Read these artifacts directly from the repo:\n'
   printf -- '- Step plan: %s\n' "$STEP_PLAN"
@@ -546,26 +553,26 @@ emit() {
   printf 'Optional references (open only if needed):\n'
   printf -- '- Implementation plan: %s\n' "$PLAN"
   printf -- '- Requirements: %s\n' "$REQUIREMENTS"
-  printf -- '- Audit result template: %s\n' "$ROOT/ai/templates/audit_result_TEMPLATE.md"
-  printf -- '- Audit result example: %s\n' "$ROOT/ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md"
+  printf -- '- Audit result template: %s\n' "$ASDLC_TEMPLATES_DIR/audit_result_TEMPLATE.md"
+  printf -- '- Audit result example: %s\n' "$ASDLC_GOLDEN_EXAMPLES_DIR/audit_result_GOLDEN_EXAMPLE.md"
   printf -- '- Blocker log: %s\n' "$BLOCKER_LOG"
   printf -- '- Open questions: %s\n' "$OPEN_QUESTIONS"
-  printf -- '- Decisions: %s\n' "$ROOT/ai/decisions.md"
+  printf -- '- Decisions: %s\n' "$ASDLC_DECISIONS_FILE"
   if [[ "$INCLUDE_AGENTS" -eq 1 ]]; then
     printf -- '- Project constraints: %s\n' "$AGENTS"
   fi
   printf -- '- Disposition helper: %s\n' "$AI_AUDIT_DISPOSITION_HELPER"
-  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.\n'
+  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `.asdlc_worker/overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.\n'
   printf 'Audit-loop rule: after each disposition or plan update, continue Sections 6.2-6.4 until every ai_audit gate passes; do not stop early because the user approved a follow-up bullet change.\n'
-  printf "Before ending the ai_audit phase, ensure all bullets in the current step section of \`overmind/implementation_plan.md\` are checklist bullets and marked \`[x]\`, then run \`ai/scripts/helpers/check_ai_audit_disposition_readiness.sh %s\`.\n" "$STEP"
-  printf 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `overmind/implementation_plan.md`, then rerun the helper.\n'
-  printf 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `overmind/implementation_plan.md`, the readiness helper passes, and the commit gate is satisfied (clean working tree).\n'
+  printf "Before ending the ai_audit phase, ensure all bullets in the current step section of \`.asdlc_worker/overmind/implementation_plan.md\` are checklist bullets and marked \`[x]\`, then run \`.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh %s\`.\n" "$STEP"
+  printf 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `.asdlc_worker/overmind/implementation_plan.md`, then rerun the helper.\n'
+  printf 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `.asdlc_worker/overmind/implementation_plan.md`, the readiness helper passes, and the commit gate is satisfied (clean working tree).\n'
   printf 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Inline audit context\n'
   printf '== Step ==\n'
   printf 'Step %s - %s\n\n' "$STEP" "$STEP_TITLE"
-  printf '== Target bullets (from overmind/implementation_plan.md) ==\n'
+  printf '== Target bullets (from .asdlc_worker/overmind/implementation_plan.md) ==\n'
   printf '%s\n\n' "$TARGET_PROOF_BULLETS"
   printf '== Linked EARS requirement blocks ==\n'
   printf '%s\n\n' "$REQ_SECTION"

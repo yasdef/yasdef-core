@@ -6,13 +6,16 @@ Planner model/session: gpt-5.2 (planner), session=<fill>
 Execution model/session (intended): gpt-5.3-codex (executor), session=<fill>
 
 ## Design Anchor (scope source of truth)
-- Feature design: `ai/step_designs/step-1.6b-design.md`
+- Feature design: `.asdlc_worker/step_designs/step-1.6b-design.md`
 - Scope contract lives in design sections: `## Target Bullets`, `## Goal`, `## In Scope`, `## Out of Scope`
 - Requirement-translation source lives in design section: `## Selected EARS Requirements (for planning translation)`
 
 ## Preconditions / Dependencies
-- Review `ai/blocker_log.md` and `ai/open_questions.md` for Step 1.6b.
+- Review `.asdlc_worker/blocker_log.md` and `.asdlc_worker/open_questions.md` for Step 1.6b.
 - Confirm the existing idempotency key persistence strategy for commands.
+
+## Linked Artifacts (in scope)
+- LAR-003 | Figma | Close Command UI Mockup | https://figma.com/file/example/close-command
 
 ## Applicable UR Shortlist
 - UR-0004 - avoid single-field wrappers; this step touches response shape and could accidentally introduce wrapper DTOs.
@@ -33,14 +36,14 @@ Execution model/session (intended): gpt-5.3-codex (executor), session=<fill>
 - Resource → Service (`@Transactional`) → Validator (side-effect free) → Ledger append + projection update (same tx).
 
 ## Implementation Notes / Constraints
-- Must follow `AGENTS.md` and `ai/AI_DEVELOPMENT_PROCESS.md`.
+- Must follow `AGENTS.md` and `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.
 - Keep diffs minimal; no formatting-only changes.
 
 ## Tests
 - `src/test/java/.../*IT`: duplicate idempotency key returns stable error code and does not write twice.
 
 ## Docs / Artifacts
-- `ai/decisions.md`: record any new decision about idempotency strategy (if needed).
+- `.asdlc_worker/decisions.md`: record any new decision about idempotency strategy (if needed).
 
 ## Risks / Edge Cases
 - Double-submit during race conditions; ensure DB constraint / repository logic prevents duplicates.

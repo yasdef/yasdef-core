@@ -1,6 +1,6 @@
 # Blocker Log - Golden Example
 
-This file demonstrates the preferred structure for entries in `ai/blocker_log.md`.
+This file demonstrates the preferred structure for entries in `.asdlc_worker/blocker_log.md`.
 
 Rules:
 - Only record true blockers for in-progress steps.

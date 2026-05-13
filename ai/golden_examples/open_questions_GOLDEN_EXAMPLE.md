@@ -1,6 +1,6 @@
 # Open Questions - Golden Example
 
-This file demonstrates the preferred structure for entries in `ai/open_questions.md`.
+This file demonstrates the preferred structure for entries in `.asdlc_worker/open_questions.md`.
 
 ## Step 1.11 Security
 - Which JWT verification method should be used (HS256 shared secret vs RS256/JWKS), and what issuer/audience values should be enforced?

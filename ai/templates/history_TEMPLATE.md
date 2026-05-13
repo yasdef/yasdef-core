@@ -1,6 +1,6 @@
 # AI Run History - Template
 
-This file is updated by `ai/scripts/post_review.sh` with one consolidated record per step.
+This file is updated by `.asdlc_worker/scripts/post_review.sh` with one consolidated record per step.
 
 Entry template:
 
@@ -16,4 +16,4 @@ Entry template:
 - `post_review` is a non-model consolidation phase, so it usually has no model token usage line.
 - New lines of code added: <n>
 - New classes added: <n>
-- Step plan: ai/step_plans/step-<step>.md
+- Step plan: .asdlc_worker/step_plans/step-<step>.md

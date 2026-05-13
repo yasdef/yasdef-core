@@ -1,6 +1,6 @@
 # User Review Insights - Golden Example
 
-This file demonstrates the preferred structure for entries in `ai/user_review.md`.
+This file demonstrates the preferred structure for entries in `.asdlc_worker/user_review.md`.
 
 ## UR-9999 — Example rule title
 - **Status**: Accepted
