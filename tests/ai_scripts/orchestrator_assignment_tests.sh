@@ -150,8 +150,15 @@ init_project_repo() {
   local source_dir="$1"
   local project_id="$2"
   local worker_uuid="$3"
+  local remote_dir="${source_dir}-remote.git"
 
   mkdir -p "$source_dir"
+  (
+    cd "$source_dir"
+    git init -q -b master
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+  )
   cat >"$source_dir/workers.yaml" <<EOF
 workers:
   - uuid: "$worker_uuid"
@@ -163,6 +170,26 @@ meta_info:
   project_id: '$project_id'
 steps: []
 EOF
+  (
+    cd "$source_dir"
+    git add workers.yaml init_progress_definition.yaml
+    git commit -qm "init project repo"
+    git init -q --bare "$remote_dir"
+    git --git-dir "$remote_dir" symbolic-ref HEAD refs/heads/master
+    git remote add origin "$remote_dir"
+    git push -q -u origin master
+  )
+}
+
+commit_project_repo_changes() {
+  local source_dir="$1"
+  local message="$2"
+  (
+    cd "$source_dir"
+    git add -A
+    git commit -qm "$message"
+    git push -q
+  )
 }
 
 # Creates a feature folder directly under the project repo root (not under projects/<id>/).
@@ -179,6 +206,7 @@ EOF
 ### Requirement 1 Demo
 - The system SHALL support demo behavior.
 EOF
+  commit_project_repo_changes "$source_dir" "add feature $feature_id"
 }
 
 write_local_overmind_runtime() {
@@ -276,9 +304,6 @@ test_git_directory_is_skipped_during_feature_enumeration() {
 #### Assigned: $worker_uuid
 - [ ] Plan and discuss the step (SP=1)
 "
-  # Simulate a .git directory at the project repo root (as in a real git working tree)
-  mkdir -p "$source_dir/.git/refs"
-  echo "ref: refs/heads/main" >"$source_dir/.git/HEAD"
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
@@ -304,6 +329,7 @@ test_non_feature_subdirectory_is_skipped() {
   # Subdirectory without implementation_plan.md — should be skipped
   mkdir -p "$source_dir/docs"
   echo "documentation" >"$source_dir/docs/readme.md"
+  commit_project_repo_changes "$source_dir" "add docs folder"
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
@@ -410,6 +436,7 @@ test_fails_when_selected_feature_requirements_ears_missing() {
 #### Assigned: $worker_uuid
 - [ ] Plan and discuss the step (SP=1)
 EOF
+  commit_project_repo_changes "$source_dir" "add feature without ears"
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
@@ -468,41 +495,6 @@ test_fails_when_project_id_mismatch_in_init_progress_definition() {
   set -e
   assert_nonzero_status "$status"
   assert_contains "$out" "does not match meta_info.project_id"
-}
-
-test_planning_syncs_runtime_plan_back_to_selected_feature_source() {
-  local repo_dir="$TMP_ROOT/repo-plan-sync-back"
-  local source_dir="$TMP_ROOT/source-plan-sync-back"
-  local project_id="project-zeta"
-  local worker_uuid="88888888-8888-8888-8888-888888888888"
-  local feature_plan=""
-
-  mkdir -p "$repo_dir"
-  setup_repo "$repo_dir"
-  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
-  create_feature "$source_dir" "feature-sync" "### Step 1.1 Sync candidate
-#### Assigned: $worker_uuid
-- [ ] Plan and discuss the step (SP=1)
-"
-  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
-  feature_plan="$source_dir/feature-sync/implementation_plan.md"
-
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-echo "# planning prompt"
-echo "# synced-by-planning" >> .asdlc_worker/overmind/implementation_plan.md
-EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh"
-  set_single_phase_model "$repo_dir" "planning"
-  cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
-# Review Result: Step 1.1
-## Disposition (per issue)
-- None.
-EOF
-
-  (cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/dev/null 2>/dev/null)
-  assert_file_contains "$feature_plan" "# synced-by-planning"
 }
 
 test_planning_dry_run_injects_resolved_step_when_not_explicit() {
@@ -834,7 +826,6 @@ test_fails_when_no_assigned_worker_steps_exist
 test_fails_when_selected_feature_requirements_ears_missing
 test_fails_when_init_progress_definition_missing_in_project_repo
 test_fails_when_project_id_mismatch_in_init_progress_definition
-test_planning_syncs_runtime_plan_back_to_selected_feature_source
 test_planning_dry_run_injects_resolved_step_when_not_explicit
 test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation
 test_standalone_fails_fast_when_local_runtime_ears_missing

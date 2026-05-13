@@ -39,15 +39,11 @@ This approach can be expressed in a few sentences:
    - `<project-repo>/<feature-id>/requirements_ears.md`
    - optional project-level blueprint files one directory above feature folders: `<project-repo>/project_stack_blueprint_*.md`
    Worker runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` are mirrored copies managed by orchestrator on branch `overmind`.
-   During design, if the step must create the initial runnable scaffold/stack for the bound class because there is no meaningful existing implementation to extend, use `.asdlc_worker/project_overmind.yaml` class metadata plus those project-level blueprint files to produce a compact bootstrap handoff for planning.
+   Default mode expects that ASDLC project repo to be a Git worktree on a branch with a configured upstream.
 
 5.1 Workaround (`--standalone`) when ASDLC paths are temporarily unreachable:
-   - Default orchestrator mode tries to read source artifacts from `<project-repo>/<feature-id>/` and mirror them to local runtime files.
-   - If the project repo cannot be reached, default mode fails fast even when local `/overmind` files exist.
-   - Use `bash .asdlc_worker/scripts/orchestrator.sh --standalone` to skip ASDLC feature discovery/read-copy flow and run directly from local:
-     - `overmind/implementation_plan.md`
-     - `overmind/reqirements_ears.md`
-   - Trade-off: standalone mode can run on stale local runtime copies because remote source sync is intentionally bypassed.
+   - Use `bash .asdlc_worker/scripts/orchestrator.sh --standalone` to run from local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` only.
+   - Trade-off: standalone mode bypasses ASDLC Git sync and can use stale local runtime copies.
 
 6. In each feature `implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Worker routing uses `#### Assigned: <worker-uuid>` blocks only. Example:
 ```
@@ -61,13 +57,10 @@ This approach can be expressed in a few sentences:
 7. Run the orchestrator:
   `bash .asdlc_worker/scripts/orchestrator.sh` and follow the instructions.
   Routing behavior:
-  - default mode tries to read/copy `<project-repo>/<feature-id>/implementation_plan.md` and `<project-repo>/<feature-id>/requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
-  - if you need local-runtime-only execution, run `bash .asdlc_worker/scripts/orchestrator.sh --standalone` to bypass ASDLC artifact flow immediately
-  - orchestrator scans bound project repo features (`<project-repo>/<feature-id>/implementation_plan.md`) from `.asdlc_worker/project_overmind.yaml`; `.git` and subdirectories without `implementation_plan.md` are skipped
-  - `0` candidate features -> fail fast
-  - `1` candidate feature -> auto-select
-  - `>1` candidate features -> explicit user choice
-  - after feature selection, orchestrator reads and copies source `implementation_plan.md` and `requirements_ears.md` into local runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md`
+  - in default mode orchestrator refreshes the bound ASDLC repo with `git pull --rebase`, selects a feature assigned to the worker, and mirrors its `implementation_plan.md` and `requirements_ears.md` into local runtime files
+  - after `ai_audit`, orchestrator syncs the updated runtime `implementation_plan.md` back to the selected ASDLC feature plan and pushes it through the bound ASDLC repo
+  - if that outbound sync fails, interactive mode offers `1. retry` or `2. finish`; non-interactive runs stop before `post_review`
+  - if you need local-runtime-only execution, run `bash .asdlc_worker/scripts/orchestrator.sh --standalone`
   Selected-feature traceability is recorded in `.asdlc_worker/feature_sync.yaml` and reused on valid `--resume <step>`.
   Use debug mode to keep per-step artifacts:
   `bash ai/scripts/orchestrator.sh --debug -- --step 1.3`
@@ -103,8 +96,11 @@ This approach can be expressed in a few sentences:
 - **Orchestration:** Since each phase starts as a terminal command, we can orchestrate the whole process from top-level script `ai/scripts/orchestrator.sh`.
   - Worker/project binding rule: orchestrator reads `worker_uuid` and `project_id` from `ai/project_overmind.yaml` (legacy `ai/*_dont_touch.txt` is no longer used).
   - Candidate discovery rule: orchestrator scans bound project repo features (`<project-repo>/<feature-id>/implementation_plan.md`), skipping `.git` and subdirectories without `implementation_plan.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
+  - Bound-repo freshness rule: in default mode orchestrator requires the bound ASDLC project repo to be a Git worktree with a configured upstream and runs `git -C <bound-project-repo> pull --rebase` before feature discovery and runtime mirroring.
   - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
   - Runtime mirroring rule: selected feature artifacts are mirrored into local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` on branch `overmind` before phase execution.
+  - Post-ai_audit sync rule: before `post_review`, orchestrator copies the updated runtime `implementation_plan.md` into the selected ASDLC feature plan, commits only that file in the bound ASDLC repo, runs `git pull --rebase`, and pushes on success.
+  - Outbound failure rule: copy/commit/rebase/push failures offer exactly `1. retry` or `2. finish`; `finish` continues to `post_review`, while non-interactive runs stop before `post_review`.
   - Standalone override: `--standalone` bypasses ASDLC discovery/read-copy flow and uses existing local `overmind/implementation_plan.md` + `overmind/reqirements_ears.md` directly.
   - Feature sync state: orchestrator records selected feature metadata in `.asdlc_worker/feature_sync.yaml`; valid metadata is reused for `--resume <step>`, stale metadata is discarded and recomputed.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.

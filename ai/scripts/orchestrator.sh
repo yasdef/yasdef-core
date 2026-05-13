@@ -60,6 +60,7 @@ SELECTED_REQUESTED_STEP=""
 FEATURE_CONTEXT_READY=0
 FEATURE_CONTEXT_REQUESTED_STEP=""
 FEATURE_CONTEXT_RESUME_MODE=0
+BOUND_PROJECT_SYNC_READY=0
 
 usage() {
   cat <<'EOF'
@@ -871,6 +872,66 @@ ensure_runtime_branch_checked_out() {
   fi
 }
 
+bound_project_repo_relpath() {
+  local path="$1"
+  if [[ "$path" == "$BOUND_PROJECT_PATH/"* ]]; then
+    printf '%s' "${path#"$BOUND_PROJECT_PATH"/}"
+    return 0
+  fi
+  if [[ "$path" == "$BOUND_PROJECT_PATH" ]]; then
+    printf '.'
+    return 0
+  fi
+  return 1
+}
+
+ensure_bound_project_git_ready() {
+  local err=""
+
+  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
+    return 0
+  fi
+
+  if [[ -z "$BOUND_PROJECT_PATH" ]]; then
+    die "Default mode requires a bound ASDLC project repo path."
+  fi
+
+  if ! err="$(git -C "$BOUND_PROJECT_PATH" rev-parse --is-inside-work-tree 2>&1)"; then
+    die "Default mode requires the bound ASDLC project path to be a Git worktree with a configured upstream: $BOUND_PROJECT_PATH. Fix the repo checkout or run .asdlc_worker/scripts/orchestrator.sh --standalone."
+  fi
+  if ! err="$(git -C "$BOUND_PROJECT_PATH" symbolic-ref --quiet HEAD 2>&1)"; then
+    die "Default mode requires the bound ASDLC project repo to be on a branch with a configured upstream: $BOUND_PROJECT_PATH. Check out a branch and rerun, or use .asdlc_worker/scripts/orchestrator.sh --standalone."
+  fi
+  if ! err="$(git -C "$BOUND_PROJECT_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>&1)"; then
+    die "Default mode requires the bound ASDLC project repo to have a configured upstream: $BOUND_PROJECT_PATH. Set the tracking branch and rerun, or use .asdlc_worker/scripts/orchestrator.sh --standalone."
+  fi
+}
+
+run_bound_project_pull_rebase_or_die() {
+  local sync_reason="$1"
+  local err=""
+
+  ensure_bound_project_git_ready
+  if ! err="$(git -C "$BOUND_PROJECT_PATH" pull --rebase 2>&1)"; then
+    echo "Failed to sync the bound ASDLC project repo $sync_reason: $BOUND_PROJECT_PATH" >&2
+    printf '%s\n' "$err" >&2
+    echo "Resolve the ASDLC repo rebase conflict or dirty state in $BOUND_PROJECT_PATH and rerun orchestrator." >&2
+    exit 1
+  fi
+}
+
+ensure_bound_project_synced_for_default_mode() {
+  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
+    return 0
+  fi
+  if [[ "$BOUND_PROJECT_SYNC_READY" -eq 1 ]]; then
+    return 0
+  fi
+
+  run_bound_project_pull_rebase_or_die "before default-mode feature discovery and artifact mirroring"
+  BOUND_PROJECT_SYNC_READY=1
+}
+
 analyze_feature_plan_for_worker() {
   local plan_path="$1"
   local worker_uuid="$2"
@@ -1210,6 +1271,7 @@ ensure_standalone_runtime_context() {
 _try_fast_path_feature_context() {
   local requested_step="$1"
   local resume_mode="$2"
+  local current_branch=""
 
   if ! try_reuse_feature_sync_for_resume "$requested_step"; then
     return 1
@@ -1227,7 +1289,8 @@ _try_fast_path_feature_context() {
 
   # Clean up orchestrator-created untracked files left on the runtime branch so
   # that phase scripts can checkout the step branch without conflicts.
-  if [[ "$(get_current_branch_name)" == "$RUNTIME_BRANCH" ]]; then
+  current_branch="$(get_current_branch_name)"
+  if [[ "$current_branch" == "$RUNTIME_BRANCH" ]]; then
     local _f
     for _f in "$IMPLEMENTATION_PLAN_PRIMARY" "$RUNTIME_REQUIREMENTS_PATH" \
               "$BLOCKER_LOG_FILE" "$OPEN_QUESTIONS_FILE" \
@@ -1236,6 +1299,12 @@ _try_fast_path_feature_context() {
         rm -f "$_f"
       fi
     done
+  fi
+
+  if [[ "$resume_mode" -eq 1 && "$current_branch" != "$RUNTIME_BRANCH" ]]; then
+    if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" || ! -f "$RUNTIME_REQUIREMENTS_PATH" ]]; then
+      die "Cannot resume on branch '$current_branch' because $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY") and $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH") are not both present there. Sync '$current_branch' with '$RUNTIME_BRANCH' branch to obtain these files and retry."
+    fi
   fi
 
   IMPLEMENTATION_PLAN_FILE="$SELECTED_SOURCE_PLAN_PATH"
@@ -1260,6 +1329,7 @@ ensure_feature_runtime_context() {
   # Handles --resume runs and re-invocations on an already-started feature.
   if [[ -f "$PROJECT_BINDING_FILE" ]]; then
     load_project_binding
+    ensure_bound_project_synced_for_default_mode
     if _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
       return 0
     fi
@@ -1269,6 +1339,7 @@ ensure_feature_runtime_context() {
   # then load binding and discover the feature.
   ensure_runtime_branch_checked_out
   load_project_binding
+  ensure_bound_project_synced_for_default_mode
 
   local -a candidate_feature_ids=()
   local -a candidate_feature_paths=()
@@ -1801,97 +1872,239 @@ run_phase() {
   esac
 }
 
-phase_requires_source_plan_sync() {
+run_phase_with_optional_feature_sync() {
   local phase="$1"
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    return 1
-  fi
-  phase="$(canonicalize_phase_name "$phase")"
-  case "$phase" in
-    planning|ai_audit|post_review)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
+  run_phase "$phase"
 }
 
-compute_runtime_plan_digest() {
-  local digest=""
-  if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-    && git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH" \
-    && git -C "$ROOT" cat-file -e "$RUNTIME_BRANCH:.asdlc_worker/overmind/implementation_plan.md" 2>/dev/null; then
-    digest="$(git -C "$ROOT" show "$RUNTIME_BRANCH:.asdlc_worker/overmind/implementation_plan.md" | cksum | awk '{print $1 ":" $2}' || true)"
-    if [[ -n "$digest" ]]; then
-      printf '%s' "$digest"
-      return 0
-    fi
-  fi
-
-  if [[ -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
-    cksum "$IMPLEMENTATION_PLAN_PRIMARY" | awk '{print $1 ":" $2}'
-    return 0
-  fi
-  printf ''
-}
-
-copy_runtime_plan_to_file() {
+copy_runtime_plan_worktree_to_file() {
   local target_file="$1"
-  if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-    && git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH" \
-    && git -C "$ROOT" cat-file -e "$RUNTIME_BRANCH:.asdlc_worker/overmind/implementation_plan.md" 2>/dev/null; then
-    git -C "$ROOT" show "$RUNTIME_BRANCH:.asdlc_worker/overmind/implementation_plan.md" >"$target_file"
-    return 0
-  fi
   if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
     return 1
   fi
   cp "$IMPLEMENTATION_PLAN_PRIMARY" "$target_file"
 }
 
-sync_runtime_plan_back_to_selected_feature_source() {
-  local phase="$1"
+ensure_selected_source_plan_clean_before_sync() {
+  local plan_rel="$1"
+  local status_output=""
+
+  if ! status_output="$(git -C "$BOUND_PROJECT_PATH" status --short -- "$plan_rel" 2>&1)"; then
+    echo "Global implementation-plan sync failed while checking local ASDLC plan state for $SELECTED_SOURCE_PLAN_PATH." >&2
+    printf '%s\n' "$status_output" >&2
+    return 1
+  fi
+
+  if [[ -n "$status_output" ]]; then
+    echo "Global implementation-plan sync failed because the selected ASDLC feature plan already has local changes: $SELECTED_SOURCE_PLAN_PATH" >&2
+    echo "Clean, commit, or stash the local changes in $BOUND_PROJECT_PATH before rerunning orchestrator." >&2
+    return 1
+  fi
+
+  return 0
+}
+
+restore_selected_source_plan_from_head() {
+  local plan_rel="$1"
+  git -C "$BOUND_PROJECT_PATH" restore --source=HEAD --staged --worktree -- "$plan_rel" >/dev/null 2>&1 || true
+}
+
+commit_selected_source_plan_update_if_needed() {
+  local step="$1"
+  local plan_rel=""
+  local err=""
+  local commit_message=""
+
+  if ! plan_rel="$(bound_project_repo_relpath "$SELECTED_SOURCE_PLAN_PATH")"; then
+    echo "Global implementation-plan sync failed because the selected feature source plan is outside the bound ASDLC project repo." >&2
+    echo "Selected feature source plan: $SELECTED_SOURCE_PLAN_PATH" >&2
+    echo "Bound ASDLC project repo: $BOUND_PROJECT_PATH" >&2
+    return 1
+  fi
+
+  if ! err="$(git -C "$BOUND_PROJECT_PATH" add -- "$plan_rel" 2>&1)"; then
+    echo "Global implementation-plan sync failed while staging $SELECTED_SOURCE_PLAN_PATH in $BOUND_PROJECT_PATH." >&2
+    printf '%s\n' "$err" >&2
+    return 1
+  fi
+
+  if git -C "$BOUND_PROJECT_PATH" diff --cached --quiet -- "$plan_rel"; then
+    return 2
+  fi
+
+  commit_message="ASDLC plan sync: ${SELECTED_FEATURE_ID:-selected-feature} step $step"
+  if ! err="$(git -C "$BOUND_PROJECT_PATH" commit -m "$commit_message" -- "$plan_rel" 2>&1)"; then
+    restore_selected_source_plan_from_head "$plan_rel"
+    echo "Global implementation-plan sync failed while creating an ASDLC sync commit for $SELECTED_SOURCE_PLAN_PATH." >&2
+    printf '%s\n' "$err" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+run_bound_project_pull_rebase_for_outbound_sync() {
+  local err=""
+  if ! err="$(git -C "$BOUND_PROJECT_PATH" pull --rebase 2>&1)"; then
+    echo "Global implementation-plan sync failed while rebasing the bound ASDLC project repo: $BOUND_PROJECT_PATH" >&2
+    echo "Selected feature source plan: $SELECTED_SOURCE_PLAN_PATH" >&2
+    printf '%s\n' "$err" >&2
+    return 1
+  fi
+  return 0
+}
+
+push_selected_source_plan_sync_commit() {
+  local err=""
+  if ! err="$(git -C "$BOUND_PROJECT_PATH" push 2>&1)"; then
+    echo "Global implementation-plan sync failed while pushing the ASDLC sync commit from $BOUND_PROJECT_PATH." >&2
+    echo "Selected feature source plan: $SELECTED_SOURCE_PLAN_PATH" >&2
+    echo "The ASDLC plan sync commit exists locally but could not be pushed." >&2
+    printf '%s\n' "$err" >&2
+    return 1
+  fi
+  return 0
+}
+
+prompt_for_outbound_sync_failure_action() {
+  local answer=""
+
+  echo "1. retry" >&2
+  echo "2. finish" >&2
+
+  if [[ ! -t 0 ]]; then
+    echo "Global implementation-plan sync failed in a non-interactive shell. Rerun interactively and choose one of the two options above." >&2
+    return 1
+  fi
+
+  while true; do
+    printf 'Choose 1 or 2: ' >&2
+    IFS= read -r answer || answer=""
+    answer="$(trim_whitespace "$answer")"
+    case "$answer" in
+      1)
+        printf 'retry'
+        return 0
+        ;;
+      2)
+        printf 'finish'
+        return 0
+        ;;
+      *)
+        echo "Please choose 1 or 2." >&2
+        ;;
+    esac
+  done
+}
+
+run_global_plan_sync_attempt() {
+  local step="$1"
   local tmp_runtime=""
+  local err=""
+  local commit_status=0
 
   if [[ -z "$SELECTED_SOURCE_PLAN_PATH" ]]; then
-    die "Cannot sync runtime plan after phase '$phase': selected feature source plan path is unknown."
+    echo "Global implementation-plan sync failed because the selected feature source plan path is unknown." >&2
+    return 1
   fi
 
-  ensure_dir_writable "$(dirname "$SELECTED_SOURCE_PLAN_PATH")"
+  local plan_rel=""
+  if ! plan_rel="$(bound_project_repo_relpath "$SELECTED_SOURCE_PLAN_PATH")"; then
+    echo "Global implementation-plan sync failed because the selected feature source plan is outside the bound ASDLC project repo." >&2
+    echo "Selected feature source plan: $SELECTED_SOURCE_PLAN_PATH" >&2
+    echo "Bound ASDLC project repo: $BOUND_PROJECT_PATH" >&2
+    return 1
+  fi
+  if ! ensure_selected_source_plan_clean_before_sync "$plan_rel"; then
+    return 1
+  fi
+
+  if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
+    echo "Global implementation-plan sync failed because the worker runtime implementation plan is missing: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
+    return 1
+  fi
+
   tmp_runtime="$(mktemp)"
-  if ! copy_runtime_plan_to_file "$tmp_runtime"; then
+  if ! copy_runtime_plan_worktree_to_file "$tmp_runtime"; then
     rm -f "$tmp_runtime"
-    die "Cannot sync runtime plan after phase '$phase': .asdlc_worker/overmind/implementation_plan.md is unavailable."
+    echo "Global implementation-plan sync failed because the worker runtime implementation plan could not be read: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
+    return 1
   fi
 
-  if [[ -f "$SELECTED_SOURCE_PLAN_PATH" ]] && cmp -s "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH"; then
-    rm -f "$tmp_runtime"
+  if [[ ! -f "$SELECTED_SOURCE_PLAN_PATH" ]] || ! cmp -s "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH"; then
+    if ! err="$(cp "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH" 2>&1)"; then
+      rm -f "$tmp_runtime"
+      echo "Global implementation-plan sync failed while copying the worker runtime implementation plan to $SELECTED_SOURCE_PLAN_PATH." >&2
+      printf '%s\n' "$err" >&2
+      return 1
+    fi
+  fi
+  rm -f "$tmp_runtime"
+
+  if commit_selected_source_plan_update_if_needed "$step"; then
+    commit_status=0
+  else
+    commit_status=$?
+    if [[ "$commit_status" -ne 2 ]]; then
+      return 1
+    fi
+  fi
+
+  if ! run_bound_project_pull_rebase_for_outbound_sync; then
+    return 1
+  fi
+
+  if [[ "$commit_status" -eq 0 ]]; then
+    if ! push_selected_source_plan_sync_commit; then
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+get_post_review_target_step() {
+  local latest_plan=""
+  local step=""
+
+  if [[ -n "$RESUME_STEP" ]]; then
+    printf '%s' "$RESUME_STEP"
     return 0
   fi
 
-  mv "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH"
+  latest_plan="$(get_preferred_step_plan)"
+  step="$(get_step_from_plan_path "$latest_plan")"
+  if [[ -z "$step" ]]; then
+    die "Could not determine step from plan file: $latest_plan"
+  fi
+  printf '%s' "$step"
 }
 
-run_phase_with_optional_feature_sync() {
-  local phase="$1"
-  local before_digest=""
-  local after_digest=""
-  local should_sync=0
+run_global_plan_sync_before_post_review() {
+  local step="$1"
+  local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local action=""
 
-  if [[ "$DRY_RUN" -eq 0 ]] && phase_requires_source_plan_sync "$phase"; then
-    should_sync=1
-    before_digest="$(compute_runtime_plan_digest)"
+  if [[ "$STANDALONE_MODE" -eq 1 || "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+  if [[ ! -f "$review_artifact" ]]; then
+    return 0
   fi
 
-  run_phase "$phase"
-
-  if [[ "$should_sync" -eq 1 ]]; then
-    after_digest="$(compute_runtime_plan_digest)"
-    if [[ "$before_digest" != "$after_digest" ]]; then
-      sync_runtime_plan_back_to_selected_feature_source "$phase"
+  echo "orchestrator: work for step '$step' is finished, the implementation plan is updated, and orchestrator is trying to sync it with the global implementation plan." >&2
+  while true; do
+    if run_global_plan_sync_attempt "$step"; then
+      return 0
     fi
-  fi
+    if ! action="$(prompt_for_outbound_sync_failure_action)"; then
+      exit 1
+    fi
+    if [[ "$action" == "finish" ]]; then
+      echo "orchestrator: skipping global implementation-plan sync for step '$step' and continuing to post_review." >&2
+      return 0
+    fi
+  done
 }
 
 array_contains_ci() {
@@ -2742,12 +2955,16 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
 fi
 
 for phase in "${REQUESTED_PHASES[@]+"${REQUESTED_PHASES[@]}"}"; do
+  phase_key="$(canonicalize_phase_name "$phase")"
   if confirm_phase_if_interactive "$phase"; then
+    if [[ "$phase_key" == "post_review" ]]; then
+      run_global_plan_sync_before_post_review "$(get_post_review_target_step)"
+    fi
     run_phase_with_optional_feature_sync "$phase"
-    if [[ "$(canonicalize_phase_name "$phase")" == "ai_audit" ]]; then
+    if [[ "$phase_key" == "ai_audit" ]]; then
       RAN_AI_AUDIT=1
     fi
-    if [[ "$(printf '%s' "$phase" | tr '[:upper:]' '[:lower:]')" == "post_review" ]]; then
+    if [[ "$phase_key" == "post_review" ]]; then
       RAN_POST_REVIEW=1
     fi
   else
