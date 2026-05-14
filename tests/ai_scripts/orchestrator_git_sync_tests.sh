@@ -261,6 +261,8 @@ expect {
   }
   eof
 }
+catch wait result
+exit [lindex \$result 3]
 EOF
   EXPECT_INPUT="$input_text" expect "$expect_script" 2>&1
 }

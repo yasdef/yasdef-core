@@ -66,6 +66,43 @@ assert_file_not_exists() {
   fi
 }
 
+run_orchestrator_with_tty_input() {
+  local repo_dir="$1"
+  local input_text="$2"
+  local expect_script="$TMP_ROOT/orchestrator-expect-$$.tcl"
+  shift 2
+  cat >"$expect_script" <<EOF
+log_user 1
+set timeout 20
+set responses [split [string trim \$env(EXPECT_INPUT)] "\n"]
+set idx 0
+proc send_next {} {
+  global responses idx
+  if {\$idx >= [llength \$responses]} {
+    return
+  }
+  send -- "[lindex \$responses \$idx]\r"
+  incr idx
+}
+cd "$repo_dir"
+spawn .asdlc_worker/scripts/orchestrator.sh $(printf ' %q' "$@")
+expect {
+  -re {Choose 1 or 2: $} {
+    send_next
+    exp_continue
+  }
+  -re {Proceed\\? \\[y/n\\] $} {
+    send_next
+    exp_continue
+  }
+  eof
+}
+catch wait result
+exit [lindex \$result 3]
+EOF
+  EXPECT_INPUT="$input_text" expect "$expect_script" 2>&1
+}
+
 setup_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind"
@@ -519,6 +556,72 @@ test_planning_dry_run_injects_resolved_step_when_not_explicit() {
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-planning-step-injection-planning-latest-log"
 }
 
+test_non_master_start_can_cancel_before_switching_to_overmind() {
+  local repo_dir="$TMP_ROOT/repo-non-master-cancel"
+  local source_dir="$TMP_ROOT/source-non-master-cancel"
+  local project_id="project-non-master-cancel"
+  local worker_uuid="99999999-9999-9999-9999-999999999998"
+  local out=""
+  local current_branch=""
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-routing" "### Step 3.4 Planned step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  (
+    cd "$repo_dir"
+    git checkout -q -b feature-start
+  )
+
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'2\n' --dry-run)"
+  local status=$?
+  set -e
+
+  assert_nonzero_status "$status"
+  assert_contains "$out" "⚠️ overmind will merge (rebase) last master state and start work, but you start orchestrator NOT from master branch. Are you sure?"
+  assert_contains "$out" "1. Yes I am sure, start from current branch"
+  assert_contains "$out" "2. No, dont start I'll switch to master first (manually)"
+  assert_contains "$out" "Execution stopped: switch to 'master' manually and rerun orchestrator."
+  current_branch="$(git -C "$repo_dir" branch --show-current)"
+  assert_equal "feature-start" "$current_branch"
+}
+
+test_runtime_branch_rebases_master_before_feature_routing() {
+  local repo_dir="$TMP_ROOT/repo-overmind-rebase-master"
+  local source_dir="$TMP_ROOT/source-overmind-rebase-master"
+  local project_id="project-overmind-rebase-master"
+  local worker_uuid="99999999-9999-9999-9999-999999999997"
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-routing" "### Step 3.4 Planned step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  (
+    cd "$repo_dir"
+    git checkout -q -b overmind
+    git checkout -q master
+    echo "master freshness" >MASTER_FRESHNESS.txt
+    git add MASTER_FRESHNESS.txt
+    git commit -qm "add master freshness marker"
+  )
+
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  assert_contains "$out" "selected feature 'feature-routing'"
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+  assert_file_contains "$repo_dir/MASTER_FRESHNESS.txt" "master freshness"
+  assert_contains "$(git -C "$repo_dir" merge-base --is-ancestor master overmind; printf '%s' "$?")" "0"
+}
+
 test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation() {
   local repo_dir="$TMP_ROOT/repo-standalone-local-routing"
   local source_dir="$TMP_ROOT/source-standalone-local-routing-does-not-exist"
@@ -827,6 +930,8 @@ test_fails_when_selected_feature_requirements_ears_missing
 test_fails_when_init_progress_definition_missing_in_project_repo
 test_fails_when_project_id_mismatch_in_init_progress_definition
 test_planning_dry_run_injects_resolved_step_when_not_explicit
+test_non_master_start_can_cancel_before_switching_to_overmind
+test_runtime_branch_rebases_master_before_feature_routing
 test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation
 test_standalone_fails_fast_when_local_runtime_ears_missing
 test_dep_none_step_is_selected

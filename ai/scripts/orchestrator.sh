@@ -61,6 +61,8 @@ FEATURE_CONTEXT_READY=0
 FEATURE_CONTEXT_REQUESTED_STEP=""
 FEATURE_CONTEXT_RESUME_MODE=0
 BOUND_PROJECT_SYNC_READY=0
+RUNTIME_BRANCH_SYNC_READY=0
+START_BRANCH_VALIDATED=0
 
 usage() {
   cat <<'EOF'
@@ -855,9 +857,13 @@ load_project_binding() {
 }
 
 ensure_runtime_branch_checked_out() {
+  local current_branch=""
+
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     die "Feature routing requires a git repository."
   fi
+
+  ensure_start_branch_is_confirmed
 
   if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$RUNTIME_BRANCH"; then
     if [[ "$(get_current_branch_name)" != "$RUNTIME_BRANCH" ]]; then
@@ -869,6 +875,82 @@ ensure_runtime_branch_checked_out() {
     if ! git -C "$ROOT" checkout -b "$RUNTIME_BRANCH" >/dev/null 2>&1; then
       die "Failed to create runtime branch '$RUNTIME_BRANCH'."
     fi
+  fi
+
+  if [[ "$RUNTIME_BRANCH_SYNC_READY" -eq 1 ]]; then
+    return 0
+  fi
+
+  current_branch="$(get_current_branch_name)"
+  if [[ "$current_branch" != "$RUNTIME_BRANCH" ]]; then
+    die "Failed to switch to runtime branch '$RUNTIME_BRANCH'."
+  fi
+  rebase_runtime_branch_onto_master_or_die
+  RUNTIME_BRANCH_SYNC_READY=1
+}
+
+prompt_for_non_master_orchestrator_start() {
+  local current_branch="$1"
+  local answer=""
+
+  echo "⚠️ overmind will merge (rebase) last master state and start work, but you start orchestrator NOT from master branch. Are you sure?" >&2
+  echo "1. Yes I am sure, start from current branch" >&2
+  echo "2. No, dont start I'll switch to master first (manually)" >&2
+
+  if [[ ! -t 0 ]]; then
+    die "Cannot start orchestrator from branch '$current_branch' in a non-interactive shell. Start from 'master' or rerun interactively."
+  fi
+
+  while true; do
+    printf 'Choose 1 or 2: ' >&2
+    IFS= read -r answer || answer=""
+    answer="$(trim_whitespace "$answer")"
+    case "$answer" in
+      1)
+        return 0
+        ;;
+      2|'')
+        echo "Execution stopped: switch to 'master' manually and rerun orchestrator." >&2
+        exit 1
+        ;;
+      *)
+        echo "Please choose 1 or 2." >&2
+        ;;
+    esac
+  done
+}
+
+ensure_start_branch_is_confirmed() {
+  local current_branch=""
+
+  if [[ "$START_BRANCH_VALIDATED" -eq 1 ]]; then
+    return 0
+  fi
+
+  current_branch="$(get_current_branch_name)"
+  if [[ -z "$current_branch" ]]; then
+    die "Current HEAD is detached. Check out 'master' or another branch before running orchestrator."
+  fi
+
+  if [[ "$current_branch" != "master" && "$current_branch" != "$RUNTIME_BRANCH" ]]; then
+    prompt_for_non_master_orchestrator_start "$current_branch"
+  fi
+
+  START_BRANCH_VALIDATED=1
+}
+
+rebase_runtime_branch_onto_master_or_die() {
+  local err=""
+
+  if ! git -C "$ROOT" show-ref --verify --quiet "refs/heads/master"; then
+    die "Runtime branch '$RUNTIME_BRANCH' cannot be rebased because local branch 'master' does not exist."
+  fi
+
+  if ! err="$(git -C "$ROOT" rebase --autostash master 2>&1)"; then
+    echo "Failed to rebase runtime branch '$RUNTIME_BRANCH' onto 'master'." >&2
+    printf '%s\n' "$err" >&2
+    echo "Resolve the rebase issue on branch '$RUNTIME_BRANCH' and rerun orchestrator." >&2
+    exit 1
   fi
 }
 
