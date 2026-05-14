@@ -1401,15 +1401,20 @@ _try_fast_path_feature_context() {
 ensure_feature_runtime_context() {
   local requested_step="${1:-}"
   local resume_mode="${2:-0}"
+  local start_branch=""
 
   if [[ "$FEATURE_CONTEXT_READY" -eq 1 ]] && [[ "$FEATURE_CONTEXT_REQUESTED_STEP" == "$requested_step" ]] && [[ "$FEATURE_CONTEXT_RESUME_MODE" -eq "$resume_mode" ]]; then
     return 0
   fi
 
+  start_branch="$(get_current_branch_name)"
+
   # Fast path: reuse existing feature sync without switching to the runtime branch.
   # Only attempted when the binding file is accessible on the current branch.
   # Handles --resume runs and re-invocations on an already-started feature.
-  if [[ -f "$PROJECT_BINDING_FILE" ]]; then
+  # Starting from master must still reach overmind first so step branches fork
+  # from the runtime branch instead of from master.
+  if [[ -n "$start_branch" ]] && [[ "$start_branch" != "master" ]] && [[ -f "$PROJECT_BINDING_FILE" ]]; then
     load_project_binding
     ensure_bound_project_synced_for_default_mode
     if _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
@@ -1422,6 +1427,11 @@ ensure_feature_runtime_context() {
   ensure_runtime_branch_checked_out
   load_project_binding
   ensure_bound_project_synced_for_default_mode
+
+  if [[ "$start_branch" == "master" ]] && _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
+    mirror_selected_feature_to_runtime "$SELECTED_STEP"
+    return 0
+  fi
 
   local -a candidate_feature_ids=()
   local -a candidate_feature_paths=()

@@ -42,6 +42,15 @@ assert_not_equal() {
   fi
 }
 
+assert_equal() {
+  local expected="$1"
+  local actual="$2"
+  if [[ "$expected" != "$actual" ]]; then
+    echo "Assertion failed: expected '$expected', got '$actual'" >&2
+    exit 1
+  fi
+}
+
 assert_file_contains() {
   local file="$1"
   local needle="$2"
@@ -67,6 +76,7 @@ setup_repo() {
   local repo_dir="$1"
   local source_dir=""
   local feature_dir=""
+  local remote_dir="${repo_dir}-remote.git"
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" \
     "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind"
   ln -s .asdlc_worker "$repo_dir/ai"
@@ -153,6 +163,10 @@ EOF
     git config user.email "test@example.com"
     git add .
     git commit -qm "seed"
+    git init -q --bare "$remote_dir"
+    git --git-dir "$remote_dir" symbolic-ref HEAD "refs/heads/$(git branch --show-current)"
+    git remote add origin "$remote_dir"
+    git push -q -u origin "$(git branch --show-current)"
   )
 }
 
@@ -686,6 +700,9 @@ EOF
   assert_not_contains "$out" "Multiple candidate features found under project"
   assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "selection_mode: 'resume_reuse"
   assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "feature_id: '$FEATURE_ID_DEFAULT'"
+  assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
+  assert_file_contains "$repo_dir/.asdlc_worker/overmind/implementation_plan.md" "### Step 1.1 Demo"
+  assert_file_contains "$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" "### Requirement 1 Demo"
 }
 
 test_resume_invalidates_stale_feature_sync_metadata() {
@@ -733,11 +750,11 @@ EOF
   assert_contains "$out" "Multiple candidate features were found for worker '$WORKER_UUID_DEFAULT'. Run in an interactive terminal to choose a feature."
 }
 
-test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout() {
-  local repo_dir="$TMP_ROOT/repo-resume-no-forced-overmind-checkout"
+test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout_from_non_master_branch() {
+  local repo_dir="$TMP_ROOT/repo-resume-no-forced-overmind-checkout-non-master"
   local source_dir=""
   local feature_dir=""
-  local base_branch=""
+  local branch_name="resume-current-branch"
   local out=""
   local status=0
 
@@ -745,7 +762,6 @@ test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout() {
   setup_repo "$repo_dir"
   source_dir="$(source_root_for_repo "$repo_dir")"
   feature_dir="$(feature_dir_for_repo "$repo_dir")"
-  base_branch="$(git -C "$repo_dir" branch --show-current)"
 
   write_design_and_plan_artifacts "$repo_dir" "1.1"
   write_impl_plan "$repo_dir" 1 1 1 0
@@ -760,14 +776,10 @@ test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout() {
 
   (
     cd "$repo_dir"
-    git checkout -q -b overmind
-    echo "# runtime branch copy" > .asdlc_worker/overmind/implementation_plan.md
-    echo "runtime ears" > .asdlc_worker/overmind/reqirements_ears.md
-    git add .asdlc_worker/overmind/implementation_plan.md .asdlc_worker/overmind/reqirements_ears.md
-    git commit -qm "seed runtime branch artifacts"
-    git checkout -q "$base_branch"
+    git checkout -q -b "$branch_name"
     mkdir -p .asdlc_worker/overmind
-    echo "# dirty local file blocks checkout to overmind if attempted" > .asdlc_worker/overmind/implementation_plan.md
+    echo "# branch runtime copy" > .asdlc_worker/overmind/implementation_plan.md
+    echo "runtime ears" > .asdlc_worker/overmind/reqirements_ears.md
   )
 
   set +e
@@ -782,6 +794,7 @@ test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout() {
   fi
   assert_not_contains "$out" "Failed to checkout runtime branch 'overmind'."
   assert_contains "$out" "Selected start phase: user_review"
+  assert_equal "$branch_name" "$(git -C "$repo_dir" branch --show-current)"
 }
 
 test_resume_starts_at_planning
@@ -800,7 +813,7 @@ test_resume_allows_implementation_when_ordered_plan_section_missing
 test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items
 test_resume_reuses_valid_feature_sync_metadata
 test_resume_invalidates_stale_feature_sync_metadata
-test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout
+test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout_from_non_master_branch
 test_missing_step_error
 test_dry_run_is_deterministic
 
