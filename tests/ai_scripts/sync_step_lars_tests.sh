@@ -54,10 +54,35 @@ make_requirements() {
   cat >"$dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 5 Menu
 - The system SHALL render the menu.
-**Linked Artifacts:** LAR-002
+**Linked Artifacts:**
+- LAR-002
 
 ## Linked Artifacts
-- LAR-002 | Figma | Menu Mockup | https://figma.com/file/abc/menu
+- id: LAR-002
+  title: Menu Mockup
+  type: Figma
+  locator: https://figma.com/file/abc/menu
+EOF
+}
+
+make_requirements_multiple_yaml() {
+  local dir="$1"
+  cat >"$dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
+### Requirement 5 Menu
+- The system SHALL render the menu.
+**Linked Artifacts:**
+- LAR-002
+- LAR-010
+
+## Linked Artifacts
+- id: LAR-002
+  title: Menu Mockup
+  type: Figma
+  locator: https://figma.com/file/abc/menu
+- id: LAR-010
+  title: Menu Schema
+  type: Schema
+  locator: https://example.com/menu-schema
 EOF
 }
 
@@ -84,7 +109,27 @@ assert_contains "$CONTENT" "Menu Mockup"
 assert_contains "$CONTENT" "https://figma.com/file/abc/menu"
 echo "PASS: helper appends ## Linked Artifacts (in scope) section to artifact lacking it"
 
-# Test 2: helper replaces existing section idempotently
+# Test 2: helper supports multiline requirement links and YAML-like registry entries
+TEST_DIR="$TMP_ROOT/test_yaml_registry"
+mkdir -p "$TEST_DIR"
+setup_repo "$TEST_DIR"
+make_plan "$TEST_DIR"
+make_requirements_multiple_yaml "$TEST_DIR"
+
+cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+## Goal
+- Render the menu.
+EOF
+
+bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+  "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
+
+CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
+assert_contains "$CONTENT" "- LAR-002 | Figma | Menu Mockup | https://figma.com/file/abc/menu"
+assert_contains "$CONTENT" "- LAR-010 | Schema | Menu Schema | https://example.com/menu-schema"
+echo "PASS: helper flattens YAML-like LAR registry entries referenced from multiline requirement blocks"
+
+# Test 3: helper replaces existing section idempotently
 TEST_DIR="$TMP_ROOT/test_replace"
 mkdir -p "$TEST_DIR"
 setup_repo "$TEST_DIR"
@@ -111,7 +156,7 @@ assert_not_contains "$CONTENT" "LAR-999"
 assert_contains "$CONTENT" "## Non-goals"
 echo "PASS: helper replaces existing section idempotently, preserves rest of file"
 
-# Test 3: running helper twice produces byte-equivalent output
+# Test 4: running helper twice produces byte-equivalent output
 TEST_DIR="$TMP_ROOT/test_idempotent"
 mkdir -p "$TEST_DIR"
 setup_repo "$TEST_DIR"
@@ -141,7 +186,7 @@ if [[ "$FIRST_RUN" != "$SECOND_RUN" ]]; then
 fi
 echo "PASS: repeated invocations produce byte-equivalent output"
 
-# Test 4: step with no LARs — no-op, leaves artifact unchanged
+# Test 5: step with no LARs — no-op, leaves artifact unchanged
 TEST_DIR="$TMP_ROOT/test_noop"
 mkdir -p "$TEST_DIR"
 setup_repo "$TEST_DIR"
@@ -158,7 +203,10 @@ cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 - The system SHALL respond.
 
 ## Linked Artifacts
-- LAR-001 | Figma | Unrelated | https://figma.com/file/unrelated
+- id: LAR-001
+  title: Unrelated
+  type: Figma
+  locator: https://figma.com/file/unrelated
 EOF
 
 cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
@@ -181,7 +229,7 @@ if [[ "$ORIGINAL_CONTENT" != "$AFTER_CONTENT" ]]; then
 fi
 echo "PASS: no-LAR step is a no-op that leaves the artifact unchanged"
 
-# Test 5: missing step plan exits non-zero
+# Test 6: missing step plan exits non-zero
 TEST_DIR="$TMP_ROOT/test_missing_plan"
 mkdir -p "$TEST_DIR"
 setup_repo "$TEST_DIR"

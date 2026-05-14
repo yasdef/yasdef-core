@@ -84,10 +84,14 @@ EOF
 cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 5 Main menu
 - The system SHALL render the main menu.
-**Linked Artifacts:** LAR-002
+**Linked Artifacts:**
+- LAR-002
 
 ## Linked Artifacts
-- LAR-002 | Figma | Main Menu Mockup | https://figma.com/file/abc/main-menu
+- id: LAR-002
+  title: Main Menu Mockup
+  type: Figma
+  locator: https://figma.com/file/abc/main-menu
 EOF
 
 OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
@@ -115,7 +119,10 @@ cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 - The system SHALL respond to requests.
 
 ## Linked Artifacts
-- LAR-001 | Confluence | Schema Doc | https://confluence.example.com/schema
+- id: LAR-001
+  title: Schema Doc
+  type: Confluence
+  locator: https://confluence.example.com/schema
 EOF
 
 OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
@@ -138,11 +145,20 @@ EOF
 cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 7 Menu and schema
 - The system SHALL render the menu.
-**Linked Artifacts:** LAR-005, LAR-001, LAR-005
+**Linked Artifacts:**
+- LAR-005
+- LAR-001
+- LAR-005
 
 ## Linked Artifacts
-- LAR-001 | Confluence | Schema | https://confluence.example.com/schema
-- LAR-005 | Figma | Menu Mockup | https://figma.com/file/abc/menu
+- id: LAR-001
+  title: Schema
+  type: Confluence
+  locator: https://confluence.example.com/schema
+- id: LAR-005
+  title: Menu Mockup
+  type: Figma
+  locator: https://figma.com/file/abc/menu
 EOF
 
 OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
@@ -178,10 +194,14 @@ EOF
 cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 9 Missing LAR
 - The system SHALL do something.
-**Linked Artifacts:** LAR-099
+**Linked Artifacts:**
+- LAR-099
 
 ## Linked Artifacts
-- LAR-001 | Figma | Unrelated | https://figma.com/file/unrelated
+- id: LAR-001
+  title: Unrelated
+  type: Figma
+  locator: https://figma.com/file/unrelated
 EOF
 
 OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
@@ -203,10 +223,14 @@ EOF
 cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 5 Menu
 - The system SHALL render the menu.
-**Linked Artifacts:** LAR-002
+**Linked Artifacts:**
+- LAR-002
 
 ## Linked Artifacts
-- LAR-002 | Figma | Menu | https://figma.com/file/abc/menu
+- id: LAR-002
+  title: Menu
+  type: Figma
+  locator: https://figma.com/file/abc/menu
 EOF
 
 OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true

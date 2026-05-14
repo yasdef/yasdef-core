@@ -57,7 +57,7 @@ Before step planning:
 - Design must include both:
   - step scope bullets (`## Target Bullets (excluding planning/review)`), and
   - selected EARS requirement blocks for planning translation (`## Selected EARS Requirements (for planning translation)`).
-- After extracting `### Requirement N` blocks, perform the third-stage LAR funnel: scan the extracted blocks for `**Linked Artifacts:** LAR-NNN` lines, dedup IDs, look each up in the `## Linked Artifacts` registry of `overmind/reqirements_ears.md`, and propagate the result as a `## Linked Artifacts (in scope)` shortlist into the design artifact via `ai/scripts/helpers/sync_step_lars.sh`; do not fetch LAR content in the design phase.
+- After extracting `### Requirement N` blocks, perform the third-stage LAR funnel: scan the extracted blocks for `**Linked Artifacts:**` sections with `- LAR-NNN` list items, dedup IDs, look each up in the YAML-like `## Linked Artifacts` registry of `overmind/reqirements_ears.md`, and propagate the result as a `## Linked Artifacts (in scope)` shortlist into the design artifact via `ai/scripts/helpers/sync_step_lars.sh`; do not fetch LAR content in the design phase.
 - Apply `#### Bootstrap decision algorithm` before design handoff.
 - If bootstrap is required and stack/architecture guidance is needed, run `ai/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context and evaluate class-relevant `project_stack_blueprint_*.md` files from the project-level directory above that feature folder.
 - Use project class metadata from `ai/project_overmind.yaml` to scope blueprint relevance; if class metadata is missing/unsupported or no relevant blueprint exists, stop and ask the user for stack/scaffold direction instead of inventing one.

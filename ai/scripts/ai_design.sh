@@ -196,34 +196,130 @@ get_requirements_section() {
   printf '%s' "$output"
 }
 
+collect_lar_ids() {
+  local req_section="$1"
+  [[ -z "$req_section" ]] && return 0
+
+  printf '%s\n' "$req_section" | awk '
+    function emit_ids(text, rest) {
+      rest = text
+      while (match(rest, /LAR-[0-9]+/)) {
+        print substr(rest, RSTART, RLENGTH)
+        rest = substr(rest, RSTART + RLENGTH)
+      }
+    }
+
+    /^\*\*Linked Artifacts:\*\*/ {
+      in_linked=1
+      next
+    }
+
+    in_linked && /^[[:space:]]*-[[:space:]]*/ {
+      emit_ids($0)
+      next
+    }
+
+    in_linked {
+      if ($0 ~ /^[[:space:]]*$/ ||
+          $0 ~ /^\*\*/ ||
+          $0 ~ /^### / ||
+          $0 ~ /^## / ||
+          $0 ~ /^---[[:space:]]*$/) {
+        in_linked=0
+      }
+    }
+  ' | sort -t- -k2 -n | uniq
+}
+
+get_lar_registry_entries() {
+  awk '
+    function trim(str) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", str)
+      return str
+    }
+
+    function unquote(str) {
+      str = trim(str)
+      if ((str ~ /^".*"$/) || (str ~ /^'\''.*'\''$/)) {
+        str = substr(str, 2, length(str) - 2)
+      }
+      return str
+    }
+
+    function emit_yaml_entry() {
+      if (current_id == "") {
+        return
+      }
+      print current_id " | " current_type " | " current_title " | " current_locator
+      current_id=""
+      current_type=""
+      current_title=""
+      current_locator=""
+    }
+
+    /^## Linked Artifacts[[:space:]]*$/ {
+      in_reg=1
+      next
+    }
+
+    !in_reg { next }
+
+    /^## / {
+      emit_yaml_entry()
+      exit
+    }
+
+    /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ {
+      emit_yaml_entry()
+      line = $0
+      sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", line)
+      current_id = unquote(line)
+      next
+    }
+
+    current_id != "" && /^[[:space:]]+[[:alnum:]_-]+:[[:space:]]*/ {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      key = line
+      sub(/:.*/, "", key)
+      value = line
+      sub(/^[^:]+:[[:space:]]*/, "", value)
+      value = unquote(value)
+
+      if (key == "id") current_id = value
+      if (key == "type") current_type = value
+      if (key == "title") current_title = value
+      if (key == "locator") current_locator = value
+      next
+    }
+
+    END {
+      emit_yaml_entry()
+    }
+  ' "$REQUIREMENTS"
+}
+
 get_step_lar_section() {
   local req_section="$1"
 
-  if [[ -z "$req_section" ]]; then
-    return 0
-  fi
-
   local lar_ids
-  lar_ids="$(printf '%s\n' "$req_section" | \
-    grep -E '\*\*Linked Artifacts:\*\*' | \
-    grep -oE 'LAR-[0-9]+' | \
-    sort -t- -k2 -n | \
-    uniq)"
+  lar_ids="$(collect_lar_ids "$req_section")"
 
   [[ -z "$lar_ids" ]] && return 0
+
+  local registry_entries
+  registry_entries="$(get_lar_registry_entries)"
+  [[ -z "$registry_entries" ]] && return 0
 
   local lar_id entry
   while IFS= read -r lar_id; do
     [[ -z "$lar_id" ]] && continue
-    entry="$(awk -v id="$lar_id" '
-      /^## Linked Artifacts[[:space:]]*$/ { in_reg=1; next }
-      in_reg && /^## / { exit }
-      in_reg && $0 ~ ("^[[:space:]]*- " id "[[:space:]|]") {
-        sub(/^[[:space:]]*-[[:space:]]*/, "")
+    entry="$(printf '%s\n' "$registry_entries" | awk -F'[[:space:]]*\\|[[:space:]]*' -v id="$lar_id" '
+      $1 == id {
         print
         exit
       }
-    ' "$REQUIREMENTS")"
+    ')"
     [[ -n "$entry" ]] && printf '%s\n' "- $entry"
   done <<<"$lar_ids"
 }

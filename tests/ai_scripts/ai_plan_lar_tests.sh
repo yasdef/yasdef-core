@@ -165,10 +165,14 @@ make_design_with_lar "$TEST_DIR"
 cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
 ### Requirement 1 Feature
 - The system SHALL work.
-**Linked Artifacts:** LAR-099
+**Linked Artifacts:**
+- LAR-099
 
 ## Linked Artifacts
-- LAR-099 | Confluence | Schema | https://confluence.example.com/should-not-appear
+- id: LAR-099
+  title: Schema
+  type: Confluence
+  locator: https://confluence.example.com/should-not-appear
 EOF
 
 OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
