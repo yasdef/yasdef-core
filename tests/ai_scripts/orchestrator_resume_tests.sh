@@ -778,8 +778,19 @@ test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout_from_non
     cd "$repo_dir"
     git checkout -q -b "$branch_name"
     mkdir -p .asdlc_worker/overmind
-    echo "# branch runtime copy" > .asdlc_worker/overmind/implementation_plan.md
-    echo "runtime ears" > .asdlc_worker/overmind/reqirements_ears.md
+    cat > .asdlc_worker/overmind/implementation_plan.md <<EOF
+### Step 1.1 Demo
+#### Assigned: $WORKER_UUID_DEFAULT
+Est. step total: 5 SP
+- [x] Plan and discuss the step (SP=1)
+- [x] Implement part A (SP=2)
+- [x] Implement part B (SP=1)
+- [ ] Review step implementation (SP=1)
+EOF
+    cat > .asdlc_worker/overmind/reqirements_ears.md <<'EOF'
+### Requirement 1 Branch runtime
+- The system SHALL support branch runtime behavior.
+EOF
   )
 
   set +e
@@ -794,6 +805,7 @@ test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout_from_non
   fi
   assert_not_contains "$out" "Failed to checkout runtime branch 'overmind'."
   assert_contains "$out" "Selected start phase: user_review"
+  assert_not_contains "$out" "Selected start phase: planning"
   assert_equal "$branch_name" "$(git -C "$repo_dir" branch --show-current)"
 }
 
