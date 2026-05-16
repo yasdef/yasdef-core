@@ -956,11 +956,14 @@ rebase_runtime_branch_onto_master_or_die() {
 
 bound_project_repo_relpath() {
   local path="$1"
-  if [[ "$path" == "$BOUND_PROJECT_PATH/"* ]]; then
-    printf '%s' "${path#"$BOUND_PROJECT_PATH"/}"
+  local abs_path abs_bound
+  abs_path="$(realpath "$path" 2>/dev/null)" || abs_path="$path"
+  abs_bound="$(realpath "$BOUND_PROJECT_PATH" 2>/dev/null)" || abs_bound="$BOUND_PROJECT_PATH"
+  if [[ "$abs_path" == "$abs_bound/"* ]]; then
+    printf '%s' "${abs_path#"$abs_bound"/}"
     return 0
   fi
-  if [[ "$path" == "$BOUND_PROJECT_PATH" ]]; then
+  if [[ "$abs_path" == "$abs_bound" ]]; then
     printf '.'
     return 0
   fi
