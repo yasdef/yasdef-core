@@ -189,8 +189,8 @@ ensure_ai_context_files() {
   if [[ -n "$SELECTED_STEP" ]]; then
     local _cb
     _cb="$(get_current_branch_name)"
-    if [[ "$_cb" != "step-$SELECTED_STEP-"* ]] \
-       && git -C "$ROOT" show-ref --verify --quiet "refs/heads/step-$SELECTED_STEP-plan" 2>/dev/null; then
+    if [[ "$_cb" != "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-"* ]] \
+       && git -C "$ROOT" show-ref --verify --quiet "refs/heads/step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan" 2>/dev/null; then
       _skip_ctx_files=1
     fi
   fi
@@ -569,6 +569,7 @@ run_planning_phase() {
     echo "orchestrator: resolved routed step '$step' for planning; injecting --step into ai_plan.sh." >&2
     plan_cmd+=(--step "$step")
   fi
+  plan_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     plan_cmd+=(--feature-rich-design-planning)
   fi
@@ -626,6 +627,7 @@ run_design_phase() {
     echo "orchestrator: resolved routed step '$step' for design; injecting --step into ai_design.sh." >&2
     design_cmd+=(--step "$step")
   fi
+  design_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     design_cmd+=(--feature-rich-design-planning)
   fi
@@ -1346,6 +1348,9 @@ ensure_feature_runtime_context() {
     load_project_binding
     ensure_bound_project_synced_for_default_mode
     if _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
+      if [[ "$start_branch" == "$RUNTIME_BRANCH" ]]; then
+        mirror_selected_feature_to_runtime "$SELECTED_STEP"
+      fi
       return 0
     fi
   fi
@@ -1591,7 +1596,7 @@ get_current_branch_name() {
 
 get_step_from_branch_name() {
   local branch="$1"
-  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|user-review|review|ai-audit)$ ]]; then
+  if [[ "$branch" =~ ^step-([0-9]+([.][0-9]+)*)-[^-].*-(plan|implementation|user-review|review|ai-audit)$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -1650,7 +1655,7 @@ run_implementation_phase() {
 
   prompt_out="$(resolve_prompt_output_path "implementation" "$step")"
 
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1710,7 +1715,7 @@ run_user_review_phase() {
   fi
 
   prompt_out="$(resolve_prompt_output_path "user_review" "$step")"
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_user_review.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_user_review.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1776,7 +1781,7 @@ run_ai_audit_phase() {
   fi
 
   prompt_out="$(resolve_prompt_output_path "ai_audit" "$step")"
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_audit.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_audit.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -2630,7 +2635,7 @@ evaluate_planning_phase() {
 
 implementation_branch_exists_for_step() {
   local step="$1"
-  local branch="step-$step-implementation"
+  local branch="step-$step-$SELECTED_FEATURE_ID-implementation"
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 1
   fi
@@ -2666,15 +2671,15 @@ evaluate_implementation_phase() {
   fi
 
   if is_implementation_complete_for_step "$step"; then
-    phase_eval_set "implementation" "complete" "implementation marker detected (branch step-$step-implementation or later-phase artifact present)"
+    phase_eval_set "implementation" "complete" "implementation marker detected (branch step-$step-$SELECTED_FEATURE_ID-implementation or later-phase artifact present)"
   else
-    phase_eval_set "implementation" "incomplete" "missing implementation marker (expected branch step-$step-implementation)"
+    phase_eval_set "implementation" "incomplete" "missing implementation marker (expected branch step-$step-$SELECTED_FEATURE_ID-implementation)"
   fi
 }
 
 user_review_branch_exists_for_step() {
   local step="$1"
-  local branch="step-$step-user-review"
+  local branch="step-$step-$SELECTED_FEATURE_ID-user-review"
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 1
   fi
@@ -2701,7 +2706,7 @@ evaluate_user_review_phase() {
   if is_user_review_complete_for_step "$step"; then
     phase_eval_set "user_review" "complete" "user_review marker detected (step branch or review artifact present)"
   else
-    phase_eval_set "user_review" "incomplete" "missing user_review marker (expected branch step-$step-user-review)"
+    phase_eval_set "user_review" "incomplete" "missing user_review marker (expected branch step-$step-$SELECTED_FEATURE_ID-user-review)"
   fi
 }
 

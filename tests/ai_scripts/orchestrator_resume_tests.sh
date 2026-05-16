@@ -64,7 +64,7 @@ assert_file_contains() {
 
 source_root_for_repo() {
   local repo_dir="$1"
-  printf '%s' "$repo_dir/.tmp-asdlc-source"
+  printf '%s' "${repo_dir}-source"
 }
 
 feature_dir_for_repo() {
@@ -124,6 +124,7 @@ EOF
 
   source_dir="$(source_root_for_repo "$repo_dir")"
   feature_dir="$(feature_dir_for_repo "$repo_dir")"
+  local source_remote_dir="${source_dir}-remote.git"
   mkdir -p "$source_dir" "$feature_dir"
   cat >"$source_dir/workers.yaml" <<EOF
 workers:
@@ -157,16 +158,28 @@ status: 'ready'
 EOF
 
   (
+    cd "$source_dir"
+    git init -q -b master
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+    git add .
+    git commit -qm "seed source"
+    git init -q --bare "$source_remote_dir"
+    git remote add origin "$source_remote_dir"
+    git push -q -u origin master
+  )
+
+  (
     cd "$repo_dir"
-    git init -q
+    git init -q -b master
     git config user.name "Test User"
     git config user.email "test@example.com"
     git add .
     git commit -qm "seed"
     git init -q --bare "$remote_dir"
-    git --git-dir "$remote_dir" symbolic-ref HEAD "refs/heads/$(git branch --show-current)"
+    git --git-dir "$remote_dir" symbolic-ref HEAD refs/heads/master
     git remote add origin "$remote_dir"
-    git push -q -u origin "$(git branch --show-current)"
+    git push -q -u origin master
   )
 }
 
@@ -175,7 +188,7 @@ create_user_review_branch_marker() {
   local step="$2"
   (
     cd "$repo_dir"
-    git branch "step-$step-user-review"
+    git branch "step-$step-$FEATURE_ID_DEFAULT-user-review"
   )
 }
 
@@ -184,7 +197,7 @@ create_implementation_branch_marker() {
   local step="$2"
   (
     cd "$repo_dir"
-    git branch "step-$step-implementation"
+    git branch "step-$step-$FEATURE_ID_DEFAULT-implementation"
   )
 }
 
@@ -296,6 +309,8 @@ write_impl_plan() {
   [[ "$impl_b_checked" == "1" ]] && impl_b_box="x"
   [[ "$review_checked" == "1" ]] && review_box="x"
 
+  local source_dir=""
+  source_dir="$(source_root_for_repo "$repo_dir")"
   feature_dir="$(feature_dir_for_repo "$repo_dir")"
   cat >"$feature_dir/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
@@ -306,6 +321,12 @@ Est. step total: 5 SP
 - [$impl_b_box] Implement part B (SP=1)
 - [$review_box] ${gate_prefix}Review step implementation (SP=1)
 EOF
+  (
+    cd "$source_dir"
+    git add "$feature_dir/implementation_plan.md"
+    git commit -qm "update impl plan"
+    git push -q origin master
+  )
 }
 
 write_feature_sync() {
@@ -460,7 +481,7 @@ test_resume_starts_at_implementation_when_planning_gate_closed() {
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
 }
 
@@ -474,7 +495,7 @@ test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_start
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (later-phase execution markers detected (1/2 implementation bullets checked))"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "planning gate not checked"
 }
@@ -488,7 +509,7 @@ test_partial_markers_rerun_implementation() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
 }
 
@@ -502,8 +523,8 @@ test_resume_starts_at_user_review() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
-  assert_contains "$out" "user_review: incomplete (missing user_review marker (expected branch step-1.1-user-review))"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
+  assert_contains "$out" "user_review: incomplete (missing user_review marker (expected branch step-1.1-feature-resume-user-review))"
   assert_contains "$out" "Selected start phase: user_review"
   assert_contains "$out" "Executed phases: user_review ai_audit post_review"
 }
@@ -518,7 +539,7 @@ test_resume_starts_at_ai_audit_after_user_review_complete() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
   assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
@@ -534,7 +555,7 @@ test_resume_starts_at_ai_audit_with_prefixed_gates() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
   assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
@@ -622,7 +643,7 @@ test_resume_does_not_require_evidence_before_ai_audit() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
@@ -637,7 +658,7 @@ test_resume_allows_implementation_when_ordered_plan_section_missing() {
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "Resume blocked:"
 }
@@ -652,7 +673,7 @@ test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items() {
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "Resume blocked:"
 }

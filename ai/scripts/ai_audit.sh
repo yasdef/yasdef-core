@@ -17,13 +17,14 @@ STEP=""
 OUT=""
 STEP_PLAN=""
 DESIGN_FILE=""
+FEATURE_ID=""
 INCLUDE_AGENTS=1
 DESIGN_UR_HEADING=""
 DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: .asdlc_worker/scripts/ai_audit.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--no-include-agents]
+Usage: .asdlc_worker/scripts/ai_audit.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--feature-id <id>] [--no-include-agents]
 
 Defaults:
   - If --step-plan is omitted, uses the latest .asdlc_worker/step_plans/step-*.md.
@@ -31,16 +32,16 @@ Defaults:
   - If --design is omitted, uses .asdlc_worker/step_designs/step-<step>-design.md (required).
   - .asdlc_worker/decisions.md is pointer-only by default; rely on design-extracted ADR shortlist.
   - AGENTS.md is included by default; use --no-include-agents to omit.
-  - Always creates/switches to branch step-<step>-review from step-<step>-user-review when available, otherwise step-<step>-implementation.
+  - Always creates/switches to branch step-<step>-<feature-id>-review from step-<step>-<feature-id>-user-review when available, otherwise step-<step>-<feature-id>-implementation.
 EOF
 }
 
 ensure_review_branch() {
   local implementation_branch user_review_branch source_branch target
-  implementation_branch="step-$STEP-implementation"
-  user_review_branch="step-$STEP-user-review"
+  implementation_branch="step-$STEP-$FEATURE_ID-implementation"
+  user_review_branch="step-$STEP-$FEATURE_ID-user-review"
   source_branch="$implementation_branch"
-  target="step-$STEP-review"
+  target="step-$STEP-$FEATURE_ID-review"
 
   if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$user_review_branch"; then
     source_branch="$user_review_branch"
@@ -172,7 +173,7 @@ get_current_branch_name() {
 
 get_step_from_branch_name() {
   local branch="$1"
-  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|user-review|review)$ ]]; then
+  if [[ "$branch" =~ ^step-([0-9]+([.][0-9]+)*)-[^-].*-(plan|implementation|user-review|review)$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -427,6 +428,11 @@ while [[ $# -gt 0 ]]; do
     --out)
       require_option_arg "--out" "${2:-}"
       OUT="$2"
+      shift 2
+      ;;
+    --feature-id)
+      require_option_arg "--feature-id" "${2:-}"
+      FEATURE_ID="$2"
       shift 2
       ;;
     --include-agents)

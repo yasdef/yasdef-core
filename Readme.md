@@ -152,17 +152,17 @@ Each artifact below serves a specific role in the AI-dev process:
 
 **Phase 3: Implementation**
 - Input: Step plan (`.asdlc_worker/step_plans/step-<N>.md`), design (`.asdlc_worker/designs/feature-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
-- Output: Implemented changes on a local topic branch (`step-<N>-implementation`), updated tests/docs/planning artifacts, plus Evidence Reasoning Summary and Review Brief handoff for the next phase.
+- Output: Implemented changes on a local topic branch (`step-<N>-<feature-id>-implementation`), updated tests/docs/planning artifacts, plus Evidence Reasoning Summary and Review Brief handoff for the next phase.
 - Gate: All ordered bullets must be `[x]`, all translated functional requirement checklist items must be `[x]`, verification closure must pass, and implementation does not commit before user review starts.
 
 **Phase 4: User Review**
 - Input: Implementation outputs from Phase 3, step plan/design context, `.asdlc_worker/user_review.md`.
-- Output: User-requested adjustments on `step-<N>-user-review`, targeted tests/docs updates, and generalized review rules in `.asdlc_worker/user_review.md` when applicable.
+- Output: User-requested adjustments on `step-<N>-<feature-id>-user-review`, targeted tests/docs updates, and generalized review rules in `.asdlc_worker/user_review.md` when applicable.
 - Gate: Entry precheck requires all `## Plan (ordered)` checklist items `[x]` and all translated functional requirement checklist items `[x]` before model execution.
 
 **Phase 5: Post-Step Audit & Review (AI)**
 - Input: Implemented + user-review changes, step plan, design, and user feedback outcomes.
-- Output: `.asdlc_worker/step_review_results/review_result-<N>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-review`). No push or merge to `main`/`master`.
+- Output: `.asdlc_worker/step_review_results/review_result-<N>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-<feature-id>-review`). No push or merge to `main`/`master`.
 - Gate: Every finding must have an explicit disposition; all accepted work must be captured as follow-up steps or questions.
 
 **Phase 6: Post-Review**

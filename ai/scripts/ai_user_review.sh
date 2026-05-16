@@ -18,13 +18,14 @@ STEP=""
 OUT=""
 STEP_PLAN=""
 DESIGN_FILE=""
+FEATURE_ID=""
 INCLUDE_AGENTS=0
 DESIGN_UR_HEADING=""
 DESIGN_ADR_HEADING=""
 
 usage() {
   cat <<'EOF'
-Usage: .asdlc_worker/scripts/ai_user_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents]
+Usage: .asdlc_worker/scripts/ai_user_review.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--feature-id <id>] [--include-agents] [--no-include-agents]
 
 Defaults:
   - If --step-plan is omitted, uses the latest .asdlc_worker/step_plans/step-*.md.
@@ -32,15 +33,15 @@ Defaults:
   - If --design is omitted, uses .asdlc_worker/step_designs/step-<step>-design.md (required).
   - If --out is omitted, writes to .asdlc_worker/prompts/user_review_prompts/<project>-step-<step>.user-review.prompt.txt.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
-  - Always creates/switches to branch step-<step>-user-review from step-<step>-implementation.
+  - Always creates/switches to branch step-<step>-<feature-id>-user-review from step-<step>-<feature-id>-implementation.
   - Hard gate (before prompt/model): `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh <step>` must pass.
 EOF
 }
 
 ensure_user_review_branch() {
   local implementation_branch target
-  implementation_branch="step-$STEP-implementation"
-  target="step-$STEP-user-review"
+  implementation_branch="step-$STEP-$FEATURE_ID-implementation"
+  target="step-$STEP-$FEATURE_ID-user-review"
 
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "Not a git repository: $ROOT" >&2
@@ -164,7 +165,7 @@ get_current_branch_name() {
 
 get_step_from_branch_name() {
   local branch="$1"
-  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|user-review|review)$ ]]; then
+  if [[ "$branch" =~ ^step-([0-9]+([.][0-9]+)*)-[^-].*-(plan|implementation|user-review|review)$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -410,6 +411,11 @@ while [[ $# -gt 0 ]]; do
     --out)
       require_option_arg "--out" "${2:-}"
       OUT="$2"
+      shift 2
+      ;;
+    --feature-id)
+      require_option_arg "--feature-id" "${2:-}"
+      FEATURE_ID="$2"
       shift 2
       ;;
     --include-agents)

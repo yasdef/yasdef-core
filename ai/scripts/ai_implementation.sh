@@ -16,12 +16,13 @@ STEP=""
 OUT=""
 STEP_PLAN=""
 DESIGN_FILE=""
+FEATURE_ID=""
 INCLUDE_AGENTS=0
 SKIP_BRANCH=0
 
 usage() {
   cat <<'USAGE'
-Usage: .asdlc_worker/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents] [--no-branch]
+Usage: .asdlc_worker/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--feature-id <id>] [--include-agents] [--no-include-agents] [--no-branch]
 
 Defaults:
   - If --step is omitted, uses the first unchecked bullet in .asdlc_worker/overmind/implementation_plan.md.
@@ -31,7 +32,7 @@ Defaults:
   - .asdlc_worker/decisions.md and .asdlc_worker/user_review.md are pointer-only by default; rely on design/step-plan extracted sections.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - --no-include-agents is accepted for compatibility and keeps pointer-only behavior.
-  - Always creates/switches to branch step-<step>-implementation.
+  - Always creates/switches to branch step-<step>-<feature-id>-implementation.
   - Use --no-branch to skip git branch creation/switch (prompt generation only).
 USAGE
 }
@@ -47,7 +48,7 @@ require_option_arg() {
 }
 
 ensure_implementation_branch() {
-  local target="step-$STEP-implementation"
+  local target="step-$STEP-$FEATURE_ID-implementation"
 
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "Not a git repository: $ROOT" >&2
@@ -372,6 +373,11 @@ while [[ $# -gt 0 ]]; do
     --design)
       require_option_arg "--design" "${2:-}"
       DESIGN_FILE="$2"
+      shift 2
+      ;;
+    --feature-id)
+      require_option_arg "--feature-id" "${2:-}"
+      FEATURE_ID="$2"
       shift 2
       ;;
     --include-agents)
