@@ -24,7 +24,6 @@ cd "$ROOT"
 DRY_RUN=0
 DEBUG_MODE=0
 FEATURE_RICH_DESIGN_PLANNING=0
-STANDALONE_MODE=0
 REQUESTED_PHASES=()
 PLAN_ARGS=()
 RAN_AI_AUDIT=0
@@ -66,7 +65,7 @@ START_BRANCH_VALIDATED=0
 
 usage() {
   cat <<'EOF'
-Usage: .asdlc_worker/scripts/orchestrator.sh [--resume <step>] [--debug] [--feature-rich-design-planning] [--standalone] [--dry-run] [--help] [-- <phase-script args>]
+Usage: .asdlc_worker/scripts/orchestrator.sh [--resume <step>] [--debug] [--feature-rich-design-planning] [--dry-run] [--help] [-- <phase-script args>]
 
 Default behavior:
   - Runs all phases in .asdlc_worker/setup/models.md, in order, then runs post_review.
@@ -80,7 +79,6 @@ Default behavior:
   - --debug enables per-step/per-phase artifact files for logs and prompts.
   - --feature-rich-design-planning enables an opt-in richer contract for design/planning prompts only.
   - --feature-rich-design-planning does not change implementation/user_review/ai_audit/post_review behavior.
-  - --standalone bypasses ASDLC feature discovery/read-copy flow and uses local overmind runtime artifacts directly.
   - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
   - When running interactively, asks for confirmation before planning/implementation/user_review/ai_audit.
   - If interactive confirmation is denied for any phase, orchestration stops immediately and does not prompt downstream phases in that run.
@@ -94,7 +92,6 @@ Examples:
   .asdlc_worker/scripts/orchestrator.sh --resume 1.3
   .asdlc_worker/scripts/orchestrator.sh --resume 1.3 --dry-run
   .asdlc_worker/scripts/orchestrator.sh --feature-rich-design-planning -- --step 1.3
-  .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.3
   .asdlc_worker/scripts/orchestrator.sh --debug -- --step 1.3
   .asdlc_worker/scripts/orchestrator.sh --dry-run
 EOF
@@ -825,10 +822,6 @@ load_project_binding() {
     die "Binding file is invalid: worker_uuid is not canonical UUID in $(repo_relpath "$PROJECT_BINDING_FILE")."
   fi
 
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    return 0
-  fi
-
   if [[ -z "$BINDING_OVERMIND_SOURCE_PATH" ]]; then
     die "Binding file is invalid: missing overmind_source_path in $(repo_relpath "$PROJECT_BINDING_FILE")."
   fi
@@ -973,22 +966,18 @@ bound_project_repo_relpath() {
 ensure_bound_project_git_ready() {
   local err=""
 
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    return 0
-  fi
-
   if [[ -z "$BOUND_PROJECT_PATH" ]]; then
     die "Default mode requires a bound ASDLC project repo path."
   fi
 
   if ! err="$(git -C "$BOUND_PROJECT_PATH" rev-parse --is-inside-work-tree 2>&1)"; then
-    die "Default mode requires the bound ASDLC project path to be a Git worktree with a configured upstream: $BOUND_PROJECT_PATH. Fix the repo checkout or run .asdlc_worker/scripts/orchestrator.sh --standalone."
+    die "Default mode requires the bound ASDLC project path to be a Git worktree with a configured upstream: $BOUND_PROJECT_PATH. Fix the repo checkout."
   fi
   if ! err="$(git -C "$BOUND_PROJECT_PATH" symbolic-ref --quiet HEAD 2>&1)"; then
-    die "Default mode requires the bound ASDLC project repo to be on a branch with a configured upstream: $BOUND_PROJECT_PATH. Check out a branch and rerun, or use .asdlc_worker/scripts/orchestrator.sh --standalone."
+    die "Default mode requires the bound ASDLC project repo to be on a branch with a configured upstream: $BOUND_PROJECT_PATH. Check out a branch and rerun."
   fi
   if ! err="$(git -C "$BOUND_PROJECT_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>&1)"; then
-    die "Default mode requires the bound ASDLC project repo to have a configured upstream: $BOUND_PROJECT_PATH. Set the tracking branch and rerun, or use .asdlc_worker/scripts/orchestrator.sh --standalone."
+    die "Default mode requires the bound ASDLC project repo to have a configured upstream: $BOUND_PROJECT_PATH. Set the tracking branch and rerun."
   fi
 }
 
@@ -1006,9 +995,6 @@ run_bound_project_pull_rebase_or_die() {
 }
 
 ensure_bound_project_synced_for_default_mode() {
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    return 0
-  fi
   if [[ "$BOUND_PROJECT_SYNC_READY" -eq 1 ]]; then
     return 0
   fi
@@ -1292,67 +1278,6 @@ mirror_selected_feature_to_runtime() {
   write_feature_sync_metadata "$selected_step"
 }
 
-ensure_standalone_runtime_context() {
-  local requested_step="${1:-}"
-  local resume_mode="${2:-0}"
-  local analysis=""
-  local assigned_any=0
-  local requested_match=0
-  local first_unchecked=""
-  local blocked_by=""
-
-  if [[ "$FEATURE_CONTEXT_READY" -eq 1 ]] && [[ "$FEATURE_CONTEXT_REQUESTED_STEP" == "$requested_step" ]] && [[ "$FEATURE_CONTEXT_RESUME_MODE" -eq "$resume_mode" ]]; then
-    return 0
-  fi
-
-  load_project_binding
-  ensure_runtime_branch_checked_out
-
-  if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
-    die "Standalone mode requires local runtime plan: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-  fi
-  if [[ ! -f "$RUNTIME_REQUIREMENTS_PATH" ]]; then
-    die "Standalone mode requires local runtime EARS: $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH")."
-  fi
-  if ! grep -q '[^[:space:]]' "$RUNTIME_REQUIREMENTS_PATH"; then
-    die "Standalone mode requires non-empty local runtime EARS: $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH")."
-  fi
-
-  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
-  analysis="$(analyze_feature_plan_for_worker "$IMPLEMENTATION_PLAN_PRIMARY" "$BINDING_WORKER_UUID" "$requested_step")"
-  IFS='|' read -r assigned_any requested_match first_unchecked blocked_by <<<"$analysis"
-
-  if [[ -n "$requested_step" ]]; then
-    if [[ "$requested_match" -ne 1 ]]; then
-      die "Standalone mode could not find requested step '$requested_step' assigned to worker '$BINDING_WORKER_UUID' in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-    fi
-    SELECTED_STEP="$requested_step"
-  else
-    if [[ "$assigned_any" -eq 0 ]]; then
-      die "Standalone mode found no steps assigned to worker '$BINDING_WORKER_UUID' in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-    fi
-    if [[ -z "$first_unchecked" ]]; then
-      if [[ -n "$blocked_by" ]]; then
-        die "Standalone mode: assigned step for worker '$BINDING_WORKER_UUID' is blocked by step '$blocked_by' in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-      fi
-      die "Standalone mode found assigned steps for worker '$BINDING_WORKER_UUID' but all assigned checklist bullets are complete in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-    fi
-    SELECTED_STEP="$first_unchecked"
-  fi
-
-  SELECTED_FEATURE_ID=""
-  SELECTED_FEATURE_PATH="$ASDLC_OVERMIND_DIR"
-  SELECTED_SOURCE_PLAN_PATH=""
-  SELECTED_SOURCE_EARS_PATH=""
-  SELECTED_SELECTION_MODE="standalone_local"
-  SELECTED_REQUESTED_STEP="$requested_step"
-
-  FEATURE_CONTEXT_READY=1
-  FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
-  FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
-  echo "orchestrator: selected standalone step '$SELECTED_STEP' for worker '$BINDING_WORKER_UUID' from $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
-}
-
 _try_fast_path_feature_context() {
   local requested_step="$1"
   local resume_mode="$2"
@@ -1540,11 +1465,7 @@ ensure_feature_runtime_context() {
 ensure_runtime_context() {
   local requested_step="${1:-}"
   local resume_mode="${2:-0}"
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    ensure_standalone_runtime_context "$requested_step" "$resume_mode"
-  else
-    ensure_feature_runtime_context "$requested_step" "$resume_mode"
-  fi
+  ensure_feature_runtime_context "$requested_step" "$resume_mode"
 }
 
 get_first_unchecked_step() {
@@ -2180,7 +2101,7 @@ run_global_plan_sync_before_post_review() {
   local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
   local action=""
 
-  if [[ "$STANDALONE_MODE" -eq 1 || "$DRY_RUN" -eq 1 ]]; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
     return 0
   fi
   if [[ ! -f "$review_artifact" ]]; then
@@ -2971,10 +2892,6 @@ while [[ $# -gt 0 ]]; do
       FEATURE_RICH_DESIGN_PLANNING=0
       shift
       ;;
-    --standalone)
-      STANDALONE_MODE=1
-      shift
-      ;;
     --help|-h)
       usage
       exit 0
@@ -2999,12 +2916,7 @@ if [[ "$RESUME_MODE" -eq 1 ]]; then
 else
   REQUESTED_STEP_FOR_FEATURE_CONTEXT="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
 fi
-if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-  echo "orchestrator: standalone mode enabled; bypassing ASDLC feature discovery, remote validation, and artifact mirroring." >&2
-  echo "orchestrator: standalone mode runtime inputs: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY"), $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH")." >&2
-else
-  echo "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled (<project-repo>/<feature-id>/implementation_plan.md + requirements_ears.md -> overmind runtime files)." >&2
-fi
+echo "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled (<project-repo>/<feature-id>/implementation_plan.md + requirements_ears.md -> overmind runtime files)." >&2
 ensure_runtime_context "$REQUESTED_STEP_FOR_FEATURE_CONTEXT" "$RESUME_MODE"
 
 if [[ "$RESUME_MODE" -eq 1 ]]; then

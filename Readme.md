@@ -41,10 +41,6 @@ This approach can be expressed in a few sentences:
    Worker runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` are mirrored copies managed by orchestrator on branch `overmind`.
    Default mode expects that ASDLC project repo to be a Git worktree on a branch with a configured upstream.
 
-5.1 Workaround (`--standalone`) when ASDLC paths are temporarily unreachable:
-   - Use `bash .asdlc_worker/scripts/orchestrator.sh --standalone` to run from local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` only.
-   - Trade-off: standalone mode bypasses ASDLC Git sync and can use stale local runtime copies.
-
 6. In each feature `implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Worker routing uses `#### Assigned: <worker-uuid>` blocks only. Example:
 ```
 ### Step 1.9 Some cool feature here
@@ -60,7 +56,6 @@ This approach can be expressed in a few sentences:
   - in default mode orchestrator refreshes the bound ASDLC repo with `git pull --rebase`, selects a feature assigned to the worker, and mirrors its `implementation_plan.md` and `requirements_ears.md` into local runtime files
   - after `ai_audit`, orchestrator syncs the updated runtime `implementation_plan.md` back to the selected ASDLC feature plan and pushes it through the bound ASDLC repo
   - if that outbound sync fails, interactive mode offers `1. retry` or `2. finish`; non-interactive runs stop before `post_review`
-  - if you need local-runtime-only execution, run `bash .asdlc_worker/scripts/orchestrator.sh --standalone`
   Selected-feature traceability is recorded in `.asdlc_worker/feature_sync.yaml` and reused on valid `--resume <step>`.
   Use debug mode to keep per-step artifacts:
   `bash ai/scripts/orchestrator.sh --debug -- --step 1.3`
@@ -101,7 +96,6 @@ This approach can be expressed in a few sentences:
   - Runtime mirroring rule: selected feature artifacts are mirrored into local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` on branch `overmind` before phase execution.
   - Post-ai_audit sync rule: before `post_review`, orchestrator copies the updated runtime `implementation_plan.md` into the selected ASDLC feature plan, commits only that file in the bound ASDLC repo, runs `git pull --rebase`, and pushes on success.
   - Outbound failure rule: copy/commit/rebase/push failures offer exactly `1. retry` or `2. finish`; `finish` continues to `post_review`, while non-interactive runs stop before `post_review`.
-  - Standalone override: `--standalone` bypasses ASDLC discovery/read-copy flow and uses existing local `overmind/implementation_plan.md` + `overmind/reqirements_ears.md` directly.
   - Feature sync state: orchestrator records selected feature metadata in `.asdlc_worker/feature_sync.yaml`; valid metadata is reused for `--resume <step>`, stale metadata is discarded and recomputed.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
@@ -245,7 +239,6 @@ V-0.1.1 (current)
 V-0.1.2
 - add integration with new coordinator (asdlc folder) - now orchestrator can register itself in overmind and 
 fetch tasks directly from asdlc folder for particular feature (user can select if mutliple features available) 
-- add --standalone flag to allow orchestrator work without coorditator (overmind)
 
 V-0.1.3 (current)
 - remove outdated git logic from worker-overmind interaction

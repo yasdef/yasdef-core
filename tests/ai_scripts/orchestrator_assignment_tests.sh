@@ -246,22 +246,6 @@ EOF
   commit_project_repo_changes "$source_dir" "add feature $feature_id"
 }
 
-write_local_overmind_runtime() {
-  local repo_dir="$1"
-  local worker_uuid="$2"
-  local step="${3:-1.7}"
-
-  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<EOF
-### Step $step Local runtime step
-#### Assigned: $worker_uuid
-- [ ] Plan and discuss the step (SP=1)
-EOF
-  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
-### Requirement 1 Local runtime requirement
-- The system SHALL support local standalone behavior.
-EOF
-}
-
 set_single_phase_model() {
   local repo_dir="$1"
   local phase="$2"
@@ -622,52 +606,6 @@ test_runtime_branch_rebases_master_before_feature_routing() {
   assert_contains "$(git -C "$repo_dir" merge-base --is-ancestor master overmind; printf '%s' "$?")" "0"
 }
 
-test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation() {
-  local repo_dir="$TMP_ROOT/repo-standalone-local-routing"
-  local source_dir="$TMP_ROOT/source-standalone-local-routing-does-not-exist"
-  local project_id="project-iota"
-  local worker_uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-  local out=""
-
-  mkdir -p "$repo_dir"
-  setup_repo "$repo_dir"
-  write_local_overmind_runtime "$repo_dir" "$worker_uuid" "7.3"
-  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
-
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone --debug --dry-run 2>&1)"
-  assert_contains "$out" "orchestrator: standalone mode enabled; bypassing ASDLC feature discovery, remote validation, and artifact mirroring."
-  assert_contains "$out" "orchestrator: standalone mode runtime inputs: .asdlc_worker/overmind/implementation_plan.md, .asdlc_worker/overmind/reqirements_ears.md."
-  assert_contains "$out" "orchestrator: selected standalone step '7.3' for worker '$worker_uuid' from .asdlc_worker/overmind/implementation_plan.md."
-  assert_contains "$out" ".asdlc_worker/scripts/ai_design.sh --step 7.3"
-  assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-standalone-local-routing-design-7-3-log"
-  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
-}
-
-test_standalone_fails_fast_when_local_runtime_ears_missing() {
-  local repo_dir="$TMP_ROOT/repo-standalone-missing-ears"
-  local source_dir="$TMP_ROOT/source-standalone-missing-ears-does-not-exist"
-  local project_id="project-kappa"
-  local worker_uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
-  local out=""
-  local status=0
-
-  mkdir -p "$repo_dir"
-  setup_repo "$repo_dir"
-  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<EOF
-### Step 1.2 Missing local ears
-#### Assigned: $worker_uuid
-- [ ] Plan and discuss the step (SP=1)
-EOF
-  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
-
-  set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone --dry-run 2>&1)"
-  status=$?
-  set -e
-  assert_nonzero_status "$status"
-  assert_contains "$out" "Standalone mode requires local runtime EARS: .asdlc_worker/overmind/reqirements_ears.md."
-}
-
 test_dep_none_step_is_selected() {
   local repo_dir="$TMP_ROOT/repo-dep-none"
   local source_dir="$TMP_ROOT/source-dep-none"
@@ -932,8 +870,6 @@ test_fails_when_project_id_mismatch_in_init_progress_definition
 test_planning_dry_run_injects_resolved_step_when_not_explicit
 test_non_master_start_can_cancel_before_switching_to_overmind
 test_runtime_branch_rebases_master_before_feature_routing
-test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation
-test_standalone_fails_fast_when_local_runtime_ears_missing
 test_dep_none_step_is_selected
 test_dep_missing_line_step_is_selected
 test_dep_satisfied_step_is_selected

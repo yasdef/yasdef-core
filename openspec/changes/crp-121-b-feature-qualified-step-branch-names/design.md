@@ -14,39 +14,40 @@ Branch creation and detection is spread across four scripts:
 ## Goals / Non-Goals
 
 **Goals:**
-- Step branches include selected feature ID in the name when a feature is selected
-- All phase scripts construct feature-qualified branch names when feature ID is provided
-- Orchestrator branch detection and resume logic use feature-qualified names when a feature is selected
-- `get_step_from_branch_name()` extracts the correct step number from both old and new formats
+- Step branches include the selected feature ID in the name
+- All phase scripts construct feature-qualified branch names from the supplied feature ID
+- Orchestrator branch detection and resume logic use feature-qualified names
+- `get_step_from_branch_name()` extracts the correct step number from the feature-qualified format
 
 **Non-Goals:**
-- Standalone step branches (no feature selected) remain `step-<N>-<phase>` — no change
 - Artifact file naming (step plans, designs, review results) is addressed by CRP-122
+
+CRP-121-a (removed `--standalone` mode) lands first; once `SELECTED_FEATURE_ID` is structurally always non-empty, every code path in this change uses the feature-qualified format unconditionally.
 
 ## Decisions
 
 ### 1. Name format: `step-<step>-<feature-id>-<phase>`
 
-When `SELECTED_FEATURE_ID` is non-empty, step branches are named `step-<step>-<feature-id>-<phase>` (e.g., `step-2-auth-system-implementation`). When empty (standalone step), the existing `step-<step>-<phase>` format is used unchanged.
+Step branches are named `step-<step>-<feature-id>-<phase>` (e.g., `step-2-auth-system-implementation`). `SELECTED_FEATURE_ID` is structurally non-empty after CRP-121-a, so there is no empty-feature branch shape to support.
 
 Alternatives considered: `<feature>/step-<N>-<phase>` (slash-namespacing creates refspec complexity) and `step-<N>@<feature>-<phase>` (`@` is unconventional in branch names). The suffix approach requires the least tooling change.
 
 ### 2. Feature ID delivery to phase scripts via `--feature-id` flag
 
-`ai_plan.sh` already accepts `--branch-name`; the orchestrator will pass the computed feature-qualified branch name via that existing flag when `SELECTED_FEATURE_ID` is non-empty.
+`ai_plan.sh` already accepts `--branch-name`; the orchestrator will pass the computed feature-qualified branch name via that existing flag.
 
 `ai_implementation.sh`, `ai_user_review.sh`, and `ai_audit.sh` each construct multiple related branch names from `$STEP` (implementation branch, user-review branch, review branch). Adding a single `--feature-id` flag lets each script qualify all branch name roles consistently from one parameter, rather than requiring separate `--branch-name` flags for each role.
 
-### 3. Step extraction from branch names uses two-pass check
+### 3. Step extraction from branch names
 
-`get_step_from_branch_name()` in `orchestrator.sh` and the identical helpers in phase scripts currently use `^step-(.+)-(plan|implementation|user-review|review|ai-audit)$`, capturing the full middle segment. Since step IDs are always numeric (`1`, `2`, `1.3`), a first-pass check with `^step-([0-9]+([.][0-9]+)*)-[^-].*-(plan|implementation|user-review|review|ai-audit)$` captures only the numeric step and skips any feature segment. The existing generic pattern serves as fallback for backward compatibility.
+`get_step_from_branch_name()` in `orchestrator.sh` and the identical helpers in phase scripts use `^step-([0-9]+([.][0-9]+)*)-[^-].*-(plan|implementation|user-review|review|ai-audit)$`, capturing only the numeric step and skipping the feature segment.
 
 ### 4. Branch detection functions use `SELECTED_FEATURE_ID` global
 
-`implementation_branch_exists_for_step()` and `user_review_branch_exists_for_step()` in `orchestrator.sh` construct the branch name as `step-$step-$SELECTED_FEATURE_ID-<phase>` when `SELECTED_FEATURE_ID` is non-empty, or `step-$step-<phase>` when empty. The global is already set before evaluation runs.
+`implementation_branch_exists_for_step()` and `user_review_branch_exists_for_step()` in `orchestrator.sh` construct the branch name as `step-$step-$SELECTED_FEATURE_ID-<phase>`. The global is set before evaluation runs.
 
 ## Risks / Trade-offs
 
-- [Tests assert exact branch names like `step-2-implementation`] → Update `orchestrator_resume_tests.sh` and `orchestrator_assignment_tests.sh` to use feature-qualified names in feature-context test setups
+- [Tests assert exact branch names like `step-2-implementation`] → Update `orchestrator_resume_tests.sh` and `orchestrator_assignment_tests.sh` to use feature-qualified names
 - [ai_implementation.sh currently has no `--feature-id` or `--branch-name` flag] → Must add this flag alongside the other phase scripts; it is called by orchestrator at line 1729 without a branch-name arg today
-- [Operators with in-flight step-only branches] → Detection fallback to step-only names applies only for standalone steps; feature-selected resume always uses feature-qualified branch names
+- [Operators with in-flight step-only branches created before this change] → Treated as orphaned; operators must rebase work onto the feature-qualified branch or recreate it. There is no automatic discovery of legacy `step-<N>-<phase>` names.

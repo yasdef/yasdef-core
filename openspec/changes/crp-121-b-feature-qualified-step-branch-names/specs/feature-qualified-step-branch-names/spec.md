@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
-### Requirement: Step branch names include selected feature identity when a feature is active
-When the orchestrator executes a step under a selected feature, orchestrator-created step branches SHALL use the form `step-<step>-<feature-id>-<phase>` where `<feature-id>` is the selected feature identifier (`SELECTED_FEATURE_ID`). When no feature is selected (standalone step mode), branch names SHALL remain `step-<step>-<phase>`.
+### Requirement: Step branch names include selected feature identity
+When the orchestrator executes a step, orchestrator-created step branches SHALL use the form `step-<step>-<feature-id>-<phase>` where `<feature-id>` is the selected feature identifier (`SELECTED_FEATURE_ID`). Feature selection is required for every step, so `SELECTED_FEATURE_ID` is always non-empty at the point branches are created.
 
 #### Scenario: Planning branch created with feature identity
 - **WHEN** orchestrator starts the planning phase for step N under selected feature `auth-system`
@@ -18,10 +18,6 @@ When the orchestrator executes a step under a selected feature, orchestrator-cre
 #### Scenario: Ai-audit branch created with feature identity
 - **WHEN** orchestrator starts the ai-audit phase for step N under selected feature `auth-system`
 - **THEN** the audit branch is created as `step-N-auth-system-review`
-
-#### Scenario: Standalone step branches are not feature-qualified
-- **WHEN** orchestrator executes a step with no selected feature (`SELECTED_FEATURE_ID` is empty)
-- **THEN** step branches use the existing `step-<N>-<phase>` format without a feature qualifier
 
 ### Requirement: Phase scripts construct feature-qualified branch names when feature ID is supplied
 Each phase script (`ai_plan.sh`, `ai_implementation.sh`, `ai_user_review.sh`, `ai_audit.sh`) SHALL accept a mechanism to receive the feature identity and SHALL use it to qualify all step branch names it creates or references within that invocation.
@@ -43,12 +39,8 @@ Each phase script (`ai_plan.sh`, `ai_implementation.sh`, `ai_user_review.sh`, `a
 - **THEN** `ai_audit.sh` uses `step-N-auth-system-user-review` (or `step-N-auth-system-implementation`) as the source and `step-N-auth-system-review` as the target branch
 
 ### Requirement: Step number extraction from branch names handles feature-qualified format
-`get_step_from_branch_name()` (and equivalent helpers in phase scripts) SHALL correctly extract the step number from both the legacy `step-<N>-<phase>` format and the feature-qualified `step-<N>-<feature-id>-<phase>` format.
+`get_step_from_branch_name()` (and equivalent helpers in phase scripts) SHALL correctly extract the step number from the feature-qualified `step-<N>-<feature-id>-<phase>` format.
 
 #### Scenario: Step extracted from feature-qualified branch name
 - **WHEN** current branch is `step-2-auth-system-implementation`
-- **THEN** `get_step_from_branch_name` returns `2`
-
-#### Scenario: Step extracted from legacy branch name
-- **WHEN** current branch is `step-2-implementation`
 - **THEN** `get_step_from_branch_name` returns `2`
