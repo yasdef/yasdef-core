@@ -689,7 +689,6 @@ emit() {
   fi
   if [[ -n "$DESIGN_LAR_SECTION" ]]; then
     printf 'Linked Artifacts (in scope): after writing the step plan, invoke `.asdlc_worker/scripts/helpers/sync_step_lars.sh %s %s` to sync the ## Linked Artifacts (in scope) section deterministically; do not echo the block textually into the step plan.\n' "$STEP" "$out_label"
-    printf 'Fetch rule (planning): at the start of context-gathering, fetch each in-scope LAR locator using available web/MCP tooling and treat the fetched content as one more context input alongside .asdlc_worker/overmind/implementation_plan.md, .asdlc_worker/overmind/reqirements_ears.md, the design artifact, and ADRs. Route any fetch failure through existing ask-user mechanisms (.asdlc_worker/open_questions.md, .asdlc_worker/blocker_log.md, two-option prompts) using the standard "cannot resolve LAR-NNN (locator: ...). How should I proceed?" question pattern.\n'
   fi
   printf 'Before ending the planning phase, run `%s %s`.\n' "${PLANNING_READINESS_HELPER#"$ROOT"/}" "$STEP"
   printf 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.\n'

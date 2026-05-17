@@ -103,7 +103,7 @@ Before step planning:
 - Use `ai/templates/step_plan_TEMPLATE.md` as the default structure and follow the style in `ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md`.
 - The plan may be produced in a separate session/model. Record planner and intended execution model/session IDs in the plan.
 - Use web research for best practices when needed; record sources in the plan to reduce hallucinations.
-- Mirror the design's `## Linked Artifacts (in scope)` block verbatim into the step plan via `ai/scripts/helpers/sync_step_lars.sh`; also fetch each in-scope LAR locator using available web/MCP tooling at the start of context-gathering and treat the fetched content as one more context input alongside `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, the design artifact, and ADRs. Route any fetch failure through existing ask-user mechanisms (`ai/open_questions.md`, `ai/blocker_log.md`, two-option prompts) using the standard "cannot resolve LAR-NNN (locator: ...). How should I proceed?" question pattern. Skip this fetch step when the design's LAR shortlist is empty.
+- Mirror the design's `## Linked Artifacts (in scope)` block verbatim into the step plan via `ai/scripts/helpers/sync_step_lars.sh`.
 - The plan must be concise and execution-focused: ordered steps, constraints, decisions, tests, and docs/artifacts to update.
 - Scope contract lives in the feature design artifact: `## Goal`, `## In Scope`, and `## Out of Scope`. Do not restate those sections in the step plan; instead add a pointer to the design and focus the plan on execution.
 - If present, the optional design bootstrap section is the source of truth for bootstrap handling; planning must not re-investigate repo emptiness or independently re-decide bootstrap need.

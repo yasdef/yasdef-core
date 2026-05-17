@@ -142,8 +142,8 @@ assert_contains "$OUTPUT" "LAR-003"
 assert_contains "$OUTPUT" "Figma"
 assert_contains "$OUTPUT" "Feature Mockup"
 assert_contains "$OUTPUT" "sync_step_lars.sh"
-assert_contains "$OUTPUT" "Fetch rule (planning):"
-echo "PASS: non-empty LAR shortlist produces LAR block, sync instruction, and fetch rule in prompt"
+assert_not_contains "$OUTPUT" "Fetch rule (planning):"
+echo "PASS: non-empty LAR shortlist produces LAR block and sync instruction in prompt (no fetch rule)"
 
 # Test 2: empty/absent LAR shortlist in design — fetch rule and block suppressed
 TEST_DIR="$TMP_ROOT/test_no_lar"
