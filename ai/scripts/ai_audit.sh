@@ -185,7 +185,11 @@ get_preferred_step_plan() {
   local branch step plan
   branch="$(get_current_branch_name)"
   if step="$(get_step_from_branch_name "$branch")"; then
-    plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    if [[ -n "$FEATURE_ID" ]]; then
+      plan="$ASDLC_STEP_PLANS_DIR/step-$step-$FEATURE_ID.md"
+    else
+      plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    fi
     if [[ -f "$plan" ]]; then
       printf '%s' "$plan"
       return 0

@@ -144,7 +144,7 @@ derive_step_from_step_plan_path() {
   local file="$1"
   local base step
   base="$(basename "$file")"
-  if [[ "$base" =~ ^step-(.+)\.md$ ]]; then
+  if [[ "$base" =~ ^step-([0-9]+(\.[0-9]+)*) ]]; then
     step="${BASH_REMATCH[1]}"
     printf '%s' "$step"
     return 0
@@ -436,13 +436,23 @@ else
 fi
 
 if [[ -z "$STEP_PLAN" ]]; then
-  STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  if [[ -n "$FEATURE_ID" ]]; then
+    STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP-$FEATURE_ID.md"
+  else
+    STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  fi
 fi
 if [[ -z "$DESIGN_FILE" ]]; then
   DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-$FEATURE_ID-design.md"
 fi
 if [[ -z "$OUT" ]]; then
   OUT="$ASDLC_PROMPTS_DIR/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"
+fi
+
+if [[ ! -f "$STEP_PLAN" ]]; then
+  echo "Step plan not found at $STEP_PLAN." >&2
+  echo "Run .asdlc_worker/scripts/ai_plan.sh --step $STEP first." >&2
+  exit 1
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
