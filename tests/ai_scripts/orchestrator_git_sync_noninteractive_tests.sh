@@ -247,44 +247,6 @@ clone_remote_editor() {
   git -C "$editor_dir" config user.email "remote@example.com"
 }
 
-run_orchestrator_with_tty_input() {
-  local repo_dir="$1"
-  local input_text="$2"
-  local expect_script="$TMP_ROOT/orchestrator-expect-$$.tcl"
-  shift 2
-  cat >"$expect_script" <<EOF
-log_user 1
-set timeout 5
-set responses [split [string trim \$env(EXPECT_INPUT)] "\n"]
-set idx 0
-proc send_next {} {
-  global responses idx
-  if {\$idx >= [llength \$responses]} {
-    return
-  }
-  send -- "[lindex \$responses \$idx]\r"
-  incr idx
-}
-cd "$repo_dir"
-spawn .asdlc_worker/scripts/orchestrator.sh $(printf ' %q' "$@")
-expect {
-  timeout { puts "expect timeout after 5s"; exit 124 }
-  -re {Proceed\\? \\[y/n\\] $} {
-    send_next
-    exp_continue
-  }
-  -re {Choose 1 or 2: $} {
-    send_next
-    exp_continue
-  }
-  eof
-}
-catch wait result
-exit [lindex \$result 3]
-EOF
-  EXPECT_INPUT="$input_text" expect "$expect_script" 2>&1
-}
-
 test_inbound_pull_rebase_happens_before_feature_discovery() {
   local repo_dir="$TMP_ROOT/repo-inbound-refresh"
   local source_dir="$TMP_ROOT/source-inbound-refresh"
@@ -564,77 +526,6 @@ EOF
   assert_not_contains "$out" "post_review"
 }
 
-test_outbound_retry_repeats_sync_and_continues_to_post_review() {
-  local repo_dir="$TMP_ROOT/repo-outbound-retry"
-  local source_dir="$TMP_ROOT/source-outbound-retry"
-  local project_id="project-outbound-retry"
-  local worker_uuid="10000000-0000-0000-0000-000000000009"
-  local out=""
-
-  mkdir -p "$repo_dir"
-  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
-  create_feature "$source_dir" "feature-a" "### Step 1.1 Retry step
-#### Assigned: $worker_uuid
-- [ ] Plan and discuss the step (SP=1)
-"
-  setup_worker_repo "$repo_dir" "echo \"ai_audit\"; printf '\n# retry-success\n' >> '$source_dir/feature-a/implementation_plan.md'" "echo \"post_review\""
-  cat >"$source_dir/.git/hooks/pre-commit" <<'EOF'
-#!/usr/bin/env bash
-marker="$(git rev-parse --git-dir)/allow_commit_after_retry"
-if [[ ! -f "$marker" ]]; then
-  touch "$marker"
-  echo "fail once" >&2
-  exit 1
-fi
-exit 0
-EOF
-  chmod +x "$source_dir/.git/hooks/pre-commit"
-  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
-  cat >"$repo_dir/ai/setup/models.md" <<'EOF'
-ai_audit | echo | mock-model
-post_review | echo | mock-model
-EOF
-
-  out="$(run_orchestrator_with_tty_input "$repo_dir" $'y\n1\n')"
-  assert_contains "$out" "Global implementation-plan sync failed while creating an ASDLC sync commit"
-  assert_contains "$out" "Choose 1 or 2:"
-  assert_contains "$out" "post_review"
-  assert_file_contains "$source_dir/feature-a/implementation_plan.md" "# retry-success"
-}
-
-test_outbound_finish_skips_sync_and_continues_to_post_review() {
-  local repo_dir="$TMP_ROOT/repo-outbound-finish"
-  local source_dir="$TMP_ROOT/source-outbound-finish"
-  local remote_dir="${source_dir}-remote.git"
-  local project_id="project-outbound-finish"
-  local worker_uuid="10000000-0000-0000-0000-000000000010"
-  local out=""
-
-  mkdir -p "$repo_dir"
-  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
-  create_feature "$source_dir" "feature-a" "### Step 1.1 Finish step
-#### Assigned: $worker_uuid
-- [ ] Plan and discuss the step (SP=1)
-"
-  setup_worker_repo "$repo_dir" "echo \"ai_audit\"; printf '\n# finish-skip\n' >> '$source_dir/feature-a/implementation_plan.md'" "echo \"post_review\""
-  cat >"$remote_dir/hooks/pre-receive" <<'EOF'
-#!/usr/bin/env bash
-echo "push rejected by remote hook" >&2
-exit 1
-EOF
-  chmod +x "$remote_dir/hooks/pre-receive"
-  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
-  cat >"$repo_dir/ai/setup/models.md" <<'EOF'
-ai_audit | echo | mock-model
-post_review | echo | mock-model
-EOF
-
-  out="$(run_orchestrator_with_tty_input "$repo_dir" $'y\n2\n')"
-  assert_contains "$out" "Global implementation-plan sync failed while pushing the ASDLC sync commit"
-  assert_contains "$out" "orchestrator: skipping global implementation-plan sync for step '1.1' and continuing to post_review."
-  assert_contains "$out" "post_review"
-}
-
 test_resume_succeeds_without_local_runtime_mirror_files() {
   local repo_dir="$TMP_ROOT/repo-resume-no-mirror-needed"
   local source_dir="$TMP_ROOT/source-resume-no-mirror-needed"
@@ -688,9 +579,7 @@ else
   test_fails_before_step_when_bound_source_plan_is_dirty
   test_outbound_rebase_conflict_stops_before_post_review_noninteractive
   test_outbound_push_failure_stops_before_post_review_noninteractive
-  test_outbound_retry_repeats_sync_and_continues_to_post_review
-  test_outbound_finish_skips_sync_and_continues_to_post_review
   test_resume_succeeds_without_local_runtime_mirror_files
 fi
 
-echo "All orchestrator git sync tests passed."
+echo "All orchestrator git sync noninteractive tests passed."

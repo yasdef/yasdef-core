@@ -91,11 +91,11 @@ if [[ $# -ne 1 ]]; then
 fi
 
 STEP="$1"
-STEP_PLAN_FILE="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
-DESIGN_FILE="$DESIGN_DIR/step-$STEP-design.md"
+STEP_PLAN_FILE="$(find "$ASDLC_STEP_PLANS_DIR" -maxdepth 1 -name "step-${STEP}-*.md" 2>/dev/null | head -1 || true)"
+DESIGN_FILE="$(find "$DESIGN_DIR" -maxdepth 1 -name "step-${STEP}-*-design.md" 2>/dev/null | head -1 || true)"
 
-if [[ ! -f "$STEP_PLAN_FILE" ]]; then
-  echo "Planning readiness failed: step plan not found: .asdlc_worker/step_plans/step-$STEP.md" >&2
+if [[ -z "$STEP_PLAN_FILE" ]] || [[ ! -f "$STEP_PLAN_FILE" ]]; then
+  echo "Planning readiness failed: step plan not found: .asdlc_worker/step_plans/step-$STEP-<feature-id>.md" >&2
   exit 1
 fi
 

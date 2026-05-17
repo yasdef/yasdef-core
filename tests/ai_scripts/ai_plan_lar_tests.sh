@@ -73,7 +73,7 @@ EOF
 
 make_step_plan() {
   local dir="$1"
-  cat >"$dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 ## Applicable UR Shortlist
 - None.
 
@@ -87,7 +87,7 @@ EOF
 
 make_design_with_lar() {
   local dir="$1"
-  cat >"$dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_designs/step-1.1-demo-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature.
 
@@ -110,7 +110,7 @@ EOF
 
 make_design_without_lar() {
   local dir="$1"
-  cat >"$dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_designs/step-1.1-demo-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature.
 
@@ -135,7 +135,9 @@ setup_plan_repo "$TEST_DIR"
 make_step_plan "$TEST_DIR"
 make_design_with_lar "$TEST_DIR"
 
-OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 --feature-id demo 2>/dev/null)"
 assert_contains "$OUTPUT" "LAR-003"
 assert_contains "$OUTPUT" "Figma"
 assert_contains "$OUTPUT" "Feature Mockup"
@@ -150,7 +152,9 @@ setup_plan_repo "$TEST_DIR"
 make_step_plan "$TEST_DIR"
 make_design_without_lar "$TEST_DIR"
 
-OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 --feature-id demo 2>/dev/null)"
 assert_not_contains "$OUTPUT" "Fetch rule (planning):"
 echo "PASS: absent LAR shortlist suppresses fetch rule"
 
@@ -175,7 +179,9 @@ cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
   locator: https://confluence.example.com/should-not-appear
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_plan.sh" --step 1.1 --feature-id demo 2>/dev/null)"
 # Should contain design's LAR-003, not registry's LAR-099
 assert_contains "$OUTPUT" "LAR-003"
 assert_not_contains "$OUTPUT" "LAR-099"

@@ -89,11 +89,12 @@ Est. step total: 5 SP
 - [ ] Implement part B (SP=1)
 - [ ] Review step implementation (SP=1)
 EOF
+  export ASDLC_RUNTIME_PLAN_PATH=".asdlc_worker/overmind/implementation_plan.md"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
-- .asdlc_worker/step_designs/step-1.1-design.md
+- .asdlc_worker/step_designs/step-1.1-feature-one-design.md
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -128,7 +129,7 @@ EOF
 - Fallback strategy: Deferred.
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-one-design.md" <<'EOF'
 ## Goal
 - Keep implementation prompt deterministic and concise.
 ## In Scope
@@ -201,7 +202,8 @@ EOF
 setup_orchestrator_repo() {
   local repo_dir="$1"
   local worker_uuid="11111111-1111-1111-1111-111111111111"
-  local source_dir="$repo_dir/.tmp-asdlc-source"
+  local source_dir="$TMP_ROOT/source-evidence-${repo_dir##*/}"
+  local remote_dir="${source_dir}-remote.git"
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/overmind"
   ln -s .asdlc_worker "$repo_dir/ai"
   ln -s .asdlc_worker/overmind "$repo_dir/overmind"
@@ -278,6 +280,20 @@ EOF
 ### Requirement 1 Demo
 - The system SHALL support demo behavior.
 EOF
+
+  (
+    cd "$source_dir"
+    git init -q -b master
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+    git add -A
+    git commit -qm "init source repo"
+    git init -q --bare "$remote_dir"
+    git --git-dir "$remote_dir" symbolic-ref HEAD refs/heads/master
+    git remote add origin "$remote_dir"
+    git push -q -u origin master
+  )
+
   cat >"$repo_dir/ai/project_overmind.yaml" <<EOF
 overmind_source_path: '$source_dir'
 project_id: 'project-evidence'
@@ -285,7 +301,7 @@ worker_uuid: '$worker_uuid'
 class: 'platform'
 status: 'ready'
 EOF
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - 1. demo
@@ -297,7 +313,7 @@ EOF
 - Verification: demo
 - Status: done
 EOF
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-one-design.md" <<'EOF'
 ## Goal
 test
 ## In Scope
@@ -308,12 +324,12 @@ EOF
 
   (
     cd "$repo_dir"
-    git init -q
+    git init -q -b master
     git config user.name "Test User"
     git config user.email "test@example.com"
     git add .
     git commit -qm "seed"
-    git branch step-1.1-user-review
+    git branch step-1.1-feature-one-user-review
   )
 }
 
@@ -329,7 +345,7 @@ seed_review_result_artifact() {
   local repo_dir="$1"
   local step="$2"
   mkdir -p "$repo_dir/ai/step_review_results"
-  cat >"$repo_dir/ai/step_review_results/review_result-$step.md" <<EOF
+  cat >"$repo_dir/ai/step_review_results/review_result-$step-feature-one.md" <<EOF
 # Review Result: Step $step
 ## Disposition (per issue)
 - None.
@@ -342,7 +358,7 @@ test_ai_implementation_prompt_has_deterministic_structure() {
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
   local prompt
@@ -377,7 +393,7 @@ test_implementation_readiness_helper_fails_on_unchecked_ordered_items() {
   local repo_dir="$TMP_ROOT/repo-impl-readiness-ordered-unchecked"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -406,7 +422,7 @@ test_implementation_readiness_helper_fails_on_unchecked_functional_requirements(
   local repo_dir="$TMP_ROOT/repo-impl-readiness-fr-unchecked"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -439,7 +455,7 @@ test_ai_implementation_allows_non_executable_planning_helper() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl.prompt.txt --no-branch 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl.prompt.txt --no-branch 2>&1)"
   status=$?
   set -e
 
@@ -455,10 +471,10 @@ test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
   local repo_dir="$TMP_ROOT/repo-ai-impl-step-plan-shortlist"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
-- .asdlc_worker/step_designs/step-1.1-design.md
+- .asdlc_worker/step_designs/step-1.1-feature-one-design.md
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -489,7 +505,7 @@ test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
 ## Decisions Needed
 - None.
 EOF
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-one-design.md" <<'EOF'
 ## Goal
 - Goal.
 ## In Scope
@@ -515,7 +531,7 @@ EOF
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
   local prompt anti_block
@@ -549,10 +565,10 @@ test_ai_implementation_prompt_caps_and_requirement_filtering() {
   local repo_dir="$TMP_ROOT/repo-ai-impl-caps"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
-- .asdlc_worker/step_designs/step-1.1-design.md
+- .asdlc_worker/step_designs/step-1.1-feature-one-design.md
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -596,7 +612,7 @@ test_ai_implementation_prompt_caps_and_requirement_filtering() {
 - Choice: Accepted.
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-one-design.md" <<'EOF'
 ## Goal
 - goal-1
 - goal-2
@@ -652,7 +668,7 @@ EOF
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
   local prompt
@@ -676,8 +692,8 @@ test_ai_implementation_prompt_is_deterministic_and_compact() {
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test-1.prompt.txt --no-branch
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test-2.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test-1.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test-2.prompt.txt --no-branch
   )
 
   if ! cmp -s "$repo_dir/.asdlc_worker/prompts/impl_prompts/test-1.prompt.txt" "$repo_dir/.asdlc_worker/prompts/impl_prompts/test-2.prompt.txt"; then
@@ -699,10 +715,10 @@ test_ai_implementation_prompt_normalizes_plain_ordered_bullets() {
   local repo_dir="$TMP_ROOT/repo-ai-impl-normalized-ordered"
   setup_impl_repo "$repo_dir"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
-- .asdlc_worker/step_designs/step-1.1-design.md
+- .asdlc_worker/step_designs/step-1.1-feature-one-design.md
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -729,7 +745,7 @@ EOF
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
   )
 
   local prompt
@@ -743,7 +759,7 @@ test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked() {
   setup_orchestrator_repo "$repo_dir"
   seed_review_result_artifact "$repo_dir" "1.1"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -771,7 +787,7 @@ test_orchestrator_implementation_runs_when_all_ordered_items_checked() {
   setup_orchestrator_repo "$repo_dir"
   seed_review_result_artifact "$repo_dir" "1.1"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -797,7 +813,7 @@ test_orchestrator_does_not_gate_implementation_when_functional_requirements_unch
   setup_orchestrator_repo "$repo_dir"
   seed_review_result_artifact "$repo_dir" "1.1"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. demo A
@@ -944,6 +960,8 @@ EOF
   cat >"$repo_dir/AGENTS.md" <<'EOF'
 Constraints.
 EOF
+  export ASDLC_RUNTIME_PLAN_PATH=".asdlc_worker/overmind/implementation_plan.md"
+  export ASDLC_RUNTIME_EARS_PATH=".asdlc_worker/overmind/reqirements_ears.md"
 
   (
     cd "$repo_dir"
@@ -952,8 +970,8 @@ EOF
     git config user.email "test@example.com"
     git add .
     git commit -qm "seed"
-    git checkout -qb step-1.1-implementation
-    git checkout -qb step-1.1-user-review
+    git checkout -qb step-1.1-feature-one-implementation
+    git checkout -qb step-1.1-feature-one-user-review
   )
 }
 
@@ -1071,7 +1089,7 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_audit.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/ai_audit_prompts/test.prompt.txt >/dev/null
+    .asdlc_worker/scripts/ai_audit.sh --step 1.1 --feature-id feature-one --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/ai_audit_prompts/test.prompt.txt >/dev/null
   )
 
   local prompt
@@ -1403,7 +1421,7 @@ test_orchestrator_blocks_ai_audit_when_user_review_incomplete() {
 
   (
     cd "$repo_dir"
-    git branch -D step-1.1-user-review >/dev/null
+    git branch -D step-1.1-feature-one-user-review >/dev/null
   )
 
   local status=0

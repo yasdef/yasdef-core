@@ -49,7 +49,7 @@ setup_repo() {
 - [ ] Review step implementation.
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-demo-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature endpoint.
 
@@ -100,7 +100,7 @@ EOF
 write_step_plan_with_shortlist() {
   local repo_dir="$1"
   local shortlist="$2"
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<EOF
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<EOF
 # Step Plan: 1.1 - Demo
 Date: 2026-02-27
 Planner model/session: test
@@ -138,7 +138,7 @@ EOF
 
 write_step_plan_missing_shortlist_section() {
   local repo_dir="$1"
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 Date: 2026-02-27
 Planner model/session: test
@@ -161,7 +161,12 @@ run_plan_capture() {
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/ai_plan.sh --step 1.1 --out .asdlc_worker/step_plans/step-1.1.md 2>&1)"
+  out="$(
+    cd "$repo_dir"
+    export ASDLC_RUNTIME_PLAN_PATH=".asdlc_worker/overmind/implementation_plan.md"
+    export ASDLC_RUNTIME_EARS_PATH=".asdlc_worker/overmind/reqirements_ears.md"
+    .asdlc_worker/scripts/ai_plan.sh --step 1.1 --feature-id demo --out .asdlc_worker/step_plans/step-1.1-demo.md 2>&1
+  )"
   status=$?
   set -e
   printf '%s\n%s' "$status" "$out"
@@ -260,7 +265,7 @@ test_ur_cap_overflow_is_rejected() {
 test_deprecated_step_plan_sections_are_rejected() {
   local repo_dir="$TMP_ROOT/repo-deprecated-sections"
   setup_repo "$repo_dir"
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 Date: 2026-02-27
 Planner model/session: test
@@ -288,7 +293,7 @@ EOF
     echo "Assertion failed: expected deprecated sections to fail planning contract validation." >&2
     exit 1
   fi
-  assert_contains "$out" "Planning gate failed for step plan contract in .asdlc_worker/step_plans/step-1.1.md"
+  assert_contains "$out" "Planning gate failed for step plan contract in .asdlc_worker/step_plans/step-1.1-demo.md"
   assert_contains "$out" "the feature design may still contain \`## Target Bullets\`"
   assert_contains "$out" "deprecated section present: ## Target Bullets"
 }

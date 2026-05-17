@@ -94,7 +94,9 @@ cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
   locator: https://figma.com/file/abc/main-menu
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
 assert_contains "$OUTPUT" "LAR-002"
 assert_contains "$OUTPUT" "Figma"
 assert_contains "$OUTPUT" "Main Menu Mockup"
@@ -125,7 +127,9 @@ cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
   locator: https://confluence.example.com/schema
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
 assert_not_contains "$OUTPUT" "LAR-001"
 assert_contains "$OUTPUT" "none"
 echo "PASS: no LAR-tagged requirements produces empty/absent block"
@@ -161,7 +165,9 @@ cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
   locator: https://figma.com/file/abc/menu
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
+OUTPUT="$(ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)"
 # Check ordering within the LAR section using "LAR-NNN |" format unique to section entries
 assert_contains "$OUTPUT" "LAR-001 |"
 assert_contains "$OUTPUT" "LAR-005 |"
@@ -204,7 +210,9 @@ cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
   locator: https://figma.com/file/unrelated
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
+OUTPUT="$(ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
 assert_not_contains "$OUTPUT" "LAR-099 |"
 echo "PASS: LAR missing from registry is omitted from block without error"
 
@@ -233,7 +241,9 @@ cat >"$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
   locator: https://figma.com/file/abc/menu
 EOF
 
-OUTPUT="$(bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
+OUTPUT="$(ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_design.sh" --step 1.1 2>/dev/null)" || true
 assert_contains "$OUTPUT" "sync_step_lars.sh"
 assert_contains "$OUTPUT" "1.1"
 echo "PASS: prompt contains sync_step_lars.sh invocation instruction"

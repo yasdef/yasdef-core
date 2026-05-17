@@ -50,7 +50,7 @@ setup_repo() {
 - [ ] Review step implementation.
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-demo-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature endpoint.
 
@@ -114,7 +114,9 @@ run_plan() {
   shift
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_plan.sh --step 1.1 --out .asdlc_worker/step_plans/step-1.1.md "$@"
+    export ASDLC_RUNTIME_PLAN_PATH=".asdlc_worker/overmind/implementation_plan.md"
+    export ASDLC_RUNTIME_EARS_PATH=".asdlc_worker/overmind/reqirements_ears.md"
+    .asdlc_worker/scripts/ai_plan.sh --step 1.1 --feature-id demo --out .asdlc_worker/step_plans/step-1.1-demo.md "$@"
   )
 }
 

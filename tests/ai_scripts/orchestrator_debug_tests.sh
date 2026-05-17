@@ -60,7 +60,8 @@ assert_not_contains() {
 setup_repo() {
   local repo_dir="$1"
   local worker_uuid="11111111-1111-1111-1111-111111111111"
-  local source_dir="$repo_dir/.tmp-asdlc-source"
+  local source_dir="$TMP_ROOT/source-debug-${repo_dir##*/}"
+  local remote_dir="${source_dir}-remote.git"
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" \
     "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/prompts" \
     "$repo_dir/.asdlc_worker/overmind"
@@ -112,7 +113,7 @@ user_review | .asdlc_worker/scripts/fake_model.sh | mock-model
 ai_audit | .asdlc_worker/scripts/fake_model.sh | mock-model
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - 1. demo
@@ -125,7 +126,7 @@ EOF
 - Status: done
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1-feature-one.md" <<'EOF'
 # Review Result: Step 1.1
 ## Disposition (per issue)
 - None.
@@ -153,6 +154,20 @@ EOF
 ### Requirement 1 Demo
 - The system SHALL support demo behavior.
 EOF
+
+  (
+    cd "$source_dir"
+    git init -q -b master
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+    git add -A
+    git commit -qm "init source repo"
+    git init -q --bare "$remote_dir"
+    git --git-dir "$remote_dir" symbolic-ref HEAD refs/heads/master
+    git remote add origin "$remote_dir"
+    git push -q -u origin master
+  )
+
   cat >"$repo_dir/ai/project_overmind.yaml" <<EOF
 overmind_source_path: '$source_dir'
 project_id: 'project-debug'
