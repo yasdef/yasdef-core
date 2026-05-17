@@ -9,7 +9,7 @@ PLAN_FILE="$ASDLC_RUNTIME_PLAN_PATH"
 
 usage() {
   cat <<'EOF'
-Usage: .asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>
+Usage: .asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step> [feature-id]
 
 Exit codes:
   0  ai_audit completion handoff is ready
@@ -81,17 +81,22 @@ get_step_bullet_status() {
   ' "$plan_file"
 }
 
-if [[ $# -ne 1 ]]; then
+if [[ $# -lt 1 || $# -gt 2 ]]; then
   usage >&2
   exit 2
 fi
 
 STEP="$1"
-REVIEW_FILE="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP.md"
+FEATURE_ID="${2:-}"
+if [[ -n "$FEATURE_ID" ]]; then
+  REVIEW_FILE="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP-$FEATURE_ID.md"
+else
+  REVIEW_FILE="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP.md"
+fi
 
 if [[ ! -f "$REVIEW_FILE" ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2
-  echo "Review artifact not found: .asdlc_worker/step_review_results/review_result-$STEP.md" >&2
+  echo "Review artifact not found: $REVIEW_FILE" >&2
   echo "ai_audit dispositions were not finished correctly because the review artifact is missing." >&2
   exit 1
 fi
@@ -104,7 +109,7 @@ if ! grep -Eq '^##[[:space:]]+Disposition \(per issue\)[[:space:]]*$' "$REVIEW_F
 fi
 
 ISSUES_COUNT="$(count_listed_issues "$REVIEW_FILE")"
-DISPOSITIONS_COUNT="$(grep -Ec '^\s*-\s+\*\*(Accepted|Rejected)\*\*:' "$REVIEW_FILE" || true)"
+DISPOSITIONS_COUNT="$(grep -Ec '^\s*-\s+\*\*(Accepted|Rejected)\*\*:?' "$REVIEW_FILE" || true)"
 
 if [[ "$ISSUES_COUNT" -gt 0 && "$DISPOSITIONS_COUNT" -lt "$ISSUES_COUNT" ]]; then
   echo "AI audit disposition readiness failed for step $STEP." >&2

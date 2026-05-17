@@ -1962,7 +1962,7 @@ run_post_review_phase() {
     fi
   fi
 
-  local cmd=("$ASDLC_SCRIPTS_DIR/post_review.sh" --step "$step")
+  local cmd=("$ASDLC_SCRIPTS_DIR/post_review.sh" --step "$step" --feature-id "$SELECTED_FEATURE_ID")
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "post_review" "$step")")"
     echo "$(shell_join "${cmd[@]}")"

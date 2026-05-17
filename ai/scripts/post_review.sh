@@ -12,6 +12,7 @@ OVERMIND_BRANCH="overmind"
 IMPLEMENTATION_PLAN_REL_PATH=".asdlc_worker/overmind/implementation_plan.md"  # standalone mode only
 
 STEP=""
+FEATURE_ID=""
 BASE_BRANCH=""
 REVIEW_BRANCH=""
 IMPLEMENTATION_BRANCH=""
@@ -33,7 +34,7 @@ Defaults:
   - --review-branch defaults to step-<step>-review.
   - --implementation-branch defaults to step-<step>-implementation.
   - --history-out defaults to .asdlc_worker/history.md.
-  - Hard gate before history consolidation: `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>` must pass.
+  - Hard gate before history consolidation: `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step> [feature-id]` must pass.
   - Captures post-review metrics before any auto-commit, including pending local changes via a temporary working-tree snapshot.
   - If uncommitted review changes exist, commits them as a review-completion guard before history update.
   - Then writes post-review history and commits remaining uncommitted changes on the current branch.
@@ -54,7 +55,7 @@ enforce_ai_audit_disposition_readiness() {
     exit 1
   fi
 
-  if helper_output="$(bash "$AI_AUDIT_DISPOSITION_HELPER" "$STEP" 2>&1)"; then
+  if helper_output="$(bash "$AI_AUDIT_DISPOSITION_HELPER" "$STEP" ${FEATURE_ID:+"$FEATURE_ID"} 2>&1)"; then
     return 0
   fi
 
@@ -701,6 +702,11 @@ while [[ $# -gt 0 ]]; do
     --step)
       require_option_arg "--step" "${2:-}"
       STEP="$2"
+      shift 2
+      ;;
+    --feature-id)
+      require_option_arg "--feature-id" "${2:-}"
+      FEATURE_ID="$2"
       shift 2
       ;;
     --base-branch)

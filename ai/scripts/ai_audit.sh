@@ -571,7 +571,7 @@ emit() {
   printf -- '- Disposition helper: %s\n' "$AI_AUDIT_DISPOSITION_HELPER"
   printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `%s` target bullets, then continue Sections 6.1-6.4.\n' "$PLAN"
   printf 'Audit-loop rule: after each disposition or plan update, continue Sections 6.2-6.4 until every ai_audit gate passes; do not stop early because the user approved a follow-up bullet change.\n'
-  printf "Before ending the ai_audit phase, ensure all bullets in the current step section of \`%s\` are checklist bullets and marked \`[x]\`, then run \`.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh %s\`.\n" "$PLAN" "$STEP"
+  printf "Before ending the ai_audit phase, ensure all bullets in the current step section of \`%s\` are checklist bullets and marked \`[x]\`, then run \`.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh %s %s\`.\n" "$PLAN" "$STEP" "$FEATURE_ID"
   printf 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `%s`, then rerun the helper.\n' "$PLAN"
   printf 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `%s`, the readiness helper passes, and the commit gate is satisfied (clean working tree).\n' "$PLAN"
   printf 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
