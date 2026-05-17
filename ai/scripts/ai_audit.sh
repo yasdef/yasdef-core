@@ -578,6 +578,7 @@ emit() {
   printf "Before ending the ai_audit phase, ensure all bullets in the current step section of \`%s\` are checklist bullets and marked \`[x]\`, then run \`.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh %s %s\`.\n" "$PLAN" "$STEP" "$FEATURE_ID"
   printf 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `%s`, then rerun the helper.\n' "$PLAN"
   printf 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `%s`, the readiness helper passes, and the commit gate is satisfied (clean working tree).\n' "$PLAN"
+  printf 'Bound ASDLC repo rule: `%s` is in the bound ASDLC repo, not the worker repo. When you mark bullets [x] there, commit that file directly on its current branch — do NOT create a new branch in the ASDLC repo. The orchestrator handles pushing that change.\n' "$PLAN"
   printf 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Inline audit context\n'

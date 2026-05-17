@@ -695,6 +695,7 @@ emit() {
   printf 'Only after the Planning Readiness Gate is satisfied, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Commit gate: when you commit planning artifacts, include both the step plan and the feature design artifact (do not commit only %s).\n' "$out_label"
   printf 'Minimum commit set (if changed): %s, %s\n' "$out_label" "$design_label"
+  printf 'Bound ASDLC repo rule: the implementation plan at `%s` is in the bound ASDLC repo, not the worker repo. When you mark bullets [x] there, commit that file directly on its current branch — do NOT create a new branch in the ASDLC repo. The orchestrator handles pushing that change.\n' "$PLAN"
   printf 'Write/update the step plan at: %s\n' "$OUT"
   printf 'Feature design artifact (required): %s\n' "$DESIGN_FILE"
   if [[ "$OPEN_QUESTIONS_HAS_ANY" -eq 1 ]]; then
@@ -705,7 +706,7 @@ emit() {
   printf 'Use golden examples from the context pack.\n'
   printf '\n'
   printf 'Context pack\n'
-  printf '== .asdlc_worker/overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
+  printf '== %s (Step %s - %s) ==\n' "$PLAN" "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
   printf '== .asdlc_worker/step_designs/step-%s-design.md ==\n' "$STEP"
   cat "$DESIGN_FILE"

@@ -985,19 +985,27 @@ bound_project_repo_relpath() {
 
 ensure_bound_project_git_ready() {
   local err=""
+  local default_branch=""
+  local current_branch=""
 
   if [[ -z "$BOUND_PROJECT_PATH" ]]; then
     die "Default mode requires a bound ASDLC project repo path."
   fi
 
   if ! err="$(git -C "$BOUND_PROJECT_PATH" rev-parse --is-inside-work-tree 2>&1)"; then
-    die "Default mode requires the bound ASDLC project path to be a Git worktree with a configured upstream: $BOUND_PROJECT_PATH. Fix the repo checkout."
+    die "Default mode requires the bound ASDLC project path to be a Git worktree: $BOUND_PROJECT_PATH. Fix the repo checkout."
   fi
-  if ! err="$(git -C "$BOUND_PROJECT_PATH" symbolic-ref --quiet HEAD 2>&1)"; then
-    die "Default mode requires the bound ASDLC project repo to be on a branch with a configured upstream: $BOUND_PROJECT_PATH. Check out a branch and rerun."
+
+  default_branch="$(git -C "$BOUND_PROJECT_PATH" symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's|^origin/||' || true)"
+  if [[ -z "$default_branch" ]]; then
+    default_branch="master"
   fi
-  if ! err="$(git -C "$BOUND_PROJECT_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>&1)"; then
-    die "Default mode requires the bound ASDLC project repo to have a configured upstream: $BOUND_PROJECT_PATH. Set the tracking branch and rerun."
+
+  current_branch="$(git -C "$BOUND_PROJECT_PATH" branch --show-current 2>/dev/null || true)"
+  if [[ "$current_branch" != "$default_branch" ]]; then
+    if ! err="$(git -C "$BOUND_PROJECT_PATH" checkout "$default_branch" 2>&1)"; then
+      die "Failed to checkout '$default_branch' in bound ASDLC project repo $BOUND_PROJECT_PATH: $err"
+    fi
   fi
 }
 
@@ -2015,6 +2023,8 @@ commit_selected_source_plan_update_if_needed() {
   local err=""
   local commit_message=""
 
+  ensure_bound_project_git_ready
+
   if ! plan_rel="$(bound_project_repo_relpath "$SELECTED_SOURCE_PLAN_PATH")"; then
     echo "Global implementation-plan sync failed because the selected feature source plan is outside the bound ASDLC project repo." >&2
     echo "Selected feature source plan: $SELECTED_SOURCE_PLAN_PATH" >&2
@@ -2043,6 +2053,7 @@ commit_selected_source_plan_update_if_needed() {
 }
 
 run_bound_project_pull_rebase_for_outbound_sync() {
+  ensure_bound_project_git_ready
   local err=""
   if ! err="$(git -C "$BOUND_PROJECT_PATH" pull --rebase 2>&1)"; then
     echo "Global implementation-plan sync failed while rebasing the bound ASDLC project repo: $BOUND_PROJECT_PATH" >&2
