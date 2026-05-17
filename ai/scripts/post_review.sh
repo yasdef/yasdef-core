@@ -9,7 +9,7 @@ PROJECT="$(basename "$ROOT")"
 HISTORY_FILE="$ASDLC_HISTORY_FILE"
 AI_AUDIT_DISPOSITION_HELPER="$ASDLC_HELPERS_DIR/check_ai_audit_disposition_readiness.sh"
 OVERMIND_BRANCH="overmind"
-IMPLEMENTATION_PLAN_REL_PATH=".asdlc_worker/overmind/implementation_plan.md"
+IMPLEMENTATION_PLAN_REL_PATH=".asdlc_worker/overmind/implementation_plan.md"  # standalone mode only
 
 STEP=""
 BASE_BRANCH=""
@@ -129,6 +129,7 @@ get_step_from_plan_path() {
   base="$(basename "$file")"
   step="${base#step-}"
   step="${step%.md}"
+  step="${step%%-*}"
   printf '%s' "$step"
 }
 
@@ -879,7 +880,9 @@ append_consolidated_entry \
   "$USER_REVIEW_USAGE" \
   "$AI_AUDIT_USAGE"
 commit_uncommitted_changes "$STEP_NUM" "$STEP_TITLE"
-sync_implementation_plan_to_overmind_branch "$REVIEW_BRANCH" "$STEP_NUM" "$STEP_TITLE"
+if [[ ! -f "$ASDLC_BINDING_FILE" ]]; then
+  sync_implementation_plan_to_overmind_branch "$REVIEW_BRANCH" "$STEP_NUM" "$STEP_TITLE"
+fi
 
 printf 'Post-review history updated for step %s.\n' "$STEP_NUM"
 printf 'Metrics diff: %s..%s (%s)\n' "$METRICS_FROM_REF" "$METRICS_TO_REF" "$METRICS_DIRECTION_NOTE"

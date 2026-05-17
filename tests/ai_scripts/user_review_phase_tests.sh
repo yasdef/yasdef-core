@@ -224,7 +224,7 @@ EOF
       ;;
   esac
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<EOF
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-${feature_id}.md" <<EOF
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 $ordered_block
@@ -232,12 +232,12 @@ $ordered_block
 - [x] FR-1.1-001 The system SHALL implement part A behavior. EARS[REQ-1]
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-demo-design.md" <<'EOF'
 ## Proposal / Design Details
 - demo
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1-${feature_id}.md" <<'EOF'
 # Review Result: Step 1.1
 ## Disposition (per issue)
 - None.
@@ -282,12 +282,12 @@ EOF
 # AGENTS
 EOF
 
-  # Orchestrator writes .asdlc_worker/feature_sync.yaml during runtime context
+  # Orchestrator writes .asdlc_worker/feature_meta_sync.yaml during runtime context
   # setup and emits log/prompt artifacts under .asdlc_worker/logs and
   # .asdlc_worker/prompts. Ignore them so the user_review branch handoff sees a
   # clean working tree on the runtime branch.
   cat >"$repo_dir/.gitignore" <<'EOF'
-.asdlc_worker/feature_sync.yaml
+.asdlc_worker/feature_meta_sync.yaml
 .asdlc_worker/logs/
 .asdlc_worker/prompts/
 model-ran.flag
@@ -301,7 +301,7 @@ EOF
     git add .
     git commit -qm "seed"
     # Create the implementation branch the user_review handoff forks from.
-    git branch step-1.1-implementation
+    git branch step-1.1-feature-demo-implementation
     # Pre-create the runtime branch so the orchestrator's slow-path checkout
     # finds it rather than creating it from a transient HEAD.
     git branch overmind
@@ -368,7 +368,7 @@ test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked() {
   )
 
   assert_file_exists "$repo_dir/model-ran.flag"
-  assert_branch_equals "$repo_dir" "step-1.1-user-review"
+  assert_branch_equals "$repo_dir" "step-1.1-feature-demo-user-review"
 }
 
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
@@ -396,7 +396,7 @@ test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
     echo "Assertion failed: user_review must fail when branch handoff is unsafe" >&2
     exit 1
   fi
-  assert_contains "$out" "User review branch must be created from step-1.1-implementation"
+  assert_contains "$out" "User review branch must be created from step-1.1-feature-demo-implementation"
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
@@ -407,7 +407,9 @@ test_user_review_prompt_uses_ordered_plan_state_only() {
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_user_review.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/user_review_prompts/test.prompt.txt >/dev/null
+    ASDLC_RUNTIME_PLAN_PATH="$source_dir/feature-demo/implementation_plan.md" \
+    ASDLC_RUNTIME_EARS_PATH="$source_dir/feature-demo/requirements_ears.md" \
+    .asdlc_worker/scripts/ai_user_review.sh --step 1.1 --feature-id feature-demo --step-plan .asdlc_worker/step_plans/step-1.1-feature-demo.md --design .asdlc_worker/step_designs/step-1.1-feature-demo-design.md --out .asdlc_worker/prompts/user_review_prompts/test.prompt.txt >/dev/null
   )
 
   local prompt
@@ -424,7 +426,7 @@ test_user_review_fails_when_functional_requirements_unchecked() {
   local source_dir="$TMP_ROOT/source-functional-requirements-incomplete"
   setup_repo "$repo_dir" 1 checked "$source_dir" "project-functional-incomplete" "feature-demo"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-demo.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. Implement part A.
@@ -433,7 +435,7 @@ test_user_review_fails_when_functional_requirements_unchecked() {
 EOF
   (
     cd "$repo_dir"
-    git add .asdlc_worker/step_plans/step-1.1.md
+    git add .asdlc_worker/step_plans/step-1.1-feature-demo.md
     git commit -qm "make functional requirements unchecked"
   )
 
@@ -492,7 +494,7 @@ EOF
     exit 1
   fi
   assert_file_exists "$repo_dir/model-ran.flag"
-  assert_branch_equals "$repo_dir" "step-1.1-user-review"
+  assert_branch_equals "$repo_dir" "step-1.1-feature-demo-user-review"
 }
 
 test_user_review_fails_fast_when_ordered_plan_unchecked

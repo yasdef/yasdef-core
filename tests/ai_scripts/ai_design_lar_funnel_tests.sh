@@ -57,7 +57,7 @@ EOF
   touch "$repo_dir/.asdlc_worker/open_questions.md"
   touch "$repo_dir/.asdlc_worker/user_review.md"
   touch "$repo_dir/AGENTS.md"
-  touch "$repo_dir/.asdlc_worker/feature_sync.yaml"
+  touch "$repo_dir/.asdlc_worker/feature_meta_sync.yaml"
 
   (
     cd "$repo_dir"

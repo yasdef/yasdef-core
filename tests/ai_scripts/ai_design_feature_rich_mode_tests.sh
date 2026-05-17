@@ -72,13 +72,6 @@ setup_repo() {
   cp "$TEMPLATE_SRC" "$repo_dir/.asdlc_worker/templates/feature_design_TEMPLATE.md"
   chmod +x "$repo_dir/.asdlc_worker/scripts/ai_design.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_design_readiness.sh" "$repo_dir/.asdlc_worker/scripts/helpers/helper_find_blueprints.sh"
 
-  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<'EOF'
-### Step 1.1 Demo
-- [ ] Plan and discuss the step. [REQ-1]
-- [ ] Implement design scope. [REQ-1]
-- [ ] Review step implementation.
-EOF
-
   cat >"$repo_dir/.asdlc_worker/blocker_log.md" <<'EOF'
 ## Step 1.1 Demo
 - No blockers.
@@ -97,11 +90,6 @@ EOF
 # User review rules
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
-### Requirement 1 Demo
-- Demo requirement.
-EOF
-
   cat >"$repo_dir/AGENTS.md" <<'EOF'
 # AGENTS
 - Demo constraint.
@@ -113,17 +101,16 @@ class: 'backend'
 status: 'active'
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/feature_sync.yaml" <<EOF
-source_feature_path: '$repo_dir/source-project/feature-a'
-bound_project_path: '$repo_dir/source-project'
-EOF
-
   mkdir -p "$repo_dir/source-project/feature-a"
   cat >"$repo_dir/source-project/feature-a/implementation_plan.md" <<'EOF'
-# source plan
+### Step 1.1 Demo
+- [ ] Plan and discuss the step. [REQ-1]
+- [ ] Implement design scope. [REQ-1]
+- [ ] Review step implementation.
 EOF
   cat >"$repo_dir/source-project/feature-a/requirements_ears.md" <<'EOF'
-# source ears
+### Requirement 1 Demo
+- Demo requirement.
 EOF
 
   (
@@ -141,6 +128,8 @@ run_design() {
   shift
   (
     cd "$repo_dir"
+    ASDLC_RUNTIME_PLAN_PATH="$repo_dir/source-project/feature-a/implementation_plan.md" \
+    ASDLC_RUNTIME_EARS_PATH="$repo_dir/source-project/feature-a/requirements_ears.md" \
     .asdlc_worker/scripts/ai_design.sh --step 1.1 --design-out .asdlc_worker/step_designs/step-1.1-design.md "$@"
   )
 }
@@ -159,8 +148,8 @@ test_feature_rich_mode_block_is_opt_in() {
   assert_not_contains "$default_out" "Feature-rich design/planning mode: ENABLED (design-only add-on)."
 }
 
-test_overmind_paths_are_used() {
-  local repo_dir="$TMP_ROOT/repo-design-overmind"
+test_bound_source_paths_are_used() {
+  local repo_dir="$TMP_ROOT/repo-design-bound-source"
   setup_repo "$repo_dir"
 
   local out
@@ -269,7 +258,7 @@ EOF
 }
 
 test_feature_rich_mode_block_is_opt_in
-test_overmind_paths_are_used
+test_bound_source_paths_are_used
 test_design_prompt_includes_readiness_contract
 test_design_prompt_includes_bootstrap_helper_contract
 test_design_prompt_includes_missing_discussion_points_gates

@@ -28,4 +28,4 @@
 - (none)
 
 ## Disposition (per issue)
-- **Accepted**: add follow-up work to `.asdlc_worker/overmind/implementation_plan.md` as a new step right after the current step (e.g., `1.6` -> `1.6a`) and track resolution under the next implementation/review cycle.
+- **Accepted**: add follow-up work to the implementation plan at `../teleforecaster-cmms/feature-trade-concurrency/implementation_plan.md` as a new step right after the current step (e.g., `1.6` -> `1.6a`) and track resolution under the next implementation/review cycle.

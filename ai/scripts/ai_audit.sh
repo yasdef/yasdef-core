@@ -164,6 +164,7 @@ get_step_from_plan_path() {
   base="$(basename "$file")"
   step="${base#step-}"
   step="${step%.md}"
+  step="${step%%-*}"
   printf '%s' "$step"
 }
 
@@ -250,7 +251,7 @@ get_step_target_bullets() {
     }
     END {
       if (count == 0) {
-        print "- (no non-review implementation bullets found in .asdlc_worker/overmind/implementation_plan.md step section)"
+        print "- (no non-review implementation bullets found in plan step section)"
       }
     }
   ' "$PLAN"
@@ -361,7 +362,7 @@ get_requirements_section() {
     if [[ -n "$section" ]]; then
       output+="$section"$'\n\n'
     else
-      output+="Requirement $req not found in .asdlc_worker/overmind/reqirements_ears.md"$'\n\n'
+      output+="Requirement $req not found in $REQUIREMENTS"$'\n\n'
     fi
   done <<<"$reqs"
 
@@ -487,7 +488,7 @@ ensure_review_branch
 
 STEP_TITLE="$(get_step_title "$STEP")"
 if [[ -z "$STEP_TITLE" ]]; then
-  echo "Step $STEP not found in .asdlc_worker/overmind/implementation_plan.md." >&2
+  echo "Step $STEP not found in $PLAN." >&2
   exit 1
 fi
 
@@ -498,12 +499,12 @@ fi
 
 STEP_SECTION="$(get_step_section "$STEP")"
 if [[ -z "$STEP_SECTION" ]]; then
-  echo "Step $STEP section not found in .asdlc_worker/overmind/implementation_plan.md." >&2
+  echo "Step $STEP section not found in $PLAN." >&2
   exit 1
 fi
 TARGET_PROOF_BULLETS="$(get_step_target_bullets "$STEP")"
 if [[ -z "$TARGET_PROOF_BULLETS" ]]; then
-  TARGET_PROOF_BULLETS="- (no non-review implementation bullets found in .asdlc_worker/overmind/implementation_plan.md step section)"
+  TARGET_PROOF_BULLETS="- (no non-review implementation bullets found in plan step section)"
 fi
 
 BLOCKER_LOG_SECTION="$(get_blocker_log_section "$STEP")"
@@ -568,17 +569,17 @@ emit() {
     printf -- '- Project constraints: %s\n' "$AGENTS"
   fi
   printf -- '- Disposition helper: %s\n' "$AI_AUDIT_DISPOSITION_HELPER"
-  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `.asdlc_worker/overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.\n'
+  printf 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `%s` target bullets, then continue Sections 6.1-6.4.\n' "$PLAN"
   printf 'Audit-loop rule: after each disposition or plan update, continue Sections 6.2-6.4 until every ai_audit gate passes; do not stop early because the user approved a follow-up bullet change.\n'
-  printf "Before ending the ai_audit phase, ensure all bullets in the current step section of \`.asdlc_worker/overmind/implementation_plan.md\` are checklist bullets and marked \`[x]\`, then run \`.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh %s\`.\n" "$STEP"
-  printf 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `.asdlc_worker/overmind/implementation_plan.md`, then rerun the helper.\n'
-  printf 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `.asdlc_worker/overmind/implementation_plan.md`, the readiness helper passes, and the commit gate is satisfied (clean working tree).\n'
+  printf "Before ending the ai_audit phase, ensure all bullets in the current step section of \`%s\` are checklist bullets and marked \`[x]\`, then run \`.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh %s\`.\n" "$PLAN" "$STEP"
+  printf 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `%s`, then rerun the helper.\n' "$PLAN"
+  printf 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `%s`, the readiness helper passes, and the commit gate is satisfied (clean working tree).\n' "$PLAN"
   printf 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Inline audit context\n'
   printf '== Step ==\n'
   printf 'Step %s - %s\n\n' "$STEP" "$STEP_TITLE"
-  printf '== Target bullets (from .asdlc_worker/overmind/implementation_plan.md) ==\n'
+  printf '== Target bullets (from %s) ==\n' "$PLAN"
   printf '%s\n\n' "$TARGET_PROOF_BULLETS"
   printf '== Linked EARS requirement blocks ==\n'
   printf '%s\n\n' "$REQ_SECTION"

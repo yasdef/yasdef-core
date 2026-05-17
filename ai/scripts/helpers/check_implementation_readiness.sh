@@ -187,11 +187,11 @@ if [[ $# -ne 1 ]]; then
 fi
 
 STEP="$1"
-STEP_PLAN_FILE="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+STEP_PLAN_FILE="$(find "$ASDLC_STEP_PLANS_DIR" -maxdepth 1 -name "step-${STEP}-*.md" 2>/dev/null | head -1 || true)"
 
-if [[ ! -f "$STEP_PLAN_FILE" ]]; then
+if [[ -z "$STEP_PLAN_FILE" ]] || [[ ! -f "$STEP_PLAN_FILE" ]]; then
   echo "Implementation readiness failed for step $STEP." >&2
-  echo "Step plan not found: .asdlc_worker/step_plans/step-$STEP.md" >&2
+  echo "Step plan not found: .asdlc_worker/step_plans/step-$STEP-<feature-id>.md" >&2
   echo "Implementation was not finished correctly because the canonical step plan is missing." >&2
   exit 1
 fi

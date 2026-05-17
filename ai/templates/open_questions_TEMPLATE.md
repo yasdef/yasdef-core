@@ -4,7 +4,7 @@ This file records non-blocking questions and clarifications that should be addre
 
 Rules:
 - Group questions under the relevant step heading (e.g., "## Step 1.11 Security").
-- Only create headings for steps that exist in `.asdlc_worker/overmind/implementation_plan.md` to avoid orphan questions.
+- Only create headings for steps that exist in the implementation plan at `$ASDLC_RUNTIME_PLAN_PATH` to avoid orphan questions.
 - Keep questions concise and actionable.
 - Remove questions once answered and captured in decisions, plan updates, or implemented changes.
 

@@ -12,10 +12,10 @@ DECISIONS_FILE="$ASDLC_DECISIONS_FILE"
 BLOCKER_LOG_FILE="$ASDLC_BLOCKER_LOG_FILE"
 OPEN_QUESTIONS_FILE="$ASDLC_OPEN_QUESTIONS_FILE"
 USER_REVIEW_FILE="$ASDLC_USER_REVIEW_FILE"
-IMPLEMENTATION_PLAN_PRIMARY="$ASDLC_RUNTIME_PLAN_PATH"
-RUNTIME_REQUIREMENTS_PATH="$ASDLC_RUNTIME_EARS_PATH"
+IMPLEMENTATION_PLAN_PRIMARY=""
+RUNTIME_REQUIREMENTS_PATH=""
 PROJECT_BINDING_FILE="$ASDLC_BINDING_FILE"
-FEATURE_SYNC_FILE="$ASDLC_FEATURE_SYNC_FILE"
+FEATURE_META_SYNC_FILE="$ASDLC_WORKER_HOME/feature_meta_sync.yaml"
 RUNTIME_BRANCH="overmind"
 
 # Run all child commands from repository root for consistent sandbox/workspace resolution.
@@ -1006,6 +1006,13 @@ run_bound_project_pull_rebase_or_die() {
 
   ensure_bound_project_git_ready
   if ! err="$(git -C "$BOUND_PROJECT_PATH" pull --rebase 2>&1)"; then
+    local dirty_plan=""
+    dirty_plan="$(git -C "$BOUND_PROJECT_PATH" diff --name-only HEAD -- '*/implementation_plan.md' 2>/dev/null | head -1 || true)"
+    if [[ -n "$dirty_plan" ]]; then
+      echo "Bound-source plan is dirty: $BOUND_PROJECT_PATH/$dirty_plan" >&2
+      echo "Commit, stash, or restore the plan before rerunning: git -C '$BOUND_PROJECT_PATH' restore -- '$dirty_plan'" >&2
+      exit 1
+    fi
     echo "Failed to sync the bound ASDLC project repo $sync_reason: $BOUND_PROJECT_PATH" >&2
     printf '%s\n' "$err" >&2
     echo "Resolve the ASDLC repo rebase conflict or dirty state in $BOUND_PROJECT_PATH and rerun orchestrator." >&2
@@ -1196,51 +1203,37 @@ prompt_for_feature_selection_index() {
   done
 }
 
-write_feature_sync_metadata() {
+write_feature_meta_sync_metadata() {
   local selected_step="$1"
-  local tmp_path="${FEATURE_SYNC_FILE}.tmp"
+  local tmp_path="${FEATURE_META_SYNC_FILE}.tmp"
 
-  ensure_dir_writable "$(dirname "$FEATURE_SYNC_FILE")"
+  ensure_dir_writable "$(dirname "$FEATURE_META_SYNC_FILE")"
   {
     printf "project_id: '%s'\n" "$(yaml_quote_single "$BINDING_PROJECT_ID")"
-    printf "feature_id: '%s'\n" "$(yaml_quote_single "$SELECTED_FEATURE_ID")"
     printf "worker_uuid: '%s'\n" "$(yaml_quote_single "$BINDING_WORKER_UUID")"
-    printf "overmind_source_path: '%s'\n" "$(yaml_quote_single "$BINDING_OVERMIND_SOURCE_PATH")"
-    printf "bound_project_path: '%s'\n" "$(yaml_quote_single "$BOUND_PROJECT_PATH")"
-    printf "source_feature_path: '%s'\n" "$(yaml_quote_single "$SELECTED_FEATURE_PATH")"
-    printf "source_implementation_plan_path: '%s'\n" "$(yaml_quote_single "$SELECTED_SOURCE_PLAN_PATH")"
-    printf "source_requirements_ears_path: '%s'\n" "$(yaml_quote_single "$SELECTED_SOURCE_EARS_PATH")"
-    printf "runtime_implementation_plan_path: '%s'\n" "$(yaml_quote_single "$IMPLEMENTATION_PLAN_PRIMARY")"
-    printf "runtime_requirements_ears_path: '%s'\n" "$(yaml_quote_single "$RUNTIME_REQUIREMENTS_PATH")"
-    printf "runtime_branch: '%s'\n" "$(yaml_quote_single "$RUNTIME_BRANCH")"
-    printf "selection_mode: '%s'\n" "$(yaml_quote_single "$SELECTED_SELECTION_MODE")"
-    printf "requested_step: '%s'\n" "$(yaml_quote_single "$SELECTED_REQUESTED_STEP")"
+    printf "feature_id: '%s'\n" "$(yaml_quote_single "$SELECTED_FEATURE_ID")"
     printf "selected_step: '%s'\n" "$(yaml_quote_single "$selected_step")"
   } >"$tmp_path"
-  mv "$tmp_path" "$FEATURE_SYNC_FILE"
+  mv "$tmp_path" "$FEATURE_META_SYNC_FILE"
 }
 
-try_reuse_feature_sync_for_resume() {
+try_reuse_feature_meta_sync_for_resume() {
   local requested_step="$1"
   local feature_project_id=""
-  local feature_id=""
   local feature_worker_uuid=""
+  local feature_id=""
+  local selected_step=""
   local source_plan=""
   local source_ears=""
-  local runtime_branch=""
-  local selection_mode=""
 
-  if [[ ! -f "$FEATURE_SYNC_FILE" ]]; then
+  if [[ ! -f "$FEATURE_META_SYNC_FILE" ]]; then
     return 1
   fi
 
-  feature_project_id="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "project_id" || true)"
-  feature_id="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "feature_id" || true)"
-  feature_worker_uuid="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "worker_uuid" || true)"
-  source_plan="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "source_implementation_plan_path" || true)"
-  source_ears="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "source_requirements_ears_path" || true)"
-  runtime_branch="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "runtime_branch" || true)"
-  selection_mode="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "selection_mode" || true)"
+  feature_project_id="$(yaml_get_scalar "$FEATURE_META_SYNC_FILE" "project_id" || true)"
+  feature_worker_uuid="$(yaml_get_scalar "$FEATURE_META_SYNC_FILE" "worker_uuid" || true)"
+  feature_id="$(yaml_get_scalar "$FEATURE_META_SYNC_FILE" "feature_id" || true)"
+  selected_step="$(yaml_get_scalar "$FEATURE_META_SYNC_FILE" "selected_step" || true)"
 
   if [[ "$feature_project_id" != "$BINDING_PROJECT_ID" ]]; then
     return 1
@@ -1248,13 +1241,17 @@ try_reuse_feature_sync_for_resume() {
   if [[ "$feature_worker_uuid" != "$BINDING_WORKER_UUID" ]]; then
     return 1
   fi
-  if [[ "$runtime_branch" != "$RUNTIME_BRANCH" ]]; then
+  if [[ -z "$feature_id" ]]; then
     return 1
   fi
-  if [[ -z "$feature_id" || -z "$source_plan" || -z "$source_ears" ]]; then
-    return 1
-  fi
+
+  source_plan="$BOUND_FEATURES_ROOT/$feature_id/implementation_plan.md"
+  source_ears="$BOUND_FEATURES_ROOT/$feature_id/requirements_ears.md"
+
   if [[ ! -f "$source_plan" || ! -f "$source_ears" ]]; then
+    return 1
+  fi
+  if ! grep -q '[^[:space:]]' "$source_ears"; then
     return 1
   fi
   if [[ -n "$requested_step" ]] && ! plan_has_assigned_step_for_worker "$source_plan" "$BINDING_WORKER_UUID" "$requested_step"; then
@@ -1262,22 +1259,23 @@ try_reuse_feature_sync_for_resume() {
   fi
 
   SELECTED_FEATURE_ID="$feature_id"
-  SELECTED_FEATURE_PATH="$(dirname "$source_plan")"
+  SELECTED_FEATURE_PATH="$BOUND_FEATURES_ROOT/$feature_id"
   SELECTED_SOURCE_PLAN_PATH="$source_plan"
   SELECTED_SOURCE_EARS_PATH="$source_ears"
   SELECTED_SELECTION_MODE="resume_reuse"
-  if [[ -n "$selection_mode" ]]; then
-    SELECTED_SELECTION_MODE="resume_reuse:$selection_mode"
-  fi
   SELECTED_REQUESTED_STEP="$requested_step"
   if [[ -n "$requested_step" ]]; then
     SELECTED_STEP="$requested_step"
+  elif [[ -n "$selected_step" ]]; then
+    SELECTED_STEP="$selected_step"
   fi
   return 0
 }
 
-mirror_selected_feature_to_runtime() {
+setup_feature_plan_paths() {
   local selected_step="$1"
+  local plan_rel=""
+  local plan_status=""
 
   if [[ ! -f "$SELECTED_SOURCE_PLAN_PATH" ]]; then
     die "Selected feature plan is missing: $SELECTED_SOURCE_PLAN_PATH"
@@ -1289,20 +1287,34 @@ mirror_selected_feature_to_runtime() {
     die "Selected feature requirements_ears.md is unusable (empty): $SELECTED_SOURCE_EARS_PATH"
   fi
 
-  ensure_dir_writable "$ASDLC_OVERMIND_DIR"
-  cp "$SELECTED_SOURCE_PLAN_PATH" "$IMPLEMENTATION_PLAN_PRIMARY"
-  cp "$SELECTED_SOURCE_EARS_PATH" "$RUNTIME_REQUIREMENTS_PATH"
-  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
+  if plan_rel="$(bound_project_repo_relpath "$SELECTED_SOURCE_PLAN_PATH" 2>/dev/null)"; then
+    if plan_status="$(git -C "$BOUND_PROJECT_PATH" status --short -- "$plan_rel" 2>/dev/null)"; then
+      if [[ -n "$plan_status" ]]; then
+        echo "orchestrator: bound-source plan has uncommitted changes: $SELECTED_SOURCE_PLAN_PATH" >&2
+        echo "Commit, stash, or restore the file in the bound project repo before rerunning:" >&2
+        echo "  git -C '$BOUND_PROJECT_PATH' commit -m 'save' -- '$plan_rel'" >&2
+        echo "  git -C '$BOUND_PROJECT_PATH' stash" >&2
+        echo "  git -C '$BOUND_PROJECT_PATH' restore -- '$plan_rel'" >&2
+        die "Bound-source plan is dirty: $SELECTED_SOURCE_PLAN_PATH"
+      fi
+    fi
+  fi
 
-  write_feature_sync_metadata "$selected_step"
+  IMPLEMENTATION_PLAN_PRIMARY="$SELECTED_SOURCE_PLAN_PATH"
+  RUNTIME_REQUIREMENTS_PATH="$SELECTED_SOURCE_EARS_PATH"
+  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
+  export ASDLC_RUNTIME_PLAN_PATH="$SELECTED_SOURCE_PLAN_PATH"
+  export ASDLC_RUNTIME_EARS_PATH="$SELECTED_SOURCE_EARS_PATH"
+
+  write_feature_meta_sync_metadata "$selected_step"
 }
+
 
 _try_fast_path_feature_context() {
   local requested_step="$1"
   local resume_mode="$2"
-  local current_branch=""
 
-  if ! try_reuse_feature_sync_for_resume "$requested_step"; then
+  if ! try_reuse_feature_meta_sync_for_resume "$requested_step"; then
     return 1
   fi
 
@@ -1316,28 +1328,7 @@ _try_fast_path_feature_context() {
     SELECTED_STEP="$_fu"
   fi
 
-  # Clean up orchestrator-created untracked files left on the runtime branch so
-  # that phase scripts can checkout the step branch without conflicts.
-  current_branch="$(get_current_branch_name)"
-  if [[ "$current_branch" == "$RUNTIME_BRANCH" ]]; then
-    local _f
-    for _f in "$IMPLEMENTATION_PLAN_PRIMARY" "$RUNTIME_REQUIREMENTS_PATH" \
-              "$BLOCKER_LOG_FILE" "$OPEN_QUESTIONS_FILE" \
-              "$USER_REVIEW_FILE" "$DECISIONS_FILE" "$HISTORY_FILE"; do
-      if [[ -f "$_f" ]] && ! git -C "$ROOT" ls-files --error-unmatch -- "$_f" >/dev/null 2>&1; then
-        rm -f "$_f"
-      fi
-    done
-  fi
-
-  if [[ "$resume_mode" -eq 1 && "$current_branch" != "$RUNTIME_BRANCH" ]]; then
-    if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" || ! -f "$RUNTIME_REQUIREMENTS_PATH" ]]; then
-      die "Cannot resume on branch '$current_branch' because $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY") and $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH") are not both present there. Sync '$current_branch' with '$RUNTIME_BRANCH' branch to obtain these files and retry."
-    fi
-  fi
-
-  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
-  write_feature_sync_metadata "$SELECTED_STEP"
+  setup_feature_plan_paths "$SELECTED_STEP"
   FEATURE_CONTEXT_READY=1
   FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
   FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
@@ -1356,7 +1347,7 @@ ensure_feature_runtime_context() {
 
   start_branch="$(get_current_branch_name)"
 
-  # Fast path: reuse existing feature sync without switching to the runtime branch.
+  # Fast path: reuse existing feature meta sync without switching to the runtime branch.
   # Only attempted when the binding file is accessible on the current branch.
   # Handles --resume runs and re-invocations on an already-started feature.
   # Starting from master must still reach overmind first so step branches fork
@@ -1364,10 +1355,8 @@ ensure_feature_runtime_context() {
   if [[ -n "$start_branch" ]] && [[ "$start_branch" != "master" ]] && [[ -f "$PROJECT_BINDING_FILE" ]]; then
     load_project_binding
     ensure_bound_project_synced_for_default_mode
+
     if _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
-      if [[ "$start_branch" == "$RUNTIME_BRANCH" ]]; then
-        mirror_selected_feature_to_runtime "$SELECTED_STEP"
-      fi
       return 0
     fi
   fi
@@ -1379,7 +1368,6 @@ ensure_feature_runtime_context() {
   ensure_bound_project_synced_for_default_mode
 
   if [[ "$start_branch" == "master" ]] && _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
-    mirror_selected_feature_to_runtime "$SELECTED_STEP"
     return 0
   fi
 
@@ -1477,7 +1465,7 @@ ensure_feature_runtime_context() {
     die "Selected feature '$SELECTED_FEATURE_ID' has no runnable step for worker '$BINDING_WORKER_UUID'."
   fi
 
-  mirror_selected_feature_to_runtime "$SELECTED_STEP"
+  setup_feature_plan_paths "$SELECTED_STEP"
   FEATURE_CONTEXT_READY=1
   FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
   FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
@@ -1931,43 +1919,6 @@ run_phase() {
   esac
 }
 
-run_phase_with_optional_feature_sync() {
-  local phase="$1"
-  run_phase "$phase"
-}
-
-copy_runtime_plan_worktree_to_file() {
-  local target_file="$1"
-  if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
-    return 1
-  fi
-  cp "$IMPLEMENTATION_PLAN_PRIMARY" "$target_file"
-}
-
-ensure_selected_source_plan_clean_before_sync() {
-  local plan_rel="$1"
-  local status_output=""
-
-  if ! status_output="$(git -C "$BOUND_PROJECT_PATH" status --short -- "$plan_rel" 2>&1)"; then
-    echo "Global implementation-plan sync failed while checking local ASDLC plan state for $SELECTED_SOURCE_PLAN_PATH." >&2
-    printf '%s\n' "$status_output" >&2
-    return 1
-  fi
-
-  if [[ -n "$status_output" ]]; then
-    echo "Global implementation-plan sync failed because the selected ASDLC feature plan already has local changes: $SELECTED_SOURCE_PLAN_PATH" >&2
-    echo "Clean, commit, or stash the local changes in $BOUND_PROJECT_PATH before rerunning orchestrator." >&2
-    return 1
-  fi
-
-  return 0
-}
-
-restore_selected_source_plan_from_head() {
-  local plan_rel="$1"
-  git -C "$BOUND_PROJECT_PATH" restore --source=HEAD --staged --worktree -- "$plan_rel" >/dev/null 2>&1 || true
-}
-
 commit_selected_source_plan_update_if_needed() {
   local step="$1"
   local plan_rel=""
@@ -1993,7 +1944,6 @@ commit_selected_source_plan_update_if_needed() {
 
   commit_message="ASDLC plan sync: ${SELECTED_FEATURE_ID:-selected-feature} step $step"
   if ! err="$(git -C "$BOUND_PROJECT_PATH" commit -m "$commit_message" -- "$plan_rel" 2>&1)"; then
-    restore_selected_source_plan_from_head "$plan_rel"
     echo "Global implementation-plan sync failed while creating an ASDLC sync commit for $SELECTED_SOURCE_PLAN_PATH." >&2
     printf '%s\n' "$err" >&2
     return 1
@@ -2058,47 +2008,12 @@ prompt_for_outbound_sync_failure_action() {
 
 run_global_plan_sync_attempt() {
   local step="$1"
-  local tmp_runtime=""
-  local err=""
   local commit_status=0
 
   if [[ -z "$SELECTED_SOURCE_PLAN_PATH" ]]; then
     echo "Global implementation-plan sync failed because the selected feature source plan path is unknown." >&2
     return 1
   fi
-
-  local plan_rel=""
-  if ! plan_rel="$(bound_project_repo_relpath "$SELECTED_SOURCE_PLAN_PATH")"; then
-    echo "Global implementation-plan sync failed because the selected feature source plan is outside the bound ASDLC project repo." >&2
-    echo "Selected feature source plan: $SELECTED_SOURCE_PLAN_PATH" >&2
-    echo "Bound ASDLC project repo: $BOUND_PROJECT_PATH" >&2
-    return 1
-  fi
-  if ! ensure_selected_source_plan_clean_before_sync "$plan_rel"; then
-    return 1
-  fi
-
-  if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
-    echo "Global implementation-plan sync failed because the worker runtime implementation plan is missing: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
-    return 1
-  fi
-
-  tmp_runtime="$(mktemp)"
-  if ! copy_runtime_plan_worktree_to_file "$tmp_runtime"; then
-    rm -f "$tmp_runtime"
-    echo "Global implementation-plan sync failed because the worker runtime implementation plan could not be read: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
-    return 1
-  fi
-
-  if [[ ! -f "$SELECTED_SOURCE_PLAN_PATH" ]] || ! cmp -s "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH"; then
-    if ! err="$(cp "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH" 2>&1)"; then
-      rm -f "$tmp_runtime"
-      echo "Global implementation-plan sync failed while copying the worker runtime implementation plan to $SELECTED_SOURCE_PLAN_PATH." >&2
-      printf '%s\n' "$err" >&2
-      return 1
-    fi
-  fi
-  rm -f "$tmp_runtime"
 
   if commit_selected_source_plan_update_if_needed "$step"; then
     commit_status=0
@@ -2959,7 +2874,7 @@ if [[ "$RESUME_MODE" -eq 1 ]]; then
 else
   REQUESTED_STEP_FOR_FEATURE_CONTEXT="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
 fi
-echo "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled (<project-repo>/<feature-id>/implementation_plan.md + requirements_ears.md -> overmind runtime files)." >&2
+echo "orchestrator: default mode active; reading and writing plan/ears directly at bound-source paths." >&2
 ensure_runtime_context "$REQUESTED_STEP_FOR_FEATURE_CONTEXT" "$RESUME_MODE"
 
 if [[ "$RESUME_MODE" -eq 1 ]]; then
@@ -3010,7 +2925,7 @@ for phase in "${REQUESTED_PHASES[@]+"${REQUESTED_PHASES[@]}"}"; do
     if [[ "$phase_key" == "post_review" ]]; then
       run_global_plan_sync_before_post_review "$(get_post_review_target_step)"
     fi
-    run_phase_with_optional_feature_sync "$phase"
+    run_phase "$phase"
     if [[ "$phase_key" == "ai_audit" ]]; then
       RAN_AI_AUDIT=1
     fi

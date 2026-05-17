@@ -419,14 +419,14 @@ fi
 if [[ -z "$STEP" ]]; then
   line="$(get_next_unchecked)"
   if [[ -z "$line" ]]; then
-    echo "No unchecked bullets found in .asdlc_worker/overmind/implementation_plan.md." >&2
+    echo "No unchecked bullets found in $PLAN." >&2
     exit 1
   fi
   IFS='|' read -r STEP STEP_TITLE BULLET <<<"$line"
 else
   STEP_TITLE="$(get_step_title "$STEP")"
   if [[ -z "$STEP_TITLE" ]]; then
-    echo "Step $STEP not found in .asdlc_worker/overmind/implementation_plan.md." >&2
+    echo "Step $STEP not found in $PLAN." >&2
     exit 1
   fi
   BULLET="$(get_step_first_unchecked "$STEP")"

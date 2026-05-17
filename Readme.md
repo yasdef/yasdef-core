@@ -38,7 +38,7 @@ This approach can be expressed in a few sentences:
    - `<project-repo>/<feature-id>/implementation_plan.md`
    - `<project-repo>/<feature-id>/requirements_ears.md`
    - optional project-level blueprint files one directory above feature folders: `<project-repo>/project_stack_blueprint_*.md`
-   Worker runtime files `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` are mirrored copies managed by orchestrator on branch `overmind`.
+   In default mode the orchestrator reads and writes `implementation_plan.md` and `requirements_ears.md` directly from the bound source paths — there is no local runtime mirror under `overmind/`.
    Default mode expects that ASDLC project repo to be a Git worktree on a branch with a configured upstream.
 
 6. In each feature `implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Worker routing uses `#### Assigned: <worker-uuid>` blocks only. Example:
@@ -53,10 +53,10 @@ This approach can be expressed in a few sentences:
 7. Run the orchestrator:
   `bash .asdlc_worker/scripts/orchestrator.sh` and follow the instructions.
   Routing behavior:
-  - in default mode orchestrator refreshes the bound ASDLC repo with `git pull --rebase`, selects a feature assigned to the worker, and mirrors its `implementation_plan.md` and `requirements_ears.md` into local runtime files
-  - after `ai_audit`, orchestrator syncs the updated runtime `implementation_plan.md` back to the selected ASDLC feature plan and pushes it through the bound ASDLC repo
+  - in default mode orchestrator refreshes the bound ASDLC repo with `git pull --rebase`, selects a feature assigned to the worker, and points phase scripts directly at `<project-repo>/<feature-id>/implementation_plan.md` and `requirements_ears.md`
+  - after `ai_audit`, orchestrator commits the updated bound-source plan and pushes it through the bound ASDLC repo
   - if that outbound sync fails, interactive mode offers `1. retry` or `2. finish`; non-interactive runs stop before `post_review`
-  Selected-feature traceability is recorded in `.asdlc_worker/feature_sync.yaml` and reused on valid `--resume <step>`.
+  Selected-feature traceability is recorded in `.asdlc_worker/feature_meta_sync.yaml` (4 fields: `project_id`, `worker_uuid`, `feature_id`, `selected_step`) and reused on valid `--resume <step>`.
   Use debug mode to keep per-step artifacts:
   `bash ai/scripts/orchestrator.sh --debug -- --step 1.3`
   To recover interrupted work for a specific step deterministically:
@@ -93,10 +93,10 @@ This approach can be expressed in a few sentences:
   - Candidate discovery rule: orchestrator scans bound project repo features (`<project-repo>/<feature-id>/implementation_plan.md`), skipping `.git` and subdirectories without `implementation_plan.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
   - Bound-repo freshness rule: in default mode orchestrator requires the bound ASDLC project repo to be a Git worktree with a configured upstream and runs `git -C <bound-project-repo> pull --rebase` before feature discovery and runtime mirroring.
   - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
-  - Runtime mirroring rule: selected feature artifacts are mirrored into local `overmind/implementation_plan.md` and `overmind/reqirements_ears.md` on branch `overmind` before phase execution.
-  - Post-ai_audit sync rule: before `post_review`, orchestrator copies the updated runtime `implementation_plan.md` into the selected ASDLC feature plan, commits only that file in the bound ASDLC repo, runs `git pull --rebase`, and pushes on success.
-  - Outbound failure rule: copy/commit/rebase/push failures offer exactly `1. retry` or `2. finish`; `finish` continues to `post_review`, while non-interactive runs stop before `post_review`.
-  - Feature sync state: orchestrator records selected feature metadata in `.asdlc_worker/feature_sync.yaml`; valid metadata is reused for `--resume <step>`, stale metadata is discarded and recomputed.
+  - Single-source rule: in default mode the orchestrator reads and writes `implementation_plan.md` and `requirements_ears.md` directly at the bound-source paths — there is no local runtime mirror under `overmind/`.
+  - Post-ai_audit sync rule: before `post_review`, orchestrator stages the updated bound-source `implementation_plan.md`, commits it in the bound ASDLC repo, runs `git pull --rebase`, and pushes on success.
+  - Outbound failure rule: commit/rebase/push failures offer exactly `1. retry` or `2. finish`; `finish` continues to `post_review`, while non-interactive runs stop before `post_review`.
+  - Feature sync state: orchestrator records selected feature metadata in `.asdlc_worker/feature_meta_sync.yaml` (4 fields: `project_id`, `worker_uuid`, `feature_id`, `selected_step`); valid metadata is reused for `--resume <step>`, stale metadata is discarded and recomputed.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
   - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`.asdlc_worker/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
@@ -120,10 +120,8 @@ Each artifact below serves a specific role in the AI-dev process:
 
 - **<project-repo>/<feature-id>/requirements_ears.md**: Source-of-truth behavioral requirements for each feature (EARS format).
 - **<project-repo>/<feature-id>/implementation_plan.md**: Source-of-truth execution plan for each feature; `#### Assigned:` routes work to workers.
-- **overmind/reqirements_ears.md**: Local mirrored runtime copy of selected feature EARS, consumed by worker phase scripts.
-- **overmind/implementation_plan.md**: Local mirrored runtime copy of selected feature plan, consumed by worker phase scripts.
 - **project_overmind.yaml**: Durable local binding (`overmind_source_path`, `project_id`, worker metadata) created by `init_worker`.
-- **feature_sync.yaml**: Per-run selected-feature metadata (selection mode, source/runtime paths, step context) used for traceability and resume reuse.
+- **feature_meta_sync.yaml**: Per-run selected-feature metadata (`project_id`, `worker_uuid`, `feature_id`, `selected_step`) used for traceability and `--resume` reuse.
 - **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
 - **step_plans/**: Per-step planning artifacts (`step-<N>-<feature-id>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include `## Plan (ordered)`, translated functional requirements, preconditions, architecture, risks, and test strategy.
 - **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.

@@ -276,16 +276,19 @@ test_bound_project_single_feature_auto_selected() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
-  assert_contains "$out" "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled"
+  assert_contains "$out" "orchestrator: default mode active; reading and writing plan/ears directly at bound-source paths."
   assert_contains "$out" "orchestrator: selected feature 'feature-a' (mode=auto_single, project=project-alpha, step=2.2)."
   assert_contains "$out" "orchestrator: resolved routed step '2.2' for design; injecting --step into ai_design.sh."
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-single-feature-design-2-2-log"
   assert_contains "$out" ".asdlc_worker/scripts/ai_design.sh --step 2.2"
   assert_not_contains "$out" "design-1-1-log"
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "feature_id: 'feature-a'"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "selection_mode: 'auto_single'"
-  assert_file_contains "$repo_dir/.asdlc_worker/overmind/implementation_plan.md" "### Step 2.2 Worker step"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-a'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "project_id: 'project-alpha'"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/implementation_plan.md"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/requirements_ears.md"
+  assert_file_contains "$source_dir/feature-a/implementation_plan.md" "### Step 2.2 Worker step"
 }
 
 test_bound_project_path_equals_overmind_source_path() {
@@ -307,8 +310,10 @@ test_bound_project_path_equals_overmind_source_path() {
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "selected feature 'feature-x'"
   assert_contains "$out" "step=1.5"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "bound_project_path: '$source_dir'"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "overmind_source_path: '$source_dir'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-x'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "project_id: 'project-direct'"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/implementation_plan.md"
 }
 
 test_git_directory_is_skipped_during_feature_enumeration() {
@@ -380,9 +385,10 @@ test_requested_step_filters_candidate_features() {
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run -- --step 2.2 2>&1)"
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-step-filter-design-2-2-log"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "feature_id: 'feature-b'"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "requested_step: '2.2'"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "selected_step: '2.2'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-b'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "selected_step: '2.2'"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/implementation_plan.md"
 }
 
 test_multiple_candidate_features_require_explicit_interactive_selection() {
@@ -859,6 +865,34 @@ test_multi_dep_one_unsatisfied_step_skipped() {
   assert_contains "$out" "blocked by step '1.2'"
 }
 
+test_exits_nonzero_when_bound_source_plan_has_uncommitted_changes() {
+  local repo_dir="$TMP_ROOT/repo-dirty-plan"
+  local source_dir="$TMP_ROOT/source-dirty-plan"
+  local project_id="project-dirty-plan"
+  local worker_uuid="e0000000-0000-0000-0000-000000000001"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-dirty" "### Step 1.1 Dirty plan step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  printf '\n# uncommitted-change\n' >>"$source_dir/feature-dirty/implementation_plan.md"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "Bound-source plan is dirty: $source_dir/feature-dirty/implementation_plan.md"
+  assert_contains "$out" "git -C '$source_dir'"
+}
+
 test_bound_project_single_feature_auto_selected
 test_bound_project_path_equals_overmind_source_path
 test_git_directory_is_skipped_during_feature_enumeration
@@ -881,5 +915,6 @@ test_dep_nonexistent_step_id_is_plan_error
 test_dep_zero_bullet_step_is_plan_error
 test_multi_dep_all_satisfied_step_selected
 test_multi_dep_one_unsatisfied_step_skipped
+test_exits_nonzero_when_bound_source_plan_has_uncommitted_changes
 
 echo "All orchestrator assignment tests passed."

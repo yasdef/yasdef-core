@@ -24,12 +24,3 @@
 - [ ] 4.1 Update `Readme.md` if it describes feature selection or reuse behavior to reflect that a valid stored feature is now sticky and fails fast instead of silently rediscovering
 - [ ] 4.2 Mention the escape path: remove `.asdlc_worker/feature_meta_sync.yaml` to reselect
 
-## 5. Close superseded change
-
-- [ ] 5.1 After crp-124 is filed, close `crp-118-stick-current-feature-on-reuse` (rename with `_CLOSED` suffix following the established convention) and leave a one-line note pointing at crp-124
-
-## 6. Final verification
-
-- [ ] 6.1 Confirm crp-123 has already landed (this change depends on the renamed `try_reuse_feature_meta_sync_for_resume` and the 4-field schema)
-- [ ] 6.2 Run the full test suite under `tests/ai_scripts/` and confirm green
-- [ ] 6.3 Run `openspec validate crp-124-sticky-current-feature-on-meta-sync --strict` and confirm it passes

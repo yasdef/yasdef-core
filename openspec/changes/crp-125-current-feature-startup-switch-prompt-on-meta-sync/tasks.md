@@ -50,8 +50,3 @@
 
 - [ ] 9.1 After crp-125 is filed, close `crp-119-current-feature-startup-switch-prompt` (rename with `_CLOSED` suffix following the established convention) and leave a one-line note pointing at crp-125
 
-## 10. Final verification
-
-- [ ] 10.1 Confirm crp-123 and crp-124 have already landed (this change depends on the renamed function, the 4-field schema, and the sticky/fail-fast semantics)
-- [ ] 10.2 Run the full test suite under `tests/ai_scripts/` and confirm green
-- [ ] 10.3 Run `openspec validate crp-125-current-feature-startup-switch-prompt-on-meta-sync --strict` and confirm it passes
