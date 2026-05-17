@@ -867,6 +867,68 @@ test_resume_reuses_feature_meta_sync_without_forcing_runtime_branch_checkout_fro
   assert_equal "$branch_name" "$(git -C "$repo_dir" branch --show-current)"
 }
 
+test_fast_path_blocked_feature_exits_on_resume() {
+  local repo_dir="$TMP_ROOT/repo-resume-fp-blocked"
+  local source_dir=""
+  local feature_dir=""
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  source_dir="$(source_root_for_repo "$repo_dir")"
+  feature_dir="$(feature_dir_for_repo "$repo_dir")"
+
+  cat >"$feature_dir/implementation_plan.md" <<EOF
+### Step 1.1 Upstream step
+#### Assigned: other-worker
+- [ ] Do upstream work (SP=2)
+
+### Step 2.1 Blocked worker step
+#### Depends on: 1.1
+#### Assigned: $WORKER_UUID_DEFAULT
+- [ ] Implement something (SP=3)
+EOF
+  (
+    cd "$source_dir"
+    git add "$feature_dir/implementation_plan.md"
+    git commit -qm "add blocked plan"
+    git push -q origin master
+  )
+
+  write_feature_meta_sync "$repo_dir" "$FEATURE_ID_DEFAULT" "2.1"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "$FEATURE_ID_DEFAULT"
+  assert_contains "$out" "blocked"
+  assert_contains "$out" "1.1"
+}
+
+test_fast_path_exhausted_feature_exits_on_resume() {
+  local repo_dir="$TMP_ROOT/repo-resume-fp-exhausted"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_impl_plan "$repo_dir" 1 1 1 1
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_feature_meta_sync "$repo_dir" "$FEATURE_ID_DEFAULT" "1.1"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "$FEATURE_ID_DEFAULT"
+  assert_contains "$out" "exhausted"
+  assert_contains "$out" "feature_meta_sync.yaml"
+}
+
 test_resume_starts_at_planning
 test_resume_starts_at_planning_when_design_sections_missing
 test_resume_starts_at_planning_when_step_plan_missing
@@ -887,6 +949,8 @@ test_resume_falls_through_when_meta_sync_has_mismatched_project_id
 test_resume_falls_through_when_bound_plan_is_missing
 test_resume_ignores_legacy_feature_sync_yaml
 test_resume_reuses_feature_meta_sync_without_forcing_runtime_branch_checkout_from_non_master_branch
+test_fast_path_blocked_feature_exits_on_resume
+test_fast_path_exhausted_feature_exits_on_resume
 test_missing_step_error
 test_dry_run_is_deterministic
 

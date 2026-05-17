@@ -16,14 +16,14 @@ The same conflation of "stale-context" and "valid-but-unrunnable" outcomes that 
 - Distinguish three fast-path outcomes:
   1. Reuse validation failed (stale/invalid metadata) → fall through to slow-path discovery (unchanged from crp-123).
   2. Reuse validation succeeded but `_fu` is empty and `_bb` is non-empty (blocked) → fail fast with a blocker message.
-  3. Reuse validation succeeded but `_fu` is empty and `_bb` is empty and `_fa >= 1` (exhausted) → fail fast with an exhaustion message.
+  3. Reuse validation succeeded but `_fu` is empty and `_bb` is empty and `_fa >= 1` (exhausted) → offer an interactive prompt letting the operator delete `feature_meta_sync.yaml` automatically or dismiss to handle it manually.
+- In non-interactive mode (stdin not a TTY), replace the exhausted prompt with a die message plus manual-removal instruction, preserving CI/automation determinism.
 - Apply the same semantics on `--resume` and on ordinary startup. Both call `_try_fast_path_feature_context`.
-- Reference `.asdlc_worker/feature_meta_sync.yaml` in all error messages and docs.
+- Reference `.asdlc_worker/feature_meta_sync.yaml` in all messages and docs.
 
 **Non-Goals:**
 - Changing the reuse validation logic itself. The 5 validation steps from crp-123 (file present, identity match, derived paths exist, ears non-empty, requested step still assigned) are not in scope.
 - Changing slow-path discovery behavior when reuse validation legitimately fails.
-- Adding a new escape command. The error message naming the metadata file as the thing to remove is sufficient.
 - Altering `--standalone` mode. Standalone does not write `feature_meta_sync.yaml` and is unaffected.
 
 ## Decisions
@@ -42,33 +42,52 @@ The function already returns these. The fix is to stop returning 1 from `_try_fa
 |---|---|---|---|
 | non-empty | — | — | proceed (set `SELECTED_STEP=$_fu`) |
 | empty | non-empty | — | `die "blocked: feature '$SELECTED_FEATURE_ID' is gated by step '$_bb'"` |
-| empty | empty | ≥ 1 | `die "exhausted: feature '$SELECTED_FEATURE_ID' has no remaining assigned bullets. Remove .asdlc_worker/feature_meta_sync.yaml to reselect."` |
+| empty | empty | ≥ 1 | print exhaustion message → if interactive: `_prompt_exhausted_feature_cleanup`; else `die` with manual-removal instruction |
 | empty | empty | 0 | `die "unrunnable: feature '$SELECTED_FEATURE_ID' has no assigned bullets for this worker. Remove .asdlc_worker/feature_meta_sync.yaml to reselect."` (should not happen for a feature that passed reuse validation, but treat defensively) |
 
-### 3. Requested-step path is unchanged
+### 3. Exhausted case uses an interactive cleanup prompt, not a die
+
+Rather than dying with a manual-removal instruction, the exhausted case offers a two-option prompt via a new helper `_prompt_exhausted_feature_cleanup`:
+
+```
+Feature '<id>' is exhausted — all assigned bullets are complete.
+To start a new feature, .asdlc_worker/feature_meta_sync.yaml must be removed.
+
+  1. Yes, delete it for me
+  2. Dismissed, I'll do it myself
+```
+
+- **Choice 1**: `rm .asdlc_worker/feature_meta_sync.yaml`, print `"feature_meta_sync.yaml deleted. Re-run orchestrator to select a new feature."`, exit 0.
+- **Choice 2**: print `"Remove .asdlc_worker/feature_meta_sync.yaml when ready, then re-run orchestrator."`, exit 0.
+
+Both branches exit 0 — exhaustion is expected/normal, not an error.
+
+**Non-interactive fallback** (stdin not a TTY): skip the prompt and `die` with the exhaustion message plus the manual-removal instruction. This preserves CI/automation determinism without requiring TTY detection in any other code path.
+
+**Alternative considered:** always die with a message and let the operator manage the file manually. Rejected — operators naturally expect a "yes, clean up for me" affordance after a completed feature; the manual-removal path is still available via choice 2 or non-interactive mode.
+
+### 5. Requested-step path is unchanged
 
 When `--resume <step>` is supplied, `try_reuse_feature_meta_sync_for_resume` validates that the step is still assigned to this worker (per crp-123). On success `SELECTED_STEP` is already set, so the post-success plan-analysis branch above is not entered. The sticky check applies only to the "no requested step, find first unchecked" case — which matches the ordinary auto-advance flow.
 
 If validation fails because the requested step is no longer assigned to this worker (crp-123 scenario), the function returns 1 and the existing fall-through to discovery occurs. That is the correct behavior because the operator-requested step is genuinely not workable in this feature; discovery may find another feature where it is, and if not, slow-path discovery fails with its own clear error.
 
-### 4. Error message format
+### 6. Message format
 
-Both messages should:
+All messages should:
 - Name the current feature ID (`$SELECTED_FEATURE_ID`).
 - For blocked: name the blocking step (`$_bb`).
-- For exhausted/unrunnable: point at `.asdlc_worker/feature_meta_sync.yaml` as the file to remove to allow reselection.
+- For exhausted prompt header and non-interactive exhausted die: point at `.asdlc_worker/feature_meta_sync.yaml` as the file to remove to allow reselection.
 
-Avoid implying the file is auto-generated or auto-managed — the operator removes it manually, as with any local state file.
+### 7. Resume path coverage is implicit
 
-### 5. Resume path coverage is implicit
-
-Because `ensure_feature_runtime_context` calls `_try_fast_path_feature_context` for both `resume_mode=0` and `resume_mode=1`, the same fail-fast applies to both. No separate code path needed.
+Because `ensure_feature_runtime_context` calls `_try_fast_path_feature_context` for both `resume_mode=0` and `resume_mode=1`, the same blocked/exhausted handling applies to both. No separate code path needed.
 
 ## Risks / Trade-offs
 
-- **Risk:** Operators who relied on the silent fallback (e.g. an implicit "switch to a fresh feature when current one is done" workflow) will now see fail-fast errors. → Mitigation: the exhausted message tells them exactly which file to remove. The behavior is more deterministic and matches the operator's mental model that "if I selected this feature, I am still on it."
+- **Risk:** Operators who relied on the silent fallback (e.g. an implicit "switch to a fresh feature when current one is done" workflow) will now see the exhausted prompt instead of auto-selection. → Mitigation: the prompt offers a one-keypress cleanup path; the behavior is more deterministic and matches the operator's mental model that "if I selected this feature, I am still on it."
 - **Risk:** A feature whose plan was edited externally (e.g. an upstream step un-checked between runs) could now be "blocked" where it was previously running. → Acceptable: this is the correct fail-fast surface for that state change; today's silent switch hides it.
-- **Trade-off:** Two messages instead of one. Acceptable — the two cases have different operator next-actions (wait for upstream vs reselect), so they need distinct guidance.
+- **Trade-off:** Exhausted case is interactive while blocked case is a hard die. Acceptable — exhausted is a normal completion state requiring a deliberate next-feature selection; blocked is an actionable error requiring upstream work, not a choice.
 
 ## Migration Plan
 
@@ -76,14 +95,17 @@ Because `ensure_feature_runtime_context` calls `_try_fast_path_feature_context` 
    a. After `try_reuse_feature_meta_sync_for_resume` returns 0 and `SELECTED_STEP` is empty, call `analyze_feature_plan_for_worker "$SELECTED_SOURCE_PLAN_PATH" "$BINDING_WORKER_UUID" ""` and capture `_fa`, `_ri`, `_fu`, `_bb`.
    b. If `_fu` non-empty → `SELECTED_STEP="$_fu"`, proceed as today.
    c. If `_fu` empty and `_bb` non-empty → `die` with blocked message.
-   d. If `_fu` empty and `_bb` empty → `die` with exhausted/unrunnable message.
-2. Update existing tests that expected silent fallthrough to slow-path discovery on valid-but-unrunnable; either change expectation to the fail-fast surface or remove them as superseded.
-3. Add positive tests for both fail-fast cases (blocked, exhausted) on both `--resume` and non-`--resume` startup flows.
-4. Update `Readme.md` if it describes silent rediscovery as a feature.
+   d. If `_fu` empty and `_bb` empty and `_fa >= 1` → print exhaustion header; if stdin is a TTY call `_prompt_exhausted_feature_cleanup`, else `die` with manual-removal instruction.
+2. Implement `_prompt_exhausted_feature_cleanup` as a standalone helper:
+   - Print the two-option menu.
+   - Read operator choice; on `1` delete `.asdlc_worker/feature_meta_sync.yaml`, print deletion confirmation, exit 0; on `2` print dismissal reminder, exit 0.
+3. Update existing tests that expected silent fallthrough to slow-path discovery on valid-but-unrunnable; either change expectation to the new surface or remove them as superseded.
+4. Add tests for: blocked die, exhausted interactive prompt (choice 1 and choice 2), exhausted non-interactive die — on both `--resume` and non-`--resume` startup flows.
+5. Update `Readme.md` if it describes silent rediscovery as a feature.
 
 **Rollback:** revert the four edit lines in `_try_fast_path_feature_context`. Discovery resumes for valid-but-unrunnable cases. No data migration needed; `feature_meta_sync.yaml` itself is unchanged.
 
 ## Open Questions
 
-- **Q1:** Should the exhausted-feature message also suggest the `--standalone` escape hatch, or only `feature_meta_sync.yaml` removal? Preference: only the metadata-file removal, since `--standalone` requires entirely different setup and is not a drop-in workaround. Confirm during implementation.
-- **Q2:** If a worker has multiple features assigned via `feature_meta_sync.yaml` history (rare), does the exhausted message need to enumerate alternatives? Preference: no. The metadata file is single-feature by design; if the operator wants to rediscover, removing the file is the documented path and slow-path discovery will enumerate candidates from the bound repo.
+- **Q1:** ~~Should the exhausted-feature message also suggest the `--standalone` escape hatch?~~ Resolved: no. The prompt's choice 1 (auto-delete) and choice 2 (manual) cover the full operator surface; `--standalone` is a different setup mode and not a reselection shortcut.
+- **Q2:** If a worker has multiple features assigned via `feature_meta_sync.yaml` history (rare), does the exhausted prompt need to enumerate alternatives? Preference: no. The metadata file is single-feature by design; choice 1 deletes the file and slow-path discovery on the next run enumerates candidates from the bound repo.

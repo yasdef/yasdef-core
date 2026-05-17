@@ -62,6 +62,7 @@ FEATURE_CONTEXT_RESUME_MODE=0
 BOUND_PROJECT_SYNC_READY=0
 RUNTIME_BRANCH_SYNC_READY=0
 START_BRANCH_VALIDATED=0
+CURRENT_FEATURE_SWITCH_FROM_ID=""
 
 usage() {
   cat <<'EOF'
@@ -1180,26 +1181,58 @@ prompt_for_feature_selection_index() {
   local feature_ids=("$@")
   local selected=""
 
+  # Build display list, reordering to place CURRENT_FEATURE_SWITCH_FROM_ID first if found.
+  local -a display_ids=()
+  local -a orig_indices=()
+  local current_found_at=-1
+  local _pfi_i=0
+  while [[ $_pfi_i -lt ${#feature_ids[@]} ]]; do
+    if [[ -n "$CURRENT_FEATURE_SWITCH_FROM_ID" && "${feature_ids[$_pfi_i]}" == "$CURRENT_FEATURE_SWITCH_FROM_ID" ]]; then
+      current_found_at="$_pfi_i"
+    fi
+    _pfi_i=$((_pfi_i + 1))
+  done
+
+  if [[ "$current_found_at" -ge 0 ]]; then
+    display_ids+=("${feature_ids[$current_found_at]} (CURRENT)")
+    orig_indices+=("$current_found_at")
+    local _pfi_j=0
+    while [[ $_pfi_j -lt ${#feature_ids[@]} ]]; do
+      if [[ "$_pfi_j" -ne "$current_found_at" ]]; then
+        display_ids+=("${feature_ids[$_pfi_j]}")
+        orig_indices+=("$_pfi_j")
+      fi
+      _pfi_j=$((_pfi_j + 1))
+    done
+  else
+    local _pfi_k=0
+    while [[ $_pfi_k -lt ${#feature_ids[@]} ]]; do
+      display_ids+=("${feature_ids[$_pfi_k]}")
+      orig_indices+=("$_pfi_k")
+      _pfi_k=$((_pfi_k + 1))
+    done
+  fi
+
   if [[ ! -t 0 ]]; then
     die "Multiple candidate features were found for worker '$BINDING_WORKER_UUID'. Run in an interactive terminal to choose a feature."
   fi
 
   echo "Multiple candidate features found under project '$BINDING_PROJECT_ID' for worker '$BINDING_WORKER_UUID':" >&2
-  local i=0
-  while [[ $i -lt ${#feature_ids[@]} ]]; do
-    printf '  %d) %s\n' "$((i + 1))" "${feature_ids[$i]}" >&2
-    i=$((i + 1))
+  local _pfi_d=0
+  while [[ $_pfi_d -lt ${#display_ids[@]} ]]; do
+    printf '  %d) %s\n' "$((_pfi_d + 1))" "${display_ids[$_pfi_d]}" >&2
+    _pfi_d=$((_pfi_d + 1))
   done
 
   while true; do
     printf 'Select feature number: ' >&2
     IFS= read -r selected || selected=""
     selected="$(trim_whitespace "$selected")"
-    if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 ]] && [[ "$selected" -le "${#feature_ids[@]}" ]]; then
-      printf '%s' "$((selected - 1))"
+    if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 ]] && [[ "$selected" -le "${#display_ids[@]}" ]]; then
+      printf '%s' "${orig_indices[$((selected - 1))]}"
       return 0
     fi
-    echo "Invalid selection. Enter a number between 1 and ${#feature_ids[@]}." >&2
+    echo "Invalid selection. Enter a number between 1 and ${#display_ids[@]}." >&2
   done
 }
 
@@ -1310,6 +1343,32 @@ setup_feature_plan_paths() {
 }
 
 
+_prompt_exhausted_feature_cleanup() {
+  printf '\nFeature '\''%s'\'' is exhausted — all assigned bullets are complete.\n' "$SELECTED_FEATURE_ID" >&2
+  printf 'To start a new feature, .asdlc_worker/feature_meta_sync.yaml must be removed.\n\n' >&2
+  printf '  1. Yes, delete it for me\n' >&2
+  printf '  2. Dismissed, I'\''ll do it myself\n\n' >&2
+  local choice
+  while true; do
+    printf 'Choose 1 or 2: ' >&2
+    IFS= read -r choice
+    case "$choice" in
+      1)
+        rm -f "$FEATURE_META_SYNC_FILE"
+        echo "feature_meta_sync.yaml deleted. Re-run orchestrator to select a new feature." >&2
+        exit 0
+        ;;
+      2)
+        echo "Remove .asdlc_worker/feature_meta_sync.yaml when ready, then re-run orchestrator." >&2
+        exit 0
+        ;;
+      *)
+        printf 'Invalid choice. ' >&2
+        ;;
+    esac
+  done
+}
+
 _try_fast_path_feature_context() {
   local requested_step="$1"
   local resume_mode="$2"
@@ -1318,14 +1377,44 @@ _try_fast_path_feature_context() {
     return 1
   fi
 
-  if [[ -z "$SELECTED_STEP" ]]; then
-    local _fa _ri _fu _analysis
+  if [[ -z "$requested_step" ]]; then
+    local _fa _ri _fu _bb _analysis
     _analysis="$(analyze_feature_plan_for_worker "$SELECTED_SOURCE_PLAN_PATH" "$BINDING_WORKER_UUID" "")"
     IFS='|' read -r _fa _ri _fu _bb <<<"$_analysis"
-    if [[ -z "$_fu" ]]; then
-      return 1
+    if [[ -n "$_fu" ]]; then
+      SELECTED_STEP="$_fu"
+      if [[ "$resume_mode" -eq 0 && -t 0 ]]; then
+        printf '\nCurrent feature: '\''%s'\'' (step %s)\n\n' "$SELECTED_FEATURE_ID" "$_fu" >&2
+        printf '  1. Proceed with current feature\n' >&2
+        printf '  2. Change feature\n\n' >&2
+        local _choice
+        while true; do
+          printf 'Choose 1 or 2: ' >&2
+          IFS= read -r _choice
+          case "$_choice" in
+            1) break ;;
+            2)
+              CURRENT_FEATURE_SWITCH_FROM_ID="$SELECTED_FEATURE_ID"
+              SELECTED_FEATURE_ID=""
+              SELECTED_FEATURE_PATH=""
+              SELECTED_SOURCE_PLAN_PATH=""
+              SELECTED_SOURCE_EARS_PATH=""
+              SELECTED_STEP=""
+              return 1
+              ;;
+            *) printf 'Invalid choice. ' >&2 ;;
+          esac
+        done
+      fi
+    elif [[ -n "$_bb" ]]; then
+      die "Feature '$SELECTED_FEATURE_ID' is blocked: assigned step is gated by step '$_bb'."
+    else
+      if [[ -t 0 ]]; then
+        _prompt_exhausted_feature_cleanup
+      else
+        die "Feature '$SELECTED_FEATURE_ID' is exhausted — all assigned bullets are complete. Remove .asdlc_worker/feature_meta_sync.yaml to select a new feature."
+      fi
     fi
-    SELECTED_STEP="$_fu"
   fi
 
   setup_feature_plan_paths "$SELECTED_STEP"
@@ -1469,6 +1558,7 @@ ensure_feature_runtime_context() {
   FEATURE_CONTEXT_READY=1
   FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
   FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
+  CURRENT_FEATURE_SWITCH_FROM_ID=""
   echo "orchestrator: selected feature '$SELECTED_FEATURE_ID' (mode=$SELECTED_SELECTION_MODE, project=$BINDING_PROJECT_ID, step=$SELECTED_STEP)." >&2
 }
 

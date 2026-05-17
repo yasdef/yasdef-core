@@ -8,22 +8,26 @@ This change supersedes crp-118 by re-stating the same sticky-feature intent on t
 
 ## What Changes
 
-- In `_try_fast_path_feature_context` (post-crp-123), when `try_reuse_feature_meta_sync_for_resume` returns 0 (reuse validation passed) but plan analysis for the worker shows no runnable step, the orchestrator MUST distinguish two sub-cases and fail fast:
+- In `_try_fast_path_feature_context` (post-crp-123), when `try_reuse_feature_meta_sync_for_resume` returns 0 (reuse validation passed) but plan analysis for the worker shows no runnable step, the orchestrator MUST distinguish two sub-cases:
   - **Blocked**: assigned step is gated by an incomplete upstream step → die with a message naming the current feature and the blocking step.
-  - **Exhausted**: all assigned bullets are complete → die with a message naming the current feature as exhausted, and instructing the operator to remove `.asdlc_worker/feature_meta_sync.yaml` to allow reselection.
+  - **Exhausted**: all assigned bullets are complete → print an exhaustion message naming the current feature, then prompt the operator with two options:
+    - `1. Yes, delete it for me` — script deletes `.asdlc_worker/feature_meta_sync.yaml` and exits with message `"feature_meta_sync.yaml deleted. Re-run orchestrator to select a new feature."` (exit 0).
+    - `2. Dismissed, I'll do it myself` — script exits with a reminder message pointing at the file (exit 0).
+  - In non-interactive mode (stdin is not a TTY), skip the exhausted prompt entirely and die with the exhaustion message plus the manual-removal instruction, preserving CI/automation determinism.
 - Keep the existing fall-through to slow-path discovery when reuse validation itself fails (project_id/worker_uuid mismatch, missing bound-source plan, missing or empty bound-source ears, or `--resume <step>` not assigned to this worker). Those are stale-context cases where discovery is the correct next action.
 - Apply the same sticky semantics on ordinary startup and on `--resume` invocations. `_try_fast_path_feature_context` is called from both routes, so the change covers both.
-- Update the error messages to reference `.asdlc_worker/feature_meta_sync.yaml` (the new filename) rather than `feature_sync.yaml`.
-- Do not introduce a new escape command. The error message naming `feature_meta_sync.yaml` as the file to clear is sufficient.
+- Update all messages to reference `.asdlc_worker/feature_meta_sync.yaml` (the new filename) rather than `feature_sync.yaml`.
+- When the operator re-runs the orchestrator after the file is deleted (either by the script or manually), no `feature_meta_sync.yaml` is present and the fast path falls through to slow-path discovery, which writes a fresh `feature_meta_sync.yaml` after the operator selects a new feature (per crp-123).
 
 ## Capabilities
 
 ### New Capabilities
 - `sticky-current-feature-routing`: Orchestrator keeps a valid `feature_meta_sync.yaml`-pinned feature as the active run context and reports blocked or exhausted status explicitly instead of silently switching to another feature.
+- `exhausted-feature-cleanup-prompt`: On exhaustion, orchestrator offers an interactive prompt letting the operator choose between automatic `feature_meta_sync.yaml` deletion or manual handling; non-interactive mode falls back to a die message.
 
 ### Modified Capabilities
-- `orchestrator-step-resume`: Resume reuse of a valid `feature_meta_sync.yaml` becomes authoritative; resume fails fast when the stored feature is blocked or exhausted instead of falling through to discovery.
-- `orchestrator-worker-assigned-step-routing`: Non-resume startup routing also fails fast on blocked/exhausted current feature instead of silently switching.
+- `orchestrator-step-resume`: Resume reuse of a valid `feature_meta_sync.yaml` becomes authoritative; resume fails fast or prompts when the stored feature is blocked or exhausted instead of falling through to discovery.
+- `orchestrator-worker-assigned-step-routing`: Non-resume startup routing also fails fast (blocked) or prompts (exhausted) on current feature instead of silently switching.
 
 ## Impact
 
