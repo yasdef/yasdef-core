@@ -570,6 +570,7 @@ run_planning_phase() {
     plan_cmd+=(--step "$step")
   fi
   plan_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
+  plan_cmd+=(--feature-id "$SELECTED_FEATURE_ID")
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     plan_cmd+=(--feature-rich-design-planning)
   fi
@@ -626,6 +627,17 @@ run_design_phase() {
   if [[ -z "$explicit_step" ]]; then
     echo "orchestrator: resolved routed step '$step' for design; injecting --step into ai_design.sh." >&2
     design_cmd+=(--step "$step")
+  fi
+  local _has_design_out=0
+  local _pi=0
+  while [[ $_pi -lt ${#PLAN_ARGS[@]} ]]; do
+    case "${PLAN_ARGS[$_pi]:-}" in
+      --design-out|--design-out=*) _has_design_out=1; break ;;
+    esac
+    _pi=$((_pi + 1))
+  done
+  if [[ "$_has_design_out" -eq 0 ]]; then
+    design_cmd+=(--design-out "$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md")
   fi
   design_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
@@ -690,6 +702,7 @@ make_sort_key() {
 }
 
 get_latest_step_plan() {
+  local feature_id="$1"
   local dir="$ASDLC_STEP_PLANS_DIR"
   if [[ ! -d "$dir" ]]; then
     echo "Step plan directory not found: $dir" >&2
@@ -703,15 +716,16 @@ get_latest_step_plan() {
     base="$(basename "$file")"
     step="${base#step-}"
     step="${step%.md}"
+    step="${step%%-*}"
     [[ -z "$step" ]] && continue
     local key
     key="$(make_sort_key "$step")"
     pairs+=("$key|$file")
-  done < <(find "$dir" -maxdepth 1 -type f -name 'step-*.md' -print)
+  done < <(find "$dir" -maxdepth 1 -type f -name "step-*-${feature_id}.md" -print)
 
   if [[ ${#pairs[@]} -eq 0 ]]; then
     echo "No step plans found in $dir." >&2
-    exit 1
+    return 1
   fi
 
   local latest
@@ -725,6 +739,7 @@ get_step_from_plan_path() {
   base="$(basename "$file")"
   step="${base#step-}"
   step="${step%.md}"
+  step="${step%%-*}"
   printf '%s' "$step"
 }
 
@@ -732,7 +747,7 @@ try_get_step_from_plan_path() {
   local file="$1"
   local base
   base="$(basename "$file")"
-  if [[ "$base" =~ ^step-(.+)\.md$ ]]; then
+  if [[ "$base" =~ ^step-([0-9][0-9.]*)(-.*)?\.md$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -741,10 +756,12 @@ try_get_step_from_plan_path() {
 
 get_step_from_design_path() {
   local file="$1"
-  local base
+  local base stem step
   base="$(basename "$file")"
   if [[ "$base" =~ ^step-(.+)-design\.md$ ]]; then
-    printf '%s' "${BASH_REMATCH[1]}"
+    stem="${BASH_REMATCH[1]}"
+    step="${stem%%-*}"
+    printf '%s' "$step"
     return 0
   fi
   return 1
@@ -1604,16 +1621,25 @@ get_step_from_branch_name() {
 }
 
 get_preferred_step_plan() {
-  local branch step plan
+  local branch step plan latest
   branch="$(get_current_branch_name)"
   if step="$(get_step_from_branch_name "$branch")"; then
-    plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
     if [[ -f "$plan" ]]; then
       printf '%s' "$plan"
       return 0
     fi
   fi
-  get_latest_step_plan
+  if latest="$(get_latest_step_plan "$SELECTED_FEATURE_ID" 2>/dev/null)"; then
+    printf '%s' "$latest"
+    return 0
+  fi
+  if [[ -n "$SELECTED_STEP" ]]; then
+    printf '%s' "$ASDLC_STEP_PLANS_DIR/step-$SELECTED_STEP-$SELECTED_FEATURE_ID.md"
+    return 0
+  fi
+  echo "No step plans found for feature '$SELECTED_FEATURE_ID'." >&2
+  return 1
 }
 
 build_model_prompt_arg() {
@@ -1637,13 +1663,16 @@ run_implementation_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
   fi
 
   if [[ ! -f "$latest_plan" ]]; then
+    if [[ "$DRY_RUN" -eq 1 && "$RESUME_MODE" -eq 0 ]]; then
+      return 0
+    fi
     echo "Step plan not found: $latest_plan" >&2
     exit 1
   fi
@@ -1698,13 +1727,16 @@ run_user_review_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
   fi
 
   if [[ ! -f "$latest_plan" ]]; then
+    if [[ "$DRY_RUN" -eq 1 && "$RESUME_MODE" -eq 0 ]]; then
+      return 0
+    fi
     echo "Step plan not found: $latest_plan" >&2
     exit 1
   fi
@@ -1758,13 +1790,16 @@ run_ai_audit_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
   fi
 
   if [[ ! -f "$latest_plan" ]]; then
+    if [[ "$DRY_RUN" -eq 1 && "$RESUME_MODE" -eq 0 ]]; then
+      return 0
+    fi
     echo "Step plan not found: $latest_plan" >&2
     exit 1
   fi
@@ -1821,13 +1856,16 @@ run_post_review_phase() {
   local latest_plan step
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
   fi
 
   if [[ ! -f "$latest_plan" ]]; then
+    if [[ "$DRY_RUN" -eq 1 && "$RESUME_MODE" -eq 0 ]]; then
+      return 0
+    fi
     echo "Step plan not found: $latest_plan" >&2
     exit 1
   fi
@@ -1838,7 +1876,7 @@ run_post_review_phase() {
   fi
 
   if [[ "$DRY_RUN" -eq 0 ]]; then
-    local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+    local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
     if [[ ! -f "$review_artifact" ]]; then
       echo "Cannot start post_review for step $step: ai_audit phase is incomplete." >&2
       echo "Run: .asdlc_worker/scripts/orchestrator.sh --resume $step" >&2
@@ -2103,7 +2141,7 @@ get_post_review_target_step() {
 
 run_global_plan_sync_before_post_review() {
   local step="$1"
-  local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
   local action=""
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -2418,7 +2456,7 @@ list_unchecked_functional_requirement_items() {
 
 phase_eval_functional_requirements_counts() {
   local step="$1"
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   local functional_section normalized_items
   local total=0
   local done=0
@@ -2463,7 +2501,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "missing_step_plan" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan not found: $ASDLC_STEP_PLANS_DIR/step-$step.md" >&2
+    echo "Step plan not found: $ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md" >&2
     echo "Implementation phase was not finished correctly because step plan is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2471,7 +2509,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "missing_section" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan gate requires section '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step.md." >&2
+    echo "Step plan gate requires section '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
     echo "Implementation phase was not finished correctly because ordered checklist section is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2479,7 +2517,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "no_checklist_items" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "No ordered plan checklist items were found under '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step.md." >&2
+    echo "No ordered plan checklist items were found under '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
     echo "Add ordered bullets as checklist items and mark them [x] only when each is proven complete." >&2
     echo "Implementation phase was not finished correctly because ordered checklist items are missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
@@ -2488,7 +2526,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
     local step_plan ordered_section normalized_items unchecked
-    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
     ordered_section="$(get_markdown_section_body "$step_plan" "## Plan (ordered)")"
     normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
     unchecked="$(list_unchecked_ordered_plan_items "$normalized_items")"
@@ -2506,7 +2544,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_state" == "missing_section" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-$step.md." >&2
+    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
     echo "Implementation phase was not finished correctly because functional requirements section is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2514,7 +2552,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_state" == "no_items" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "No translated functional requirements were found in .asdlc_worker/step_plans/step-$step.md." >&2
+    echo "No translated functional requirements were found in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
     echo "Add entries like: - [ ] FR-$step-001 The system SHALL ... EARS[REQ-...]." >&2
     echo "Implementation phase was not finished correctly because functional requirements checklist is empty." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
@@ -2523,7 +2561,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_done" -ne "$functional_total" ]]; then
     local step_plan functional_section normalized_fr unchecked_fr
-    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
     functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
     normalized_fr="$(list_normalized_functional_requirement_items "$functional_section")"
     unchecked_fr="$(list_unchecked_functional_requirement_items "$normalized_fr")"
@@ -2543,7 +2581,7 @@ ensure_implementation_phase_completion_gate() {
 
 phase_eval_ordered_plan_counts() {
   local step="$1"
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   local ordered_section normalized_items
   local total=0
   local checked=0
@@ -2607,9 +2645,9 @@ check_required_sections() {
 
 evaluate_design_phase() {
   local step="$1"
-  local design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-design.md"
+  local design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
   if [[ ! -f "$design_file" ]]; then
-    phase_eval_set "design" "incomplete" "missing .asdlc_worker/step_designs/step-$step-design.md"
+    phase_eval_set "design" "incomplete" "missing .asdlc_worker/step_designs/step-$step-$SELECTED_FEATURE_ID-design.md"
     return 0
   fi
 
@@ -2620,7 +2658,7 @@ evaluate_planning_phase() {
   local step="$1"
   local counts="$2"
   local plan_checked have_review review_checked impl_total impl_checked
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
 
   IFS='|' read -r _ plan_checked have_review review_checked impl_total impl_checked <<<"$counts"
 
@@ -2644,7 +2682,7 @@ implementation_branch_exists_for_step() {
 
 is_implementation_complete_for_step() {
   local step="$1"
-  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
 
   if [[ -f "$review_file" ]]; then
     return 0
@@ -2663,10 +2701,10 @@ is_implementation_complete_for_step() {
 
 evaluate_implementation_phase() {
   local step="$1"
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
 
   if [[ ! -f "$step_plan" ]]; then
-    phase_eval_set "implementation" "invalid" "missing .asdlc_worker/step_plans/step-$step.md"
+    phase_eval_set "implementation" "invalid" "missing .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md"
     return 0
   fi
 
@@ -2688,7 +2726,7 @@ user_review_branch_exists_for_step() {
 
 is_user_review_complete_for_step() {
   local step="$1"
-  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
 
   if [[ -f "$review_file" ]]; then
     return 0
@@ -2712,9 +2750,9 @@ evaluate_user_review_phase() {
 
 evaluate_ai_audit_phase() {
   local step="$1"
-  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
   if [[ ! -f "$review_file" ]]; then
-    phase_eval_set "ai_audit" "incomplete" "missing .asdlc_worker/step_review_results/review_result-$step.md"
+    phase_eval_set "ai_audit" "incomplete" "missing .asdlc_worker/step_review_results/review_result-$step-$SELECTED_FEATURE_ID.md"
     return 0
   fi
 

@@ -19,6 +19,7 @@ STEP_PLAN_GOLDEN="$ASDLC_GOLDEN_EXAMPLES_DIR/step_plan_GOLDEN_EXAMPLE.md"
 STEP=""
 OUT=""
 DESIGN_FILE=""
+FEATURE_ID=""
 INCLUDE_AGENTS=0
 BRANCH_NAME=""
 FEATURE_RICH_DESIGN_PLANNING=0
@@ -499,6 +500,11 @@ while [[ $# -gt 0 ]]; do
       BRANCH_NAME="$2"
       shift 2
       ;;
+    --feature-id)
+      require_option_arg "--feature-id" "${2:-}"
+      FEATURE_ID="$2"
+      shift 2
+      ;;
     --include-agents)
       INCLUDE_AGENTS=1
       shift
@@ -552,11 +558,11 @@ else
 fi
 
 if [[ -z "$OUT" ]]; then
-  OUT="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  OUT="$ASDLC_STEP_PLANS_DIR/step-$STEP-$FEATURE_ID.md"
 fi
 
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-$FEATURE_ID-design.md"
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then

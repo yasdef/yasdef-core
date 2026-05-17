@@ -538,6 +538,7 @@ test_planning_dry_run_injects_resolved_step_when_not_explicit() {
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   assert_contains "$out" ".asdlc_worker/scripts/ai_plan.sh --step 3.4"
   assert_contains "$out" "--branch-name step-3.4-feature-routing-plan"
+  assert_contains "$out" "--feature-id feature-routing"
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-planning-step-injection-planning-latest-log"
 }
 

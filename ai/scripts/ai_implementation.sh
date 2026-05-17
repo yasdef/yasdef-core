@@ -439,7 +439,7 @@ if [[ -z "$STEP_PLAN" ]]; then
   STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
 fi
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-$FEATURE_ID-design.md"
 fi
 if [[ -z "$OUT" ]]; then
   OUT="$ASDLC_PROMPTS_DIR/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"

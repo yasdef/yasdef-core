@@ -457,7 +457,7 @@ if [[ -z "$STEP" ]]; then
 fi
 
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-$FEATURE_ID-design.md"
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then

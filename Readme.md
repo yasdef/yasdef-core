@@ -125,12 +125,12 @@ Each artifact below serves a specific role in the AI-dev process:
 - **project_overmind.yaml**: Durable local binding (`overmind_source_path`, `project_id`, worker metadata) created by `init_worker`.
 - **feature_sync.yaml**: Per-run selected-feature metadata (selection mode, source/runtime paths, step context) used for traceability and resume reuse.
 - **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
-- **step_plans/**: Per-step planning artifacts (`step-<N>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include `## Plan (ordered)`, translated functional requirements, preconditions, architecture, risks, and test strategy.
+- **step_plans/**: Per-step planning artifacts (`step-<N>-<feature-id>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include `## Plan (ordered)`, translated functional requirements, preconditions, architecture, risks, and test strategy.
 - **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
 - **open_questions.md**: Non-blocking questions tracked per step, reviewed at step planning start. Removed once answered.
 - **decisions.md**: Durable technical decisions (Architecture Decision Records) recorded during planning and implementation. Includes decision context, alternatives considered, and rationale. Used to avoid rehashing settled choices.
 - **user_review.md**: Rule-based review insights, generalizable feedback patterns, and references to accepted implementations. Evolves as design patterns stabilize.
-- **step_review_results/**: Post-step audit findings (`review_result-<N>.md`), organized by severity (Critical/High/Medium/Low). Each finding has an explicit disposition (Accepted/Rejected) and follow-up work assignment.
+- **step_review_results/**: Post-step audit findings (`review_result-<N>-<feature-id>.md`), organized by severity (Critical/High/Medium/Low). Each finding has an explicit disposition (Accepted/Rejected) and follow-up work assignment.
 - **history.md**: Optional step completion log tracking dates, effort, surprises, and key decisions per step.
 
 ## Phases inputs and outputs
@@ -147,11 +147,11 @@ Each artifact below serves a specific role in the AI-dev process:
 **Phase 2: Planning**
 - Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
 - Input (additional): `.asdlc_worker/designs/feature-<N>.md`.
-- Output: `.asdlc_worker/step_plans/step-<N>.md` with `## Plan (ordered)`, translated functional requirements from design-selected EARS blocks, architecture, test strategy, and execution command for the implementation phase. If the design explicitly marks bootstrap required, planning also adds `## Scaffold Bootstrap Plan` and places scaffold creation before dependent feature work.
+- Output: `.asdlc_worker/step_plans/step-<N>-<feature-id>.md` with `## Plan (ordered)`, translated functional requirements from design-selected EARS blocks, architecture, test strategy, and execution command for the implementation phase. If the design explicitly marks bootstrap required, planning also adds `## Scaffold Bootstrap Plan` and places scaffold creation before dependent feature work.
 - Gate: All open questions must be answered before planning completion, and bootstrap-required plans must preserve scaffold creation as mandatory ordered work.
 
 **Phase 3: Implementation**
-- Input: Step plan (`.asdlc_worker/step_plans/step-<N>.md`), design (`.asdlc_worker/designs/feature-<N>.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
+- Input: Step plan (`.asdlc_worker/step_plans/step-<N>-<feature-id>.md`), design (`.asdlc_worker/step_designs/step-<N>-<feature-id>-design.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
 - Output: Implemented changes on a local topic branch (`step-<N>-<feature-id>-implementation`), updated tests/docs/planning artifacts, plus Evidence Reasoning Summary and Review Brief handoff for the next phase.
 - Gate: All ordered bullets must be `[x]`, all translated functional requirement checklist items must be `[x]`, verification closure must pass, and implementation does not commit before user review starts.
 
@@ -162,11 +162,11 @@ Each artifact below serves a specific role in the AI-dev process:
 
 **Phase 5: Post-Step Audit & Review (AI)**
 - Input: Implemented + user-review changes, step plan, design, and user feedback outcomes.
-- Output: `.asdlc_worker/step_review_results/review_result-<N>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-<feature-id>-review`). No push or merge to `main`/`master`.
+- Output: `.asdlc_worker/step_review_results/review_result-<N>-<feature-id>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-<feature-id>-review`). No push or merge to `main`/`master`.
 - Gate: Every finding must have an explicit disposition; all accepted work must be captured as follow-up steps or questions.
 
 **Phase 6: Post-Review**
-- Input: `.asdlc_worker/step_review_results/review_result-<N>.md`, updated plan artifacts, review branch state.
+- Input: `.asdlc_worker/step_review_results/review_result-<N>-<feature-id>.md`, updated plan artifacts, review branch state.
 - Output: Post-review updates (for example metrics/history updates and follow-up step alignment), performed without AI model execution.
 - Gate: Review dispositions are reflected in planning artifacts before next step starts.
 

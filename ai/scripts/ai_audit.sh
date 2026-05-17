@@ -474,7 +474,7 @@ if [[ -z "$STEP" ]]; then
 fi
 
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-$FEATURE_ID-design.md"
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
@@ -546,7 +546,7 @@ if [[ -z "$DESIGN_ADR_SECTION" ]]; then
   DESIGN_ADR_SECTION="- (missing in design artifact)"
 fi
 STEP_DELTA_FILE_LIST="$(get_step_delta_file_list)"
-REVIEW_RESULT_PATH="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP.md"
+REVIEW_RESULT_PATH="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP-$FEATURE_ID.md"
 
 emit() {
   printf 'ai_audit phase for Step %s - %s\n' "$STEP" "$STEP_TITLE"

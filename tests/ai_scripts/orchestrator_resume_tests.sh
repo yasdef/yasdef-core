@@ -248,7 +248,7 @@ write_design_and_plan_artifacts() {
 
   case "$design_mode" in
     complete)
-      cat >"$repo_dir/.asdlc_worker/step_designs/step-$step-design.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_designs/step-$step-$FEATURE_ID_DEFAULT-design.md" <<'EOF'
 ## Goal
 test
 ## In Scope
@@ -258,7 +258,7 @@ test
 EOF
       ;;
     missing_sections)
-      cat >"$repo_dir/.asdlc_worker/step_designs/step-$step-design.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_designs/step-$step-$FEATURE_ID_DEFAULT-design.md" <<'EOF'
 ## Goal
 test
 EOF
@@ -269,7 +269,7 @@ EOF
       ;;
   esac
   if [[ "$include_ordered_section" -eq 1 ]]; then
-    cat >"$repo_dir/.asdlc_worker/step_plans/step-$step.md" <<EOF
+    cat >"$repo_dir/.asdlc_worker/step_plans/step-$step-$FEATURE_ID_DEFAULT.md" <<EOF
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 $ordered_block
@@ -277,7 +277,7 @@ $ordered_block
 $functional_block
 EOF
   else
-    cat >"$repo_dir/.asdlc_worker/step_plans/step-$step.md" <<'EOF'
+    cat >"$repo_dir/.asdlc_worker/step_plans/step-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
@@ -365,7 +365,7 @@ write_review_result() {
   mkdir -p "$repo_dir/ai/step_review_results"
   case "$mode" in
     missing_disposition)
-      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 ## Critical
 - Missing null validation on review handoff.
 
@@ -374,7 +374,7 @@ write_review_result() {
 EOF
       ;;
     insufficient_dispositions)
-      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 ## Critical
 - Missing null validation on review handoff.
 
@@ -392,7 +392,7 @@ EOF
 EOF
       ;;
     complete)
-      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 ## Critical
 - Missing null validation on review handoff.
 
@@ -448,7 +448,7 @@ test_resume_starts_at_planning_when_step_plan_missing() {
   local repo_dir="$TMP_ROOT/repo-planning-missing-step-plan"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-$FEATURE_ID_DEFAULT-design.md" <<'EOF'
 ## Goal
 test
 ## In Scope
@@ -466,7 +466,7 @@ EOF
   set -e
   assert_not_equal "$status" "0"
   assert_contains "$out" "planning: incomplete (later-phase execution has not started yet)"
-  assert_contains "$out" "implementation: invalid (missing .asdlc_worker/step_plans/step-1.1.md)"
+  assert_contains "$out" "implementation: invalid (missing .asdlc_worker/step_plans/step-1.1-$FEATURE_ID_DEFAULT.md)"
   assert_contains "$out" "Selected start phase: planning"
   assert_not_contains "$out" "Resume blocked:"
 }
@@ -540,7 +540,7 @@ test_resume_starts_at_ai_audit_after_user_review_complete() {
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
-  assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1.md)"
+  assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1-$FEATURE_ID_DEFAULT.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
@@ -556,7 +556,7 @@ test_resume_starts_at_ai_audit_with_prefixed_gates() {
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
-  assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1.md)"
+  assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1-$FEATURE_ID_DEFAULT.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
