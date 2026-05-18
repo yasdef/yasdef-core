@@ -754,8 +754,20 @@ STEP_PLAN=""
 if [[ -z "$STEP" ]]; then
   STEP_PLAN="$(get_preferred_step_plan)"
   STEP="$(get_step_from_plan_path "$STEP_PLAN")"
+  if [[ -z "$FEATURE_ID" && -n "$STEP_PLAN" && -n "$STEP" ]]; then
+    _plan_base="$(basename "$STEP_PLAN" .md)"
+    _plan_rest="${_plan_base#step-$STEP-}"
+    if [[ "$_plan_rest" != "$_plan_base" && -n "$_plan_rest" ]]; then
+      FEATURE_ID="$_plan_rest"
+    fi
+    unset _plan_base _plan_rest
+  fi
 else
-  STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  if [[ -n "$FEATURE_ID" ]]; then
+    STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP-$FEATURE_ID.md"
+  else
+    STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  fi
 fi
 
 if [[ -z "$STEP" ]]; then
@@ -766,11 +778,19 @@ fi
 enforce_ai_audit_disposition_readiness
 
 if [[ -z "$REVIEW_BRANCH" ]]; then
-  REVIEW_BRANCH="step-$STEP-review"
+  if [[ -n "$FEATURE_ID" ]]; then
+    REVIEW_BRANCH="step-$STEP-$FEATURE_ID-review"
+  else
+    REVIEW_BRANCH="step-$STEP-review"
+  fi
 fi
 
 if [[ -z "$IMPLEMENTATION_BRANCH" ]]; then
-  IMPLEMENTATION_BRANCH="step-$STEP-implementation"
+  if [[ -n "$FEATURE_ID" ]]; then
+    IMPLEMENTATION_BRANCH="step-$STEP-$FEATURE_ID-implementation"
+  else
+    IMPLEMENTATION_BRANCH="step-$STEP-implementation"
+  fi
 fi
 
 if [[ -z "$BASE_BRANCH" ]]; then
