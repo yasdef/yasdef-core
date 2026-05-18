@@ -62,9 +62,17 @@ assert_file_contains() {
   fi
 }
 
+assert_file_not_exists() {
+  local file="$1"
+  if [[ -e "$file" ]]; then
+    echo "Assertion failed: expected file to be absent: $file" >&2
+    exit 1
+  fi
+}
+
 source_root_for_repo() {
   local repo_dir="$1"
-  printf '%s' "$repo_dir/.tmp-asdlc-source"
+  printf '%s' "${repo_dir}-source"
 }
 
 feature_dir_for_repo() {
@@ -124,6 +132,7 @@ EOF
 
   source_dir="$(source_root_for_repo "$repo_dir")"
   feature_dir="$(feature_dir_for_repo "$repo_dir")"
+  local source_remote_dir="${source_dir}-remote.git"
   mkdir -p "$source_dir" "$feature_dir"
   cat >"$source_dir/workers.yaml" <<EOF
 workers:
@@ -157,16 +166,28 @@ status: 'ready'
 EOF
 
   (
+    cd "$source_dir"
+    git init -q -b master
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+    git add .
+    git commit -qm "seed source"
+    git init -q --bare "$source_remote_dir"
+    git remote add origin "$source_remote_dir"
+    git push -q -u origin master
+  )
+
+  (
     cd "$repo_dir"
-    git init -q
+    git init -q -b master
     git config user.name "Test User"
     git config user.email "test@example.com"
     git add .
     git commit -qm "seed"
     git init -q --bare "$remote_dir"
-    git --git-dir "$remote_dir" symbolic-ref HEAD "refs/heads/$(git branch --show-current)"
+    git --git-dir "$remote_dir" symbolic-ref HEAD refs/heads/master
     git remote add origin "$remote_dir"
-    git push -q -u origin "$(git branch --show-current)"
+    git push -q -u origin master
   )
 }
 
@@ -175,7 +196,7 @@ create_user_review_branch_marker() {
   local step="$2"
   (
     cd "$repo_dir"
-    git branch "step-$step-user-review"
+    git branch "step-$step-$FEATURE_ID_DEFAULT-user-review"
   )
 }
 
@@ -184,7 +205,7 @@ create_implementation_branch_marker() {
   local step="$2"
   (
     cd "$repo_dir"
-    git branch "step-$step-implementation"
+    git branch "step-$step-$FEATURE_ID_DEFAULT-implementation"
   )
 }
 
@@ -235,7 +256,7 @@ write_design_and_plan_artifacts() {
 
   case "$design_mode" in
     complete)
-      cat >"$repo_dir/.asdlc_worker/step_designs/step-$step-design.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_designs/step-$step-$FEATURE_ID_DEFAULT-design.md" <<'EOF'
 ## Goal
 test
 ## In Scope
@@ -245,7 +266,7 @@ test
 EOF
       ;;
     missing_sections)
-      cat >"$repo_dir/.asdlc_worker/step_designs/step-$step-design.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_designs/step-$step-$FEATURE_ID_DEFAULT-design.md" <<'EOF'
 ## Goal
 test
 EOF
@@ -256,7 +277,7 @@ EOF
       ;;
   esac
   if [[ "$include_ordered_section" -eq 1 ]]; then
-    cat >"$repo_dir/.asdlc_worker/step_plans/step-$step.md" <<EOF
+    cat >"$repo_dir/.asdlc_worker/step_plans/step-$step-$FEATURE_ID_DEFAULT.md" <<EOF
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 $ordered_block
@@ -264,7 +285,7 @@ $ordered_block
 $functional_block
 EOF
   else
-    cat >"$repo_dir/.asdlc_worker/step_plans/step-$step.md" <<'EOF'
+    cat >"$repo_dir/.asdlc_worker/step_plans/step-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
@@ -296,6 +317,8 @@ write_impl_plan() {
   [[ "$impl_b_checked" == "1" ]] && impl_b_box="x"
   [[ "$review_checked" == "1" ]] && review_box="x"
 
+  local source_dir=""
+  source_dir="$(source_root_for_repo "$repo_dir")"
   feature_dir="$(feature_dir_for_repo "$repo_dir")"
   cat >"$feature_dir/implementation_plan.md" <<EOF
 ### Step 1.1 Demo
@@ -306,32 +329,23 @@ Est. step total: 5 SP
 - [$impl_b_box] Implement part B (SP=1)
 - [$review_box] ${gate_prefix}Review step implementation (SP=1)
 EOF
+  (
+    cd "$source_dir"
+    git add "$feature_dir/implementation_plan.md"
+    git commit -qm "update impl plan"
+    git push -q origin master
+  )
 }
 
-write_feature_sync() {
+write_feature_meta_sync() {
   local repo_dir="$1"
   local feature_id="$2"
-  local source_plan="$3"
-  local source_ears="$4"
-  local selected_step="$5"
-  local selection_mode="${6:-auto_single}"
-  local source_dir=""
-  source_dir="$(source_root_for_repo "$repo_dir")"
+  local selected_step="$3"
 
-  cat >"$repo_dir/.asdlc_worker/feature_sync.yaml" <<EOF
+  cat >"$repo_dir/.asdlc_worker/feature_meta_sync.yaml" <<EOF
 project_id: '$PROJECT_ID_DEFAULT'
-feature_id: '$feature_id'
 worker_uuid: '$WORKER_UUID_DEFAULT'
-overmind_source_path: '$source_dir'
-bound_project_path: '$source_dir'
-source_feature_path: '$(dirname "$source_plan")'
-source_implementation_plan_path: '$source_plan'
-source_requirements_ears_path: '$source_ears'
-runtime_implementation_plan_path: '$repo_dir/.asdlc_worker/overmind/implementation_plan.md'
-runtime_requirements_ears_path: '$repo_dir/.asdlc_worker/overmind/reqirements_ears.md'
-runtime_branch: 'overmind'
-selection_mode: '$selection_mode'
-requested_step: '$selected_step'
+feature_id: '$feature_id'
 selected_step: '$selected_step'
 EOF
 }
@@ -344,7 +358,7 @@ write_review_result() {
   mkdir -p "$repo_dir/ai/step_review_results"
   case "$mode" in
     missing_disposition)
-      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 ## Critical
 - Missing null validation on review handoff.
 
@@ -353,7 +367,7 @@ write_review_result() {
 EOF
       ;;
     insufficient_dispositions)
-      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 ## Critical
 - Missing null validation on review handoff.
 
@@ -371,7 +385,7 @@ EOF
 EOF
       ;;
     complete)
-      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 ## Critical
 - Missing null validation on review handoff.
 
@@ -427,7 +441,7 @@ test_resume_starts_at_planning_when_step_plan_missing() {
   local repo_dir="$TMP_ROOT/repo-planning-missing-step-plan"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-$FEATURE_ID_DEFAULT-design.md" <<'EOF'
 ## Goal
 test
 ## In Scope
@@ -445,7 +459,7 @@ EOF
   set -e
   assert_not_equal "$status" "0"
   assert_contains "$out" "planning: incomplete (later-phase execution has not started yet)"
-  assert_contains "$out" "implementation: invalid (missing .asdlc_worker/step_plans/step-1.1.md)"
+  assert_contains "$out" "implementation: invalid (missing .asdlc_worker/step_plans/step-1.1-$FEATURE_ID_DEFAULT.md)"
   assert_contains "$out" "Selected start phase: planning"
   assert_not_contains "$out" "Resume blocked:"
 }
@@ -460,7 +474,7 @@ test_resume_starts_at_implementation_when_planning_gate_closed() {
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
 }
 
@@ -474,7 +488,7 @@ test_resume_starts_at_implementation_when_planning_gate_unchecked_but_work_start
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (later-phase execution markers detected (1/2 implementation bullets checked))"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "planning gate not checked"
 }
@@ -488,7 +502,7 @@ test_partial_markers_rerun_implementation() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
 }
 
@@ -502,8 +516,8 @@ test_resume_starts_at_user_review() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
-  assert_contains "$out" "user_review: incomplete (missing user_review marker (expected branch step-1.1-user-review))"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
+  assert_contains "$out" "user_review: incomplete (missing user_review marker (expected branch step-1.1-feature-resume-user-review))"
   assert_contains "$out" "Selected start phase: user_review"
   assert_contains "$out" "Executed phases: user_review ai_audit post_review"
 }
@@ -518,8 +532,8 @@ test_resume_starts_at_ai_audit_after_user_review_complete() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
-  assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1.md)"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
+  assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1-$FEATURE_ID_DEFAULT.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
@@ -534,8 +548,8 @@ test_resume_starts_at_ai_audit_with_prefixed_gates() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
-  assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1.md)"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
+  assert_contains "$out" "ai_audit: incomplete (missing .asdlc_worker/step_review_results/review_result-1.1-$FEATURE_ID_DEFAULT.md)"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
@@ -622,7 +636,7 @@ test_resume_does_not_require_evidence_before_ai_audit() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-implementation or later-phase artifact present))"
+  assert_contains "$out" "implementation: complete (implementation marker detected (branch step-1.1-feature-resume-implementation or later-phase artifact present))"
   assert_contains "$out" "Selected start phase: ai_audit"
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
@@ -637,7 +651,7 @@ test_resume_allows_implementation_when_ordered_plan_section_missing() {
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "Resume blocked:"
 }
@@ -652,12 +666,12 @@ test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items() {
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
   assert_contains "$out" "planning: complete (planning markers detected (step plan present and implementation-plan planning gate closed))"
-  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-implementation))"
+  assert_contains "$out" "implementation: incomplete (missing implementation marker (expected branch step-1.1-feature-resume-implementation))"
   assert_contains "$out" "Selected start phase: implementation"
   assert_not_contains "$out" "Resume blocked:"
 }
 
-test_resume_reuses_valid_feature_sync_metadata() {
+test_resume_reuses_valid_feature_meta_sync_metadata() {
   local repo_dir="$TMP_ROOT/repo-resume-feature-sync-reuse"
   local source_dir=""
   local feature_primary=""
@@ -687,25 +701,19 @@ EOF
 - The system SHALL support secondary demo behavior.
 EOF
 
-  write_feature_sync \
-    "$repo_dir" \
-    "$FEATURE_ID_DEFAULT" \
-    "$feature_primary/implementation_plan.md" \
-    "$feature_primary/requirements_ears.md" \
-    "1.1" \
-    "auto_single"
+  write_feature_meta_sync "$repo_dir" "$FEATURE_ID_DEFAULT" "1.1"
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
   assert_contains "$out" "Resume dry-run for step 1.1"
   assert_not_contains "$out" "Multiple candidate features found under project"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "selection_mode: 'resume_reuse"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "feature_id: '$FEATURE_ID_DEFAULT'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: '$FEATURE_ID_DEFAULT'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "selected_step: '1.1'"
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
-  assert_file_contains "$repo_dir/.asdlc_worker/overmind/implementation_plan.md" "### Step 1.1 Demo"
-  assert_file_contains "$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" "### Requirement 1 Demo"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/implementation_plan.md"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/reqirements_ears.md"
 }
 
-test_resume_invalidates_stale_feature_sync_metadata() {
+test_resume_invalidates_stale_feature_meta_sync_metadata() {
   local repo_dir="$TMP_ROOT/repo-resume-feature-sync-stale"
   local source_dir=""
   local feature_secondary=""
@@ -734,13 +742,7 @@ EOF
 - The system SHALL support secondary demo behavior.
 EOF
 
-  write_feature_sync \
-    "$repo_dir" \
-    "feature-missing" \
-    "$source_dir/feature-missing/implementation_plan.md" \
-    "$source_dir/feature-missing/requirements_ears.md" \
-    "1.1" \
-    "auto_single"
+  write_feature_meta_sync "$repo_dir" "feature-missing" "1.1"
 
   set +e
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
@@ -750,7 +752,83 @@ EOF
   assert_contains "$out" "Multiple candidate features were found for worker '$WORKER_UUID_DEFAULT'. Run in an interactive terminal to choose a feature."
 }
 
-test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout_from_non_master_branch() {
+test_resume_falls_through_when_meta_sync_has_mismatched_project_id() {
+  local repo_dir="$TMP_ROOT/repo-resume-project-mismatch"
+  local source_dir=""
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  source_dir="$(source_root_for_repo "$repo_dir")"
+
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+
+  cat >"$repo_dir/.asdlc_worker/feature_meta_sync.yaml" <<EOF
+project_id: 'wrong-project-id'
+worker_uuid: '$WORKER_UUID_DEFAULT'
+feature_id: '$FEATURE_ID_DEFAULT'
+selected_step: '1.1'
+EOF
+
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  assert_contains "$out" "Resume dry-run for step 1.1"
+  assert_not_contains "$out" "wrong-project-id"
+}
+
+test_resume_falls_through_when_bound_plan_is_missing() {
+  local repo_dir="$TMP_ROOT/repo-resume-plan-missing"
+  local source_dir=""
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  source_dir="$(source_root_for_repo "$repo_dir")"
+
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+
+  write_feature_meta_sync "$repo_dir" "feature-nonexistent" "1.1"
+
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  assert_contains "$out" "Resume dry-run for step 1.1"
+  assert_not_contains "$out" "feature-nonexistent"
+}
+
+test_resume_ignores_legacy_feature_sync_yaml() {
+  local repo_dir="$TMP_ROOT/repo-resume-legacy-ignored"
+  local source_dir=""
+  local feature_dir=""
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  source_dir="$(source_root_for_repo "$repo_dir")"
+  feature_dir="$(feature_dir_for_repo "$repo_dir")"
+
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+
+  cat >"$repo_dir/.asdlc_worker/feature_sync.yaml" <<EOF
+project_id: '$PROJECT_ID_DEFAULT'
+feature_id: 'feature-nonexistent'
+worker_uuid: '$WORKER_UUID_DEFAULT'
+source_implementation_plan_path: '$source_dir/feature-nonexistent/implementation_plan.md'
+source_requirements_ears_path: '$source_dir/feature-nonexistent/requirements_ears.md'
+runtime_branch: 'overmind'
+selection_mode: 'auto_single'
+selected_step: '1.1'
+EOF
+
+  write_feature_meta_sync "$repo_dir" "$FEATURE_ID_DEFAULT" "1.1"
+
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  assert_contains "$out" "Resume dry-run for step 1.1"
+  assert_contains "$out" "feature '$FEATURE_ID_DEFAULT'"
+}
+
+test_resume_reuses_feature_meta_sync_without_forcing_runtime_branch_checkout_from_non_master_branch() {
   local repo_dir="$TMP_ROOT/repo-resume-no-forced-overmind-checkout-non-master"
   local source_dir=""
   local feature_dir=""
@@ -766,31 +844,11 @@ test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout_from_non
   write_design_and_plan_artifacts "$repo_dir" "1.1"
   write_impl_plan "$repo_dir" 1 1 1 0
   create_implementation_branch_marker "$repo_dir" "1.1"
-  write_feature_sync \
-    "$repo_dir" \
-    "$FEATURE_ID_DEFAULT" \
-    "$feature_dir/implementation_plan.md" \
-    "$feature_dir/requirements_ears.md" \
-    "1.1" \
-    "auto_single"
+  write_feature_meta_sync "$repo_dir" "$FEATURE_ID_DEFAULT" "1.1"
 
   (
     cd "$repo_dir"
     git checkout -q -b "$branch_name"
-    mkdir -p .asdlc_worker/overmind
-    cat > .asdlc_worker/overmind/implementation_plan.md <<EOF
-### Step 1.1 Demo
-#### Assigned: $WORKER_UUID_DEFAULT
-Est. step total: 5 SP
-- [x] Plan and discuss the step (SP=1)
-- [x] Implement part A (SP=2)
-- [x] Implement part B (SP=1)
-- [ ] Review step implementation (SP=1)
-EOF
-    cat > .asdlc_worker/overmind/reqirements_ears.md <<'EOF'
-### Requirement 1 Branch runtime
-- The system SHALL support branch runtime behavior.
-EOF
   )
 
   set +e
@@ -809,6 +867,68 @@ EOF
   assert_equal "$branch_name" "$(git -C "$repo_dir" branch --show-current)"
 }
 
+test_fast_path_blocked_feature_exits_on_resume() {
+  local repo_dir="$TMP_ROOT/repo-resume-fp-blocked"
+  local source_dir=""
+  local feature_dir=""
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  source_dir="$(source_root_for_repo "$repo_dir")"
+  feature_dir="$(feature_dir_for_repo "$repo_dir")"
+
+  cat >"$feature_dir/implementation_plan.md" <<EOF
+### Step 1.1 Upstream step
+#### Assigned: other-worker
+- [ ] Do upstream work (SP=2)
+
+### Step 2.1 Blocked worker step
+#### Depends on: 1.1
+#### Assigned: $WORKER_UUID_DEFAULT
+- [ ] Implement something (SP=3)
+EOF
+  (
+    cd "$source_dir"
+    git add "$feature_dir/implementation_plan.md"
+    git commit -qm "add blocked plan"
+    git push -q origin master
+  )
+
+  write_feature_meta_sync "$repo_dir" "$FEATURE_ID_DEFAULT" "2.1"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "$FEATURE_ID_DEFAULT"
+  assert_contains "$out" "blocked"
+  assert_contains "$out" "1.1"
+}
+
+test_fast_path_exhausted_feature_exits_on_resume() {
+  local repo_dir="$TMP_ROOT/repo-resume-fp-exhausted"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_impl_plan "$repo_dir" 1 1 1 1
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_feature_meta_sync "$repo_dir" "$FEATURE_ID_DEFAULT" "1.1"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_not_equal "$status" "0"
+  assert_contains "$out" "$FEATURE_ID_DEFAULT"
+  assert_contains "$out" "exhausted"
+  assert_contains "$out" "feature_meta_sync.yaml"
+}
+
 test_resume_starts_at_planning
 test_resume_starts_at_planning_when_design_sections_missing
 test_resume_starts_at_planning_when_step_plan_missing
@@ -823,9 +943,14 @@ test_resume_starts_at_post_review_when_disposition_count_is_insufficient
 test_resume_does_not_require_evidence_before_ai_audit
 test_resume_allows_implementation_when_ordered_plan_section_missing
 test_resume_allows_implementation_when_ordered_plan_has_no_checklist_items
-test_resume_reuses_valid_feature_sync_metadata
-test_resume_invalidates_stale_feature_sync_metadata
-test_resume_reuses_feature_sync_without_forcing_runtime_branch_checkout_from_non_master_branch
+test_resume_reuses_valid_feature_meta_sync_metadata
+test_resume_invalidates_stale_feature_meta_sync_metadata
+test_resume_falls_through_when_meta_sync_has_mismatched_project_id
+test_resume_falls_through_when_bound_plan_is_missing
+test_resume_ignores_legacy_feature_sync_yaml
+test_resume_reuses_feature_meta_sync_without_forcing_runtime_branch_checkout_from_non_master_branch
+test_fast_path_blocked_feature_exits_on_resume
+test_fast_path_exhausted_feature_exits_on_resume
 test_missing_step_error
 test_dry_run_is_deterministic
 

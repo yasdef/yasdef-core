@@ -189,7 +189,7 @@ get_requirements_section() {
     if [[ -n "$section" ]]; then
       output+="$section"$'\n\n'
     else
-      output+="Requirement $req not found in .asdlc_worker/overmind/reqirements_ears.md"$'\n\n'
+      output+="Requirement $req not found in $REQUIREMENTS"$'\n\n'
     fi
   done <<<"$reqs"
 
@@ -424,14 +424,14 @@ write_design_from_template() {
         if [[ -n "$TARGET_BULLETS" ]]; then
           printf '%s\n' "$TARGET_BULLETS"
         else
-          printf -- '- (none found; verify .asdlc_worker/overmind/implementation_plan.md step bullets)\n'
+          printf -- '- (none found; verify %s step bullets)\n' "$PLAN"
         fi
         ;;
       "- <selected EARS requirement excerpts used to translate step-plan functional requirements>")
         if [[ -n "$REQ_SECTION" ]]; then
           printf '%s\n' "$REQ_SECTION"
         else
-          printf -- '- (none found; add selected EARS blocks from .asdlc_worker/overmind/reqirements_ears.md)\n'
+          printf -- '- (none found; add selected EARS blocks from %s)\n' "$REQUIREMENTS"
         fi
         ;;
       *)
@@ -541,14 +541,14 @@ done
 if [[ -z "$STEP" ]]; then
   line="$(get_next_unchecked)"
   if [[ -z "$line" ]]; then
-    echo "No unchecked bullets found in .asdlc_worker/overmind/implementation_plan.md." >&2
+    echo "No unchecked bullets found in $PLAN." >&2
     exit 1
   fi
   IFS='|' read -r STEP STEP_TITLE BULLET <<<"$line"
 else
   STEP_TITLE="$(get_step_title "$STEP")"
   if [[ -z "$STEP_TITLE" ]]; then
-    echo "Step $STEP not found in .asdlc_worker/overmind/implementation_plan.md." >&2
+    echo "Step $STEP not found in $PLAN." >&2
     exit 1
   fi
   BULLET="$(get_step_first_unchecked "$STEP")"
@@ -565,7 +565,7 @@ ensure_design_branch
 
 STEP_SECTION="$(get_step_section "$STEP")"
 if [[ -z "$STEP_SECTION" ]]; then
-  echo "Step $STEP section not found in .asdlc_worker/overmind/implementation_plan.md." >&2
+  echo "Step $STEP section not found in $PLAN." >&2
   exit 1
 fi
 TARGET_BULLETS="$(get_step_design_bullets "$STEP_SECTION")"
@@ -584,7 +584,7 @@ fi
 
 REQ_SECTION="$(get_requirements_section "$STEP_SECTION")"
 LAR_SECTION="$(get_step_lar_section "$REQ_SECTION")"
-FEATURE_SYNC_SOURCE_FEATURE_PATH="$(read_yaml_scalar "$FEATURE_SYNC_FILE" "source_feature_path" || true)"
+FEATURE_SYNC_SOURCE_FEATURE_PATH="${ASDLC_RUNTIME_PLAN_PATH:+$(dirname "$ASDLC_RUNTIME_PLAN_PATH")}"
 
 mkdir -p "$(dirname "$DESIGN_OUT")"
 if [[ ! -f "$DESIGN_OUT" ]]; then
@@ -615,7 +615,7 @@ emit() {
   if [[ -n "$FEATURE_SYNC_SOURCE_FEATURE_PATH" ]]; then
     printf 'Suggested bootstrap lookup command for this run: `cd "%s" && "%s"`.\n' "$FEATURE_SYNC_SOURCE_FEATURE_PATH" "$BLUEPRINT_HELPER"
   else
-    printf 'ASDLC source feature path is unavailable in .asdlc_worker/feature_sync.yaml. If bootstrap is required, locate the source feature folder first or ask the user before inventing stack/scaffold details.\n'
+    printf 'ASDLC source feature path is unavailable (ASDLC_RUNTIME_PLAN_PATH not set). If bootstrap is required, locate the source feature folder first or ask the user before inventing stack/scaffold details.\n'
   fi
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     printf 'Feature-rich design/planning mode: ENABLED (design-only add-on).\n'
@@ -632,7 +632,7 @@ emit() {
   printf 'When design phase is fully complete, end your final response with this exact last line: "Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf '\n'
   printf 'Context pack\n'
-  printf '== .asdlc_worker/overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
+  printf '== implementation_plan.md ($ASDLC_RUNTIME_PLAN_PATH, Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
   printf '== %s ==\n' "$design_label"
   cat "$DESIGN_OUT"
@@ -642,7 +642,7 @@ emit() {
     cat "$DESIGN_GOLDEN"
     printf '\n\n'
   fi
-  printf '== .asdlc_worker/overmind/reqirements_ears.md (selected EARS candidates for design translation) ==\n'
+  printf '== requirements_ears.md ($ASDLC_RUNTIME_EARS_PATH, selected EARS candidates for design translation) ==\n'
   printf '%s\n\n' "$REQ_SECTION"
   printf '== ## Linked Artifacts (in scope) ==\n'
   if [[ -n "$LAR_SECTION" ]]; then
@@ -656,11 +656,11 @@ emit() {
   printf '%s\n\n' "$OPEN_QUESTIONS_SECTION"
   printf '== Bootstrap context ==\n'
   if [[ -f "$FEATURE_SYNC_FILE" ]]; then
-    printf 'Feature sync file: .asdlc_worker/feature_sync.yaml\n'
+    printf 'Feature meta sync file: .asdlc_worker/feature_meta_sync.yaml\n'
     cat "$FEATURE_SYNC_FILE"
     printf '\n\n'
   else
-    printf 'Feature sync file missing: .asdlc_worker/feature_sync.yaml\n\n'
+    printf 'Feature meta sync file missing: .asdlc_worker/feature_meta_sync.yaml\n\n'
   fi
   printf 'Blueprint helper path: %s\n\n' "$helper_label"
   printf '== .asdlc_worker/decisions.md (Accepted ADRs) ==\n'

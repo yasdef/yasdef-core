@@ -9,9 +9,10 @@ PROJECT="$(basename "$ROOT")"
 HISTORY_FILE="$ASDLC_HISTORY_FILE"
 AI_AUDIT_DISPOSITION_HELPER="$ASDLC_HELPERS_DIR/check_ai_audit_disposition_readiness.sh"
 OVERMIND_BRANCH="overmind"
-IMPLEMENTATION_PLAN_REL_PATH=".asdlc_worker/overmind/implementation_plan.md"
+IMPLEMENTATION_PLAN_REL_PATH=".asdlc_worker/overmind/implementation_plan.md"  # standalone mode only
 
 STEP=""
+FEATURE_ID=""
 BASE_BRANCH=""
 REVIEW_BRANCH=""
 IMPLEMENTATION_BRANCH=""
@@ -33,7 +34,7 @@ Defaults:
   - --review-branch defaults to step-<step>-review.
   - --implementation-branch defaults to step-<step>-implementation.
   - --history-out defaults to .asdlc_worker/history.md.
-  - Hard gate before history consolidation: `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step>` must pass.
+  - Hard gate before history consolidation: `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step> [feature-id]` must pass.
   - Captures post-review metrics before any auto-commit, including pending local changes via a temporary working-tree snapshot.
   - If uncommitted review changes exist, commits them as a review-completion guard before history update.
   - Then writes post-review history and commits remaining uncommitted changes on the current branch.
@@ -54,7 +55,7 @@ enforce_ai_audit_disposition_readiness() {
     exit 1
   fi
 
-  if helper_output="$(bash "$AI_AUDIT_DISPOSITION_HELPER" "$STEP" 2>&1)"; then
+  if helper_output="$(bash "$AI_AUDIT_DISPOSITION_HELPER" "$STEP" ${FEATURE_ID:+"$FEATURE_ID"} 2>&1)"; then
     return 0
   fi
 
@@ -129,6 +130,7 @@ get_step_from_plan_path() {
   base="$(basename "$file")"
   step="${base#step-}"
   step="${step%.md}"
+  step="${step%%-*}"
   printf '%s' "$step"
 }
 
@@ -702,6 +704,11 @@ while [[ $# -gt 0 ]]; do
       STEP="$2"
       shift 2
       ;;
+    --feature-id)
+      require_option_arg "--feature-id" "${2:-}"
+      FEATURE_ID="$2"
+      shift 2
+      ;;
     --base-branch)
       require_option_arg "--base-branch" "${2:-}"
       BASE_BRANCH="$2"
@@ -747,8 +754,20 @@ STEP_PLAN=""
 if [[ -z "$STEP" ]]; then
   STEP_PLAN="$(get_preferred_step_plan)"
   STEP="$(get_step_from_plan_path "$STEP_PLAN")"
+  if [[ -z "$FEATURE_ID" && -n "$STEP_PLAN" && -n "$STEP" ]]; then
+    _plan_base="$(basename "$STEP_PLAN" .md)"
+    _plan_rest="${_plan_base#step-$STEP-}"
+    if [[ "$_plan_rest" != "$_plan_base" && -n "$_plan_rest" ]]; then
+      FEATURE_ID="$_plan_rest"
+    fi
+    unset _plan_base _plan_rest
+  fi
 else
-  STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  if [[ -n "$FEATURE_ID" ]]; then
+    STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP-$FEATURE_ID.md"
+  else
+    STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  fi
 fi
 
 if [[ -z "$STEP" ]]; then
@@ -759,11 +778,19 @@ fi
 enforce_ai_audit_disposition_readiness
 
 if [[ -z "$REVIEW_BRANCH" ]]; then
-  REVIEW_BRANCH="step-$STEP-review"
+  if [[ -n "$FEATURE_ID" ]]; then
+    REVIEW_BRANCH="step-$STEP-$FEATURE_ID-review"
+  else
+    REVIEW_BRANCH="step-$STEP-review"
+  fi
 fi
 
 if [[ -z "$IMPLEMENTATION_BRANCH" ]]; then
-  IMPLEMENTATION_BRANCH="step-$STEP-implementation"
+  if [[ -n "$FEATURE_ID" ]]; then
+    IMPLEMENTATION_BRANCH="step-$STEP-$FEATURE_ID-implementation"
+  else
+    IMPLEMENTATION_BRANCH="step-$STEP-implementation"
+  fi
 fi
 
 if [[ -z "$BASE_BRANCH" ]]; then
@@ -879,7 +906,9 @@ append_consolidated_entry \
   "$USER_REVIEW_USAGE" \
   "$AI_AUDIT_USAGE"
 commit_uncommitted_changes "$STEP_NUM" "$STEP_TITLE"
-sync_implementation_plan_to_overmind_branch "$REVIEW_BRANCH" "$STEP_NUM" "$STEP_TITLE"
+if [[ ! -f "$ASDLC_BINDING_FILE" ]]; then
+  sync_implementation_plan_to_overmind_branch "$REVIEW_BRANCH" "$STEP_NUM" "$STEP_TITLE"
+fi
 
 printf 'Post-review history updated for step %s.\n' "$STEP_NUM"
 printf 'Metrics diff: %s..%s (%s)\n' "$METRICS_FROM_REF" "$METRICS_TO_REF" "$METRICS_DIRECTION_NOTE"

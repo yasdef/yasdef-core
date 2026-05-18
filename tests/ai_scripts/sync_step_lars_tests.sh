@@ -98,7 +98,9 @@ cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 - Render the menu.
 EOF
 
-bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
   "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 
 CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
@@ -121,7 +123,9 @@ cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 - Render the menu.
 EOF
 
-bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
   "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 
 CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
@@ -147,7 +151,9 @@ cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 - No old entries.
 EOF
 
-bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
   "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 
 CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
@@ -168,11 +174,15 @@ cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 - Render the menu.
 EOF
 
-bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
   "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 FIRST_RUN="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 
-bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
   "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 SECOND_RUN="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 
@@ -215,7 +225,9 @@ cat >"$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
 EOF
 ORIGINAL_CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
 
-bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.1 \
   "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md"
 
 AFTER_CONTENT="$(cat "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md")"
@@ -243,7 +255,9 @@ EOF
 
 # Step doesn't exist in plan
 RC=0
-bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.9 \
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/helpers/sync_step_lars.sh" 1.9 \
   "$TEST_DIR/.asdlc_worker/step_designs/step-1.1-design.md" 2>/dev/null || RC=$?
 if [[ "$RC" -eq 0 ]]; then
   echo "Assertion failed: missing step should exit non-zero" >&2

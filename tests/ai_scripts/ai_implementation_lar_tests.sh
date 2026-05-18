@@ -67,7 +67,7 @@ EOF
 
 make_ready_step_plan_with_lar() {
   local dir="$1"
-  cat >"$dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 ## Linked Artifacts (in scope)
 - LAR-003 | Figma | Feature Mockup | http://example.com
 
@@ -84,7 +84,7 @@ EOF
 
 make_ready_step_plan_without_lar() {
   local dir="$1"
-  cat >"$dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 ## Applicable UR Shortlist
 - None.
 
@@ -98,7 +98,7 @@ EOF
 
 make_design() {
   local dir="$1"
-  cat >"$dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$dir/.asdlc_worker/step_designs/step-1.1-demo-design.md" <<'EOF'
 ## Goal
 - Do the thing.
 ## In Scope
@@ -130,7 +130,9 @@ make_design "$TEST_DIR"
 make_ready_step_plan_with_lar "$TEST_DIR"
 
 OUT_FILE="$TEST_DIR/out.txt"
-bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --feature-id demo --step-plan "$TEST_DIR/.asdlc_worker/step_plans/step-1.1-demo.md" --no-branch --out "$OUT_FILE" 2>/dev/null
 OUTPUT="$(cat "$OUT_FILE")"
 assert_contains "$OUTPUT" "LAR-003"
 assert_contains "$OUTPUT" "Figma"
@@ -147,7 +149,9 @@ make_design "$TEST_DIR"
 make_ready_step_plan_without_lar "$TEST_DIR"
 
 OUT_FILE="$TEST_DIR/out.txt"
-bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --feature-id demo --step-plan "$TEST_DIR/.asdlc_worker/step_plans/step-1.1-demo.md" --no-branch --out "$OUT_FILE" 2>/dev/null
 OUTPUT="$(cat "$OUT_FILE")"
 assert_not_contains "$OUTPUT" "Fetch rule (implementation)"
 assert_not_contains "$OUTPUT" "LAR-"
@@ -161,7 +165,9 @@ make_design "$TEST_DIR"
 make_ready_step_plan_with_lar "$TEST_DIR"
 
 OUT_FILE="$TEST_DIR/out.txt"
-bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch --out "$OUT_FILE" 2>/dev/null
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --feature-id demo --step-plan "$TEST_DIR/.asdlc_worker/step_plans/step-1.1-demo.md" --no-branch --out "$OUT_FILE" 2>/dev/null
 OUTPUT="$(cat "$OUT_FILE")"
 LAR_LINE="$(printf '%s\n' "$OUTPUT" | grep -n "^## Linked Artifacts" | head -1 | cut -d: -f1)"
 FR_LINE="$(printf '%s\n' "$OUTPUT" | grep -n "^## Functional Requirements" | head -1 | cut -d: -f1)"
@@ -180,10 +186,14 @@ make_ready_step_plan_with_lar "$TEST_DIR"
 
 OUT_FILE1="$TEST_DIR/run1.txt"
 OUT_FILE2="$TEST_DIR/run2.txt"
-bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch \
-  --out "$OUT_FILE1" 2>/dev/null
-bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --no-branch \
-  --out "$OUT_FILE2" 2>/dev/null
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --feature-id demo \
+  --step-plan "$TEST_DIR/.asdlc_worker/step_plans/step-1.1-demo.md" --no-branch --out "$OUT_FILE1" 2>/dev/null
+ASDLC_RUNTIME_PLAN_PATH="$TEST_DIR/.asdlc_worker/overmind/implementation_plan.md" \
+  ASDLC_RUNTIME_EARS_PATH="$TEST_DIR/.asdlc_worker/overmind/reqirements_ears.md" \
+  bash "$TEST_DIR/.asdlc_worker/scripts/ai_implementation.sh" --step 1.1 --feature-id demo \
+  --step-plan "$TEST_DIR/.asdlc_worker/step_plans/step-1.1-demo.md" --no-branch --out "$OUT_FILE2" 2>/dev/null
 
 if ! diff -q "$OUT_FILE1" "$OUT_FILE2" >/dev/null 2>&1; then
   echo "Assertion failed: two runs should produce byte-identical output" >&2

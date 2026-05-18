@@ -10,6 +10,8 @@ RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
+WORKER_UUID="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
 assert_contains() {
   local haystack="$1"
   local needle="$2"
@@ -59,10 +61,91 @@ assert_branch_equals() {
   fi
 }
 
+# Creates an external ASDLC source project repo with workers.yaml, init_progress_definition.yaml,
+# and a bare remote so the orchestrator's `git pull --rebase` succeeds.
+init_project_repo() {
+  local source_dir="$1"
+  local project_id="$2"
+  local worker_uuid="$3"
+  local remote_dir="${source_dir}-remote.git"
+
+  mkdir -p "$source_dir"
+  (
+    cd "$source_dir"
+    git init -q -b master
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+  )
+  cat >"$source_dir/workers.yaml" <<EOF
+workers:
+  - uuid: "$worker_uuid"
+    class: "platform"
+    status: "ready"
+EOF
+  cat >"$source_dir/init_progress_definition.yaml" <<EOF
+meta_info:
+  project_id: '$project_id'
+steps: []
+EOF
+  (
+    cd "$source_dir"
+    git add workers.yaml init_progress_definition.yaml
+    git commit -qm "init project repo"
+    git init -q --bare "$remote_dir"
+    git --git-dir "$remote_dir" symbolic-ref HEAD refs/heads/master
+    git remote add origin "$remote_dir"
+    git push -q -u origin master
+  )
+}
+
+# Creates a feature folder under the source repo with implementation_plan.md and
+# requirements_ears.md, then commits and pushes to the bare remote.
+create_feature() {
+  local source_dir="$1"
+  local feature_id="$2"
+  local plan_content="$3"
+  local ears_content="$4"
+
+  mkdir -p "$source_dir/$feature_id"
+  printf '%s' "$plan_content" >"$source_dir/$feature_id/implementation_plan.md"
+  printf '%s' "$ears_content" >"$source_dir/$feature_id/requirements_ears.md"
+  (
+    cd "$source_dir"
+    git add -A
+    git commit -qm "add feature $feature_id"
+    git push -q
+  )
+}
+
+# Builds the implementation_plan body used by both the source feature and the local runtime mirror.
+# The two must be byte-identical so that the orchestrator's mirror is a no-op against git status
+# (otherwise the user_review branch handoff would see dirty state and reject the run).
+build_runtime_plan() {
+  local impl_box="$1"
+  cat <<EOF
+### Step 1.1 Demo
+Est. step total: 5 SP
+#### Assigned: $WORKER_UUID
+- [x] Plan and discuss the step (SP=1)
+- [$impl_box] Implement part A (SP=3)
+- [ ] Review step implementation (SP=1)
+EOF
+}
+
+build_runtime_ears() {
+  cat <<'EOF'
+### Requirement 1 Demo
+- demo
+EOF
+}
+
 setup_repo() {
   local repo_dir="$1"
   local impl_checked="$2"
   local ordered_mode="$3"
+  local source_dir="$4"
+  local project_id="$5"
+  local feature_id="$6"
 
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" \
     "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind"
@@ -114,14 +197,12 @@ EOF
     impl_box="x"
   fi
 
-  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<EOF
-### Step 1.1 Demo
-Est. step total: 5 SP
-#### Assigned: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
-- [x] Plan and discuss the step (SP=1)
-- [$impl_box] Implement part A (SP=3)
-- [ ] Review step implementation (SP=1)
-EOF
+  local plan_body ears_body
+  plan_body="$(build_runtime_plan "$impl_box")"
+  ears_body="$(build_runtime_ears)"
+
+  printf '%s' "$plan_body" >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md"
+  printf '%s' "$ears_body" >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md"
 
   local ordered_block=""
   case "$ordered_mode" in
@@ -143,7 +224,7 @@ EOF
       ;;
   esac
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<EOF
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-${feature_id}.md" <<EOF
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 $ordered_block
@@ -151,12 +232,12 @@ $ordered_block
 - [x] FR-1.1-001 The system SHALL implement part A behavior. EARS[REQ-1]
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-demo-design.md" <<'EOF'
 ## Proposal / Design Details
 - demo
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1-${feature_id}.md" <<'EOF'
 # Review Result: Step 1.1
 ## Disposition (per issue)
 - None.
@@ -189,8 +270,10 @@ EOF
 # User review rules
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/project_overmind.yaml" <<'EOF'
-worker_uuid: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  cat >"$repo_dir/.asdlc_worker/project_overmind.yaml" <<EOF
+overmind_source_path: '$source_dir'
+project_id: '$project_id'
+worker_uuid: '$WORKER_UUID'
 class: 'platform'
 status: 'ready'
 EOF
@@ -199,30 +282,44 @@ EOF
 # AGENTS
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
-### Requirement 1 Demo
-- demo
+  # Orchestrator writes .asdlc_worker/feature_meta_sync.yaml during runtime context
+  # setup and emits log/prompt artifacts under .asdlc_worker/logs and
+  # .asdlc_worker/prompts. Ignore them so the user_review branch handoff sees a
+  # clean working tree on the runtime branch.
+  cat >"$repo_dir/.gitignore" <<'EOF'
+.asdlc_worker/feature_meta_sync.yaml
+.asdlc_worker/logs/
+.asdlc_worker/prompts/
+model-ran.flag
 EOF
 
   (
     cd "$repo_dir"
-    git init -q
+    git init -q -b master
     git config user.name "Test User"
     git config user.email "test@example.com"
     git add .
     git commit -qm "seed"
-    git checkout -qb step-1.1-implementation
+    # Create the implementation branch the user_review handoff forks from.
+    git branch step-1.1-feature-demo-implementation
+    # Pre-create the runtime branch so the orchestrator's slow-path checkout
+    # finds it rather than creating it from a transient HEAD.
+    git branch overmind
   )
+
+  init_project_repo "$source_dir" "$project_id" "$WORKER_UUID"
+  create_feature "$source_dir" "$feature_id" "$plan_body" "$ears_body"
 }
 
 test_user_review_fails_fast_when_ordered_plan_unchecked() {
   local repo_dir="$TMP_ROOT/repo-fail-fast-ordered-unchecked"
-  setup_repo "$repo_dir" 1 unchecked
+  local source_dir="$TMP_ROOT/source-fail-fast-ordered-unchecked"
+  setup_repo "$repo_dir" 1 unchecked "$source_dir" "project-fail-unchecked" "feature-demo"
 
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -240,12 +337,13 @@ test_user_review_fails_fast_when_ordered_plan_unchecked() {
 
 test_user_review_normalizes_plain_ordered_bullets_to_unchecked() {
   local repo_dir="$TMP_ROOT/repo-normalize-plain-ordered"
-  setup_repo "$repo_dir" 1 plain
+  local source_dir="$TMP_ROOT/source-normalize-plain-ordered"
+  setup_repo "$repo_dir" 1 plain "$source_dir" "project-normalize-plain" "feature-demo"
 
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -261,31 +359,36 @@ test_user_review_normalizes_plain_ordered_bullets_to_unchecked() {
 
 test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked() {
   local repo_dir="$TMP_ROOT/repo-pass-ordered-checked"
-  setup_repo "$repo_dir" 0 checked
+  local source_dir="$TMP_ROOT/source-pass-ordered-checked"
+  setup_repo "$repo_dir" 0 checked "$source_dir" "project-pass-checked" "feature-demo"
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.1 >/tmp/user-review-tests.out 2>/tmp/user-review-tests.err
+    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/user-review-tests.out 2>/tmp/user-review-tests.err
   )
 
   assert_file_exists "$repo_dir/model-ran.flag"
-  assert_branch_equals "$repo_dir" "step-1.1-user-review"
+  assert_branch_equals "$repo_dir" "step-1.1-feature-demo-user-review"
 }
 
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
   local repo_dir="$TMP_ROOT/repo-unsafe-state"
-  setup_repo "$repo_dir" 1 checked
+  local source_dir="$TMP_ROOT/source-unsafe-state"
+  setup_repo "$repo_dir" 1 checked "$source_dir" "project-unsafe-state" "feature-demo"
 
+  # Start the orchestrator on the runtime branch with a dirty tracked file so
+  # the user_review handoff sees uncommitted changes on a non-implementation
+  # branch and refuses to fork the user-review branch.
   (
     cd "$repo_dir"
-    git checkout -qb scratch-branch
+    git checkout -q overmind
     echo "# dirty" >>AGENTS.md
   )
 
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -293,17 +396,20 @@ test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
     echo "Assertion failed: user_review must fail when branch handoff is unsafe" >&2
     exit 1
   fi
-  assert_contains "$out" "User review branch must be created from step-1.1-implementation"
+  assert_contains "$out" "User review branch must be created from step-1.1-feature-demo-implementation"
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
 test_user_review_prompt_uses_ordered_plan_state_only() {
   local repo_dir="$TMP_ROOT/repo-user-review-prompt-ordered-only"
-  setup_repo "$repo_dir" 0 checked
+  local source_dir="$TMP_ROOT/source-user-review-prompt-ordered-only"
+  setup_repo "$repo_dir" 0 checked "$source_dir" "project-prompt-ordered-only" "feature-demo"
 
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_user_review.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/user_review_prompts/test.prompt.txt >/dev/null
+    ASDLC_RUNTIME_PLAN_PATH="$source_dir/feature-demo/implementation_plan.md" \
+    ASDLC_RUNTIME_EARS_PATH="$source_dir/feature-demo/requirements_ears.md" \
+    .asdlc_worker/scripts/ai_user_review.sh --step 1.1 --feature-id feature-demo --step-plan .asdlc_worker/step_plans/step-1.1-feature-demo.md --design .asdlc_worker/step_designs/step-1.1-feature-demo-design.md --out .asdlc_worker/prompts/user_review_prompts/test.prompt.txt >/dev/null
   )
 
   local prompt
@@ -317,20 +423,26 @@ test_user_review_prompt_uses_ordered_plan_state_only() {
 
 test_user_review_fails_when_functional_requirements_unchecked() {
   local repo_dir="$TMP_ROOT/repo-functional-requirements-incomplete"
-  setup_repo "$repo_dir" 1 checked
+  local source_dir="$TMP_ROOT/source-functional-requirements-incomplete"
+  setup_repo "$repo_dir" 1 checked "$source_dir" "project-functional-incomplete" "feature-demo"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-demo.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [x] 1. Implement part A.
 ## Functional Requirements (translated from design EARS)
 - [ ] FR-1.1-001 The system SHALL implement part A behavior. EARS[REQ-1]
 EOF
+  (
+    cd "$repo_dir"
+    git add .asdlc_worker/step_plans/step-1.1-feature-demo.md
+    git commit -qm "make functional requirements unchecked"
+  )
 
   local status=0
   local out=""
   set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.1 2>&1)"
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1)"
   status=$?
   set -e
 
@@ -346,7 +458,8 @@ EOF
 
 test_user_review_does_not_block_on_invalid_user_review_update() {
   local repo_dir="$TMP_ROOT/repo-user-review-invalid-ur-allowed"
-  setup_repo "$repo_dir" 1 checked
+  local source_dir="$TMP_ROOT/source-user-review-invalid-ur-allowed"
+  setup_repo "$repo_dir" 1 checked "$source_dir" "project-invalid-ur" "feature-demo"
 
   cat >"$repo_dir/.asdlc_worker/scripts/fake_model.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -372,7 +485,7 @@ EOF
 
   local status=0
   set +e
-  (cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.1 >/tmp/user-review-invalid-ur.out 2>/tmp/user-review-invalid-ur.err)
+  (cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/user-review-invalid-ur.out 2>/tmp/user-review-invalid-ur.err)
   status=$?
   set -e
 
@@ -381,7 +494,7 @@ EOF
     exit 1
   fi
   assert_file_exists "$repo_dir/model-ran.flag"
-  assert_branch_equals "$repo_dir" "step-1.1-user-review"
+  assert_branch_equals "$repo_dir" "step-1.1-feature-demo-user-review"
 }
 
 test_user_review_fails_fast_when_ordered_plan_unchecked

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
-### Requirement: Step artifact filenames include selected feature identity when a feature is active
-When the orchestrator executes a step under a selected feature, per-step artifacts SHALL use feature-qualified filenames: `step-<N>-<feature-id>.md` for step plans, `step-<N>-<feature-id>-design.md` for step designs, and `review_result-<N>-<feature-id>.md` for review results. When no feature is selected, artifact filenames SHALL remain `step-<N>.md`, `step-<N>-design.md`, and `review_result-<N>.md`.
+### Requirement: Step artifact filenames include selected feature identity
+When the orchestrator executes a step, per-step artifacts SHALL use feature-qualified filenames: `step-<N>-<feature-id>.md` for step plans, `step-<N>-<feature-id>-design.md` for step designs, and `review_result-<N>-<feature-id>.md` for review results. Feature selection is required for every routed step, so `SELECTED_FEATURE_ID` is always non-empty at the point artifacts are written.
 
 #### Scenario: Step plan written with feature identity
 - **WHEN** orchestrator runs the planning phase for step N under selected feature `auth-system`
@@ -15,12 +15,8 @@ When the orchestrator executes a step under a selected feature, per-step artifac
 - **WHEN** orchestrator runs the ai-audit phase for step N under selected feature `auth-system`
 - **THEN** the review result is written to `step_review_results/review_result-N-auth-system.md`
 
-#### Scenario: Standalone step artifacts are not feature-qualified
-- **WHEN** orchestrator executes a step with no selected feature (`SELECTED_FEATURE_ID` is empty)
-- **THEN** artifact filenames use the existing step-only naming without a feature qualifier
-
-### Requirement: Phase scripts produce feature-qualified artifact paths when feature ID is supplied
-Each phase script (`ai_plan.sh`, `ai_implementation.sh`, `ai_user_review.sh`, `ai_audit.sh`) SHALL accept a mechanism to receive the feature identity and SHALL use it to qualify all step artifact paths it creates or reads within that invocation.
+### Requirement: Phase scripts produce feature-qualified artifact paths
+Each phase script (`ai_plan.sh`, `ai_implementation.sh`, `ai_user_review.sh`, `ai_audit.sh`) SHALL accept a feature-identity argument and SHALL use it to qualify all step artifact paths it creates or reads within that invocation.
 
 #### Scenario: ai_plan.sh writes feature-qualified step plan
 - **WHEN** `ai_plan.sh` is invoked with feature identity `auth-system` for step N
@@ -45,17 +41,13 @@ Helpers that extract the step number from a feature-qualified artifact filename 
 - **WHEN** the design filename is `step-2-auth-system-design.md`
 - **THEN** step extraction returns `2`
 
-#### Scenario: Step extracted from standalone plan filename is unchanged
-- **WHEN** the plan filename is `step-2.md`
-- **THEN** step extraction returns `2`
-
-### Requirement: Latest step plan lookup filters by feature identity when a feature is active
-When resolving the latest step plan and a feature is selected, the lookup SHALL match only feature-qualified plans for that feature. When no feature is selected, the lookup SHALL match only step-only plans.
+### Requirement: Latest step plan lookup filters by feature identity
+When resolving the latest step plan, the lookup SHALL match only feature-qualified plans for the active feature so that another feature's plans are never selected by accident.
 
 #### Scenario: Latest plan resolved to feature-qualified file
 - **WHEN** step plan directory contains `step-1-auth-system.md` and `step-2-auth-system.md` and selected feature is `auth-system`
 - **THEN** `get_latest_step_plan` returns `step-2-auth-system.md`
 
-#### Scenario: Feature-qualified files are excluded from standalone latest resolution
-- **WHEN** step plan directory contains `step-1.md`, `step-2-auth-system.md` and no feature is selected
-- **THEN** `get_latest_step_plan` returns `step-1.md` and does not consider `step-2-auth-system.md`
+#### Scenario: Other feature's plans are excluded from latest resolution
+- **WHEN** step plan directory contains `step-1-auth-system.md` and `step-2-billing.md` and selected feature is `auth-system`
+- **THEN** `get_latest_step_plan` returns `step-1-auth-system.md` and does not consider `step-2-billing.md`

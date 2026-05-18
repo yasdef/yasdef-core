@@ -27,4 +27,4 @@ Template:
   - Include key rules or constraints.
 - **Consequences**:
   - Note the impact on behavior, risk, or maintenance.
-- **Related**: `.asdlc_worker/overmind/reqirements_ears.md` (REQ-XX), `.asdlc_worker/overmind/implementation_plan.md` (Step X.Y), `src/main/java/...`
+- **Related**: `../my-asdlc-project/feature-name/requirements_ears.md` (REQ-XX), `../my-asdlc-project/feature-name/implementation_plan.md` (Step X.Y), `src/main/java/...`

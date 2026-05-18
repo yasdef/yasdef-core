@@ -183,6 +183,7 @@ test_init_bootstraps_existing_git_root() {
   assert_contains "$(cat "$runtime_dir/asdlc_worker.yaml")" "worker_repo_root: '$repo_resolved'"
   assert_line_count "1" ".asdlc_worker/scripts" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".asdlc_worker/feature_meta_sync.yaml" "$repo_dir/.git/info/exclude"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/blocker_log.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/decisions.md"
@@ -272,6 +273,36 @@ test_init_fails_when_target_input_is_empty() {
   assert_contains "$out" "Input cannot be empty."
 }
 
+test_init_exclude_entry_for_feature_meta_sync_is_idempotent() {
+  local repo_dir="$TMP_ROOT/repo-idempotent-exclude"
+  local runtime_dir="$repo_dir/.asdlc_worker"
+
+  mkdir -p "$repo_dir"
+  seed_repo "$repo_dir"
+  run_init_runtime "$repo_dir" >/dev/null
+  run_init_runtime "$repo_dir" >/dev/null
+
+  assert_line_count "1" ".asdlc_worker/feature_meta_sync.yaml" "$repo_dir/.git/info/exclude"
+}
+
+test_init_does_not_create_overmind_runtime_mirror_files() {
+  local repo_dir="$TMP_ROOT/repo-no-runtime-mirror"
+  local runtime_dir="$repo_dir/.asdlc_worker"
+
+  mkdir -p "$repo_dir"
+  seed_repo "$repo_dir"
+  run_init_runtime "$repo_dir" >/dev/null
+
+  if [[ -f "$runtime_dir/overmind/implementation_plan.md" ]]; then
+    echo "Assertion failed: init should not create $runtime_dir/overmind/implementation_plan.md" >&2
+    exit 1
+  fi
+  if [[ -f "$runtime_dir/overmind/requirements_ears.md" ]]; then
+    echo "Assertion failed: init should not create $runtime_dir/overmind/requirements_ears.md" >&2
+    exit 1
+  fi
+}
+
 test_init_fails_when_target_missing
 test_init_fails_when_target_is_not_directory
 test_init_fails_when_target_is_nested_inside_git_repo
@@ -280,5 +311,7 @@ test_init_git_inits_repo_when_missing
 test_update_preserves_local_state_and_is_idempotent
 test_init_stashes_unrelated_changes_after_install_commit
 test_init_fails_when_target_input_is_empty
+test_init_exclude_entry_for_feature_meta_sync_is_idempotent
+test_init_does_not_create_overmind_runtime_mirror_files
 
 echo "init_asdlc_worker_tests: PASS"

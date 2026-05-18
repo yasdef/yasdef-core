@@ -4,7 +4,7 @@ This file records architectural and implementation decisions that affect correct
 
 Rules:
 - Put **decisions** here (the “why”), not in `.asdlc_worker/blocker_log.md`.
-- Put **unknowns/blockers** in `.asdlc_worker/blocker_log.md` under an in-progress step in `.asdlc_worker/overmind/implementation_plan.md`.
+- Put **unknowns/blockers** in `.asdlc_worker/blocker_log.md` under an in-progress step in the implementation plan at `$ASDLC_RUNTIME_PLAN_PATH`.
 
 Template:
 - **ID**: ADR-XXXX

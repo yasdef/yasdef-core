@@ -12,10 +12,10 @@ DECISIONS_FILE="$ASDLC_DECISIONS_FILE"
 BLOCKER_LOG_FILE="$ASDLC_BLOCKER_LOG_FILE"
 OPEN_QUESTIONS_FILE="$ASDLC_OPEN_QUESTIONS_FILE"
 USER_REVIEW_FILE="$ASDLC_USER_REVIEW_FILE"
-IMPLEMENTATION_PLAN_PRIMARY="$ASDLC_RUNTIME_PLAN_PATH"
-RUNTIME_REQUIREMENTS_PATH="$ASDLC_RUNTIME_EARS_PATH"
+IMPLEMENTATION_PLAN_PRIMARY=""
+RUNTIME_REQUIREMENTS_PATH=""
 PROJECT_BINDING_FILE="$ASDLC_BINDING_FILE"
-FEATURE_SYNC_FILE="$ASDLC_FEATURE_SYNC_FILE"
+FEATURE_META_SYNC_FILE="$ASDLC_WORKER_HOME/feature_meta_sync.yaml"
 RUNTIME_BRANCH="overmind"
 
 # Run all child commands from repository root for consistent sandbox/workspace resolution.
@@ -24,7 +24,6 @@ cd "$ROOT"
 DRY_RUN=0
 DEBUG_MODE=0
 FEATURE_RICH_DESIGN_PLANNING=0
-STANDALONE_MODE=0
 REQUESTED_PHASES=()
 PLAN_ARGS=()
 RAN_AI_AUDIT=0
@@ -63,10 +62,11 @@ FEATURE_CONTEXT_RESUME_MODE=0
 BOUND_PROJECT_SYNC_READY=0
 RUNTIME_BRANCH_SYNC_READY=0
 START_BRANCH_VALIDATED=0
+CURRENT_FEATURE_SWITCH_FROM_ID=""
 
 usage() {
   cat <<'EOF'
-Usage: .asdlc_worker/scripts/orchestrator.sh [--resume <step>] [--debug] [--feature-rich-design-planning] [--standalone] [--dry-run] [--help] [-- <phase-script args>]
+Usage: .asdlc_worker/scripts/orchestrator.sh [--resume <step>] [--debug] [--feature-rich-design-planning] [--dry-run] [--help] [-- <phase-script args>]
 
 Default behavior:
   - Runs all phases in .asdlc_worker/setup/models.md, in order, then runs post_review.
@@ -80,7 +80,6 @@ Default behavior:
   - --debug enables per-step/per-phase artifact files for logs and prompts.
   - --feature-rich-design-planning enables an opt-in richer contract for design/planning prompts only.
   - --feature-rich-design-planning does not change implementation/user_review/ai_audit/post_review behavior.
-  - --standalone bypasses ASDLC feature discovery/read-copy flow and uses local overmind runtime artifacts directly.
   - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
   - When running interactively, asks for confirmation before planning/implementation/user_review/ai_audit.
   - If interactive confirmation is denied for any phase, orchestration stops immediately and does not prompt downstream phases in that run.
@@ -94,7 +93,6 @@ Examples:
   .asdlc_worker/scripts/orchestrator.sh --resume 1.3
   .asdlc_worker/scripts/orchestrator.sh --resume 1.3 --dry-run
   .asdlc_worker/scripts/orchestrator.sh --feature-rich-design-planning -- --step 1.3
-  .asdlc_worker/scripts/orchestrator.sh --standalone -- --step 1.3
   .asdlc_worker/scripts/orchestrator.sh --debug -- --step 1.3
   .asdlc_worker/scripts/orchestrator.sh --dry-run
 EOF
@@ -192,8 +190,8 @@ ensure_ai_context_files() {
   if [[ -n "$SELECTED_STEP" ]]; then
     local _cb
     _cb="$(get_current_branch_name)"
-    if [[ "$_cb" != "step-$SELECTED_STEP-"* ]] \
-       && git -C "$ROOT" show-ref --verify --quiet "refs/heads/step-$SELECTED_STEP-plan" 2>/dev/null; then
+    if [[ "$_cb" != "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-"* ]] \
+       && git -C "$ROOT" show-ref --verify --quiet "refs/heads/step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan" 2>/dev/null; then
       _skip_ctx_files=1
     fi
   fi
@@ -572,6 +570,8 @@ run_planning_phase() {
     echo "orchestrator: resolved routed step '$step' for planning; injecting --step into ai_plan.sh." >&2
     plan_cmd+=(--step "$step")
   fi
+  plan_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
+  plan_cmd+=(--feature-id "$SELECTED_FEATURE_ID")
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     plan_cmd+=(--feature-rich-design-planning)
   fi
@@ -629,6 +629,18 @@ run_design_phase() {
     echo "orchestrator: resolved routed step '$step' for design; injecting --step into ai_design.sh." >&2
     design_cmd+=(--step "$step")
   fi
+  local _has_design_out=0
+  local _pi=0
+  while [[ $_pi -lt ${#PLAN_ARGS[@]} ]]; do
+    case "${PLAN_ARGS[$_pi]:-}" in
+      --design-out|--design-out=*) _has_design_out=1; break ;;
+    esac
+    _pi=$((_pi + 1))
+  done
+  if [[ "$_has_design_out" -eq 0 ]]; then
+    design_cmd+=(--design-out "$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md")
+  fi
+  design_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
   if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
     design_cmd+=(--feature-rich-design-planning)
   fi
@@ -691,6 +703,7 @@ make_sort_key() {
 }
 
 get_latest_step_plan() {
+  local feature_id="$1"
   local dir="$ASDLC_STEP_PLANS_DIR"
   if [[ ! -d "$dir" ]]; then
     echo "Step plan directory not found: $dir" >&2
@@ -704,15 +717,16 @@ get_latest_step_plan() {
     base="$(basename "$file")"
     step="${base#step-}"
     step="${step%.md}"
+    step="${step%%-*}"
     [[ -z "$step" ]] && continue
     local key
     key="$(make_sort_key "$step")"
     pairs+=("$key|$file")
-  done < <(find "$dir" -maxdepth 1 -type f -name 'step-*.md' -print)
+  done < <(find "$dir" -maxdepth 1 -type f -name "step-*-${feature_id}.md" -print)
 
   if [[ ${#pairs[@]} -eq 0 ]]; then
     echo "No step plans found in $dir." >&2
-    exit 1
+    return 1
   fi
 
   local latest
@@ -726,6 +740,7 @@ get_step_from_plan_path() {
   base="$(basename "$file")"
   step="${base#step-}"
   step="${step%.md}"
+  step="${step%%-*}"
   printf '%s' "$step"
 }
 
@@ -733,7 +748,7 @@ try_get_step_from_plan_path() {
   local file="$1"
   local base
   base="$(basename "$file")"
-  if [[ "$base" =~ ^step-(.+)\.md$ ]]; then
+  if [[ "$base" =~ ^step-([0-9][0-9.]*)(-.*)?\.md$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -742,10 +757,12 @@ try_get_step_from_plan_path() {
 
 get_step_from_design_path() {
   local file="$1"
-  local base
+  local base stem step
   base="$(basename "$file")"
   if [[ "$base" =~ ^step-(.+)-design\.md$ ]]; then
-    printf '%s' "${BASH_REMATCH[1]}"
+    stem="${BASH_REMATCH[1]}"
+    step="${stem%%-*}"
+    printf '%s' "$step"
     return 0
   fi
   return 1
@@ -823,10 +840,6 @@ load_project_binding() {
   fi
   if ! is_valid_uuid "$BINDING_WORKER_UUID"; then
     die "Binding file is invalid: worker_uuid is not canonical UUID in $(repo_relpath "$PROJECT_BINDING_FILE")."
-  fi
-
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    return 0
   fi
 
   if [[ -z "$BINDING_OVERMIND_SOURCE_PATH" ]]; then
@@ -972,23 +985,27 @@ bound_project_repo_relpath() {
 
 ensure_bound_project_git_ready() {
   local err=""
-
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    return 0
-  fi
+  local default_branch=""
+  local current_branch=""
 
   if [[ -z "$BOUND_PROJECT_PATH" ]]; then
     die "Default mode requires a bound ASDLC project repo path."
   fi
 
   if ! err="$(git -C "$BOUND_PROJECT_PATH" rev-parse --is-inside-work-tree 2>&1)"; then
-    die "Default mode requires the bound ASDLC project path to be a Git worktree with a configured upstream: $BOUND_PROJECT_PATH. Fix the repo checkout or run .asdlc_worker/scripts/orchestrator.sh --standalone."
+    die "Default mode requires the bound ASDLC project path to be a Git worktree: $BOUND_PROJECT_PATH. Fix the repo checkout."
   fi
-  if ! err="$(git -C "$BOUND_PROJECT_PATH" symbolic-ref --quiet HEAD 2>&1)"; then
-    die "Default mode requires the bound ASDLC project repo to be on a branch with a configured upstream: $BOUND_PROJECT_PATH. Check out a branch and rerun, or use .asdlc_worker/scripts/orchestrator.sh --standalone."
+
+  default_branch="$(git -C "$BOUND_PROJECT_PATH" symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's|^origin/||' || true)"
+  if [[ -z "$default_branch" ]]; then
+    default_branch="master"
   fi
-  if ! err="$(git -C "$BOUND_PROJECT_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>&1)"; then
-    die "Default mode requires the bound ASDLC project repo to have a configured upstream: $BOUND_PROJECT_PATH. Set the tracking branch and rerun, or use .asdlc_worker/scripts/orchestrator.sh --standalone."
+
+  current_branch="$(git -C "$BOUND_PROJECT_PATH" branch --show-current 2>/dev/null || true)"
+  if [[ "$current_branch" != "$default_branch" ]]; then
+    if ! err="$(git -C "$BOUND_PROJECT_PATH" checkout "$default_branch" 2>&1)"; then
+      die "Failed to checkout '$default_branch' in bound ASDLC project repo $BOUND_PROJECT_PATH: $err"
+    fi
   fi
 }
 
@@ -998,6 +1015,13 @@ run_bound_project_pull_rebase_or_die() {
 
   ensure_bound_project_git_ready
   if ! err="$(git -C "$BOUND_PROJECT_PATH" pull --rebase 2>&1)"; then
+    local dirty_plan=""
+    dirty_plan="$(git -C "$BOUND_PROJECT_PATH" diff --name-only HEAD -- '*/implementation_plan.md' 2>/dev/null | head -1 || true)"
+    if [[ -n "$dirty_plan" ]]; then
+      echo "Bound-source plan is dirty: $BOUND_PROJECT_PATH/$dirty_plan" >&2
+      echo "Commit, stash, or restore the plan before rerunning: git -C '$BOUND_PROJECT_PATH' restore -- '$dirty_plan'" >&2
+      exit 1
+    fi
     echo "Failed to sync the bound ASDLC project repo $sync_reason: $BOUND_PROJECT_PATH" >&2
     printf '%s\n' "$err" >&2
     echo "Resolve the ASDLC repo rebase conflict or dirty state in $BOUND_PROJECT_PATH and rerun orchestrator." >&2
@@ -1006,9 +1030,6 @@ run_bound_project_pull_rebase_or_die() {
 }
 
 ensure_bound_project_synced_for_default_mode() {
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    return 0
-  fi
   if [[ "$BOUND_PROJECT_SYNC_READY" -eq 1 ]]; then
     return 0
   fi
@@ -1168,74 +1189,92 @@ prompt_for_feature_selection_index() {
   local feature_ids=("$@")
   local selected=""
 
+  # Build display list, reordering to place CURRENT_FEATURE_SWITCH_FROM_ID first if found.
+  local -a display_ids=()
+  local -a orig_indices=()
+  local current_found_at=-1
+  local _pfi_i=0
+  while [[ $_pfi_i -lt ${#feature_ids[@]} ]]; do
+    if [[ -n "$CURRENT_FEATURE_SWITCH_FROM_ID" && "${feature_ids[$_pfi_i]}" == "$CURRENT_FEATURE_SWITCH_FROM_ID" ]]; then
+      current_found_at="$_pfi_i"
+    fi
+    _pfi_i=$((_pfi_i + 1))
+  done
+
+  if [[ "$current_found_at" -ge 0 ]]; then
+    display_ids+=("${feature_ids[$current_found_at]} (CURRENT)")
+    orig_indices+=("$current_found_at")
+    local _pfi_j=0
+    while [[ $_pfi_j -lt ${#feature_ids[@]} ]]; do
+      if [[ "$_pfi_j" -ne "$current_found_at" ]]; then
+        display_ids+=("${feature_ids[$_pfi_j]}")
+        orig_indices+=("$_pfi_j")
+      fi
+      _pfi_j=$((_pfi_j + 1))
+    done
+  else
+    local _pfi_k=0
+    while [[ $_pfi_k -lt ${#feature_ids[@]} ]]; do
+      display_ids+=("${feature_ids[$_pfi_k]}")
+      orig_indices+=("$_pfi_k")
+      _pfi_k=$((_pfi_k + 1))
+    done
+  fi
+
   if [[ ! -t 0 ]]; then
     die "Multiple candidate features were found for worker '$BINDING_WORKER_UUID'. Run in an interactive terminal to choose a feature."
   fi
 
   echo "Multiple candidate features found under project '$BINDING_PROJECT_ID' for worker '$BINDING_WORKER_UUID':" >&2
-  local i=0
-  while [[ $i -lt ${#feature_ids[@]} ]]; do
-    printf '  %d) %s\n' "$((i + 1))" "${feature_ids[$i]}" >&2
-    i=$((i + 1))
+  local _pfi_d=0
+  while [[ $_pfi_d -lt ${#display_ids[@]} ]]; do
+    printf '  %d) %s\n' "$((_pfi_d + 1))" "${display_ids[$_pfi_d]}" >&2
+    _pfi_d=$((_pfi_d + 1))
   done
 
   while true; do
     printf 'Select feature number: ' >&2
     IFS= read -r selected || selected=""
     selected="$(trim_whitespace "$selected")"
-    if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 ]] && [[ "$selected" -le "${#feature_ids[@]}" ]]; then
-      printf '%s' "$((selected - 1))"
+    if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 ]] && [[ "$selected" -le "${#display_ids[@]}" ]]; then
+      printf '%s' "${orig_indices[$((selected - 1))]}"
       return 0
     fi
-    echo "Invalid selection. Enter a number between 1 and ${#feature_ids[@]}." >&2
+    echo "Invalid selection. Enter a number between 1 and ${#display_ids[@]}." >&2
   done
 }
 
-write_feature_sync_metadata() {
+write_feature_meta_sync_metadata() {
   local selected_step="$1"
-  local tmp_path="${FEATURE_SYNC_FILE}.tmp"
+  local tmp_path="${FEATURE_META_SYNC_FILE}.tmp"
 
-  ensure_dir_writable "$(dirname "$FEATURE_SYNC_FILE")"
+  ensure_dir_writable "$(dirname "$FEATURE_META_SYNC_FILE")"
   {
     printf "project_id: '%s'\n" "$(yaml_quote_single "$BINDING_PROJECT_ID")"
-    printf "feature_id: '%s'\n" "$(yaml_quote_single "$SELECTED_FEATURE_ID")"
     printf "worker_uuid: '%s'\n" "$(yaml_quote_single "$BINDING_WORKER_UUID")"
-    printf "overmind_source_path: '%s'\n" "$(yaml_quote_single "$BINDING_OVERMIND_SOURCE_PATH")"
-    printf "bound_project_path: '%s'\n" "$(yaml_quote_single "$BOUND_PROJECT_PATH")"
-    printf "source_feature_path: '%s'\n" "$(yaml_quote_single "$SELECTED_FEATURE_PATH")"
-    printf "source_implementation_plan_path: '%s'\n" "$(yaml_quote_single "$SELECTED_SOURCE_PLAN_PATH")"
-    printf "source_requirements_ears_path: '%s'\n" "$(yaml_quote_single "$SELECTED_SOURCE_EARS_PATH")"
-    printf "runtime_implementation_plan_path: '%s'\n" "$(yaml_quote_single "$IMPLEMENTATION_PLAN_PRIMARY")"
-    printf "runtime_requirements_ears_path: '%s'\n" "$(yaml_quote_single "$RUNTIME_REQUIREMENTS_PATH")"
-    printf "runtime_branch: '%s'\n" "$(yaml_quote_single "$RUNTIME_BRANCH")"
-    printf "selection_mode: '%s'\n" "$(yaml_quote_single "$SELECTED_SELECTION_MODE")"
-    printf "requested_step: '%s'\n" "$(yaml_quote_single "$SELECTED_REQUESTED_STEP")"
+    printf "feature_id: '%s'\n" "$(yaml_quote_single "$SELECTED_FEATURE_ID")"
     printf "selected_step: '%s'\n" "$(yaml_quote_single "$selected_step")"
   } >"$tmp_path"
-  mv "$tmp_path" "$FEATURE_SYNC_FILE"
+  mv "$tmp_path" "$FEATURE_META_SYNC_FILE"
 }
 
-try_reuse_feature_sync_for_resume() {
+try_reuse_feature_meta_sync_for_resume() {
   local requested_step="$1"
   local feature_project_id=""
-  local feature_id=""
   local feature_worker_uuid=""
+  local feature_id=""
+  local selected_step=""
   local source_plan=""
   local source_ears=""
-  local runtime_branch=""
-  local selection_mode=""
 
-  if [[ ! -f "$FEATURE_SYNC_FILE" ]]; then
+  if [[ ! -f "$FEATURE_META_SYNC_FILE" ]]; then
     return 1
   fi
 
-  feature_project_id="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "project_id" || true)"
-  feature_id="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "feature_id" || true)"
-  feature_worker_uuid="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "worker_uuid" || true)"
-  source_plan="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "source_implementation_plan_path" || true)"
-  source_ears="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "source_requirements_ears_path" || true)"
-  runtime_branch="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "runtime_branch" || true)"
-  selection_mode="$(yaml_get_scalar "$FEATURE_SYNC_FILE" "selection_mode" || true)"
+  feature_project_id="$(yaml_get_scalar "$FEATURE_META_SYNC_FILE" "project_id" || true)"
+  feature_worker_uuid="$(yaml_get_scalar "$FEATURE_META_SYNC_FILE" "worker_uuid" || true)"
+  feature_id="$(yaml_get_scalar "$FEATURE_META_SYNC_FILE" "feature_id" || true)"
+  selected_step="$(yaml_get_scalar "$FEATURE_META_SYNC_FILE" "selected_step" || true)"
 
   if [[ "$feature_project_id" != "$BINDING_PROJECT_ID" ]]; then
     return 1
@@ -1243,13 +1282,17 @@ try_reuse_feature_sync_for_resume() {
   if [[ "$feature_worker_uuid" != "$BINDING_WORKER_UUID" ]]; then
     return 1
   fi
-  if [[ "$runtime_branch" != "$RUNTIME_BRANCH" ]]; then
+  if [[ -z "$feature_id" ]]; then
     return 1
   fi
-  if [[ -z "$feature_id" || -z "$source_plan" || -z "$source_ears" ]]; then
-    return 1
-  fi
+
+  source_plan="$BOUND_FEATURES_ROOT/$feature_id/implementation_plan.md"
+  source_ears="$BOUND_FEATURES_ROOT/$feature_id/requirements_ears.md"
+
   if [[ ! -f "$source_plan" || ! -f "$source_ears" ]]; then
+    return 1
+  fi
+  if ! grep -q '[^[:space:]]' "$source_ears"; then
     return 1
   fi
   if [[ -n "$requested_step" ]] && ! plan_has_assigned_step_for_worker "$source_plan" "$BINDING_WORKER_UUID" "$requested_step"; then
@@ -1257,22 +1300,23 @@ try_reuse_feature_sync_for_resume() {
   fi
 
   SELECTED_FEATURE_ID="$feature_id"
-  SELECTED_FEATURE_PATH="$(dirname "$source_plan")"
+  SELECTED_FEATURE_PATH="$BOUND_FEATURES_ROOT/$feature_id"
   SELECTED_SOURCE_PLAN_PATH="$source_plan"
   SELECTED_SOURCE_EARS_PATH="$source_ears"
   SELECTED_SELECTION_MODE="resume_reuse"
-  if [[ -n "$selection_mode" ]]; then
-    SELECTED_SELECTION_MODE="resume_reuse:$selection_mode"
-  fi
   SELECTED_REQUESTED_STEP="$requested_step"
   if [[ -n "$requested_step" ]]; then
     SELECTED_STEP="$requested_step"
+  elif [[ -n "$selected_step" ]]; then
+    SELECTED_STEP="$selected_step"
   fi
   return 0
 }
 
-mirror_selected_feature_to_runtime() {
+setup_feature_plan_paths() {
   local selected_step="$1"
+  local plan_rel=""
+  local plan_status=""
 
   if [[ ! -f "$SELECTED_SOURCE_PLAN_PATH" ]]; then
     die "Selected feature plan is missing: $SELECTED_SOURCE_PLAN_PATH"
@@ -1284,116 +1328,104 @@ mirror_selected_feature_to_runtime() {
     die "Selected feature requirements_ears.md is unusable (empty): $SELECTED_SOURCE_EARS_PATH"
   fi
 
-  ensure_dir_writable "$ASDLC_OVERMIND_DIR"
-  cp "$SELECTED_SOURCE_PLAN_PATH" "$IMPLEMENTATION_PLAN_PRIMARY"
-  cp "$SELECTED_SOURCE_EARS_PATH" "$RUNTIME_REQUIREMENTS_PATH"
-  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
+  if plan_rel="$(bound_project_repo_relpath "$SELECTED_SOURCE_PLAN_PATH" 2>/dev/null)"; then
+    if plan_status="$(git -C "$BOUND_PROJECT_PATH" status --short -- "$plan_rel" 2>/dev/null)"; then
+      if [[ -n "$plan_status" ]]; then
+        echo "orchestrator: bound-source plan has uncommitted changes: $SELECTED_SOURCE_PLAN_PATH" >&2
+        echo "Commit, stash, or restore the file in the bound project repo before rerunning:" >&2
+        echo "  git -C '$BOUND_PROJECT_PATH' commit -m 'save' -- '$plan_rel'" >&2
+        echo "  git -C '$BOUND_PROJECT_PATH' stash" >&2
+        echo "  git -C '$BOUND_PROJECT_PATH' restore -- '$plan_rel'" >&2
+        die "Bound-source plan is dirty: $SELECTED_SOURCE_PLAN_PATH"
+      fi
+    fi
+  fi
 
-  write_feature_sync_metadata "$selected_step"
+  IMPLEMENTATION_PLAN_PRIMARY="$SELECTED_SOURCE_PLAN_PATH"
+  RUNTIME_REQUIREMENTS_PATH="$SELECTED_SOURCE_EARS_PATH"
+  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
+  export ASDLC_RUNTIME_PLAN_PATH="$SELECTED_SOURCE_PLAN_PATH"
+  export ASDLC_RUNTIME_EARS_PATH="$SELECTED_SOURCE_EARS_PATH"
+
+  write_feature_meta_sync_metadata "$selected_step"
 }
 
-ensure_standalone_runtime_context() {
-  local requested_step="${1:-}"
-  local resume_mode="${2:-0}"
-  local analysis=""
-  local assigned_any=0
-  local requested_match=0
-  local first_unchecked=""
-  local blocked_by=""
 
-  if [[ "$FEATURE_CONTEXT_READY" -eq 1 ]] && [[ "$FEATURE_CONTEXT_REQUESTED_STEP" == "$requested_step" ]] && [[ "$FEATURE_CONTEXT_RESUME_MODE" -eq "$resume_mode" ]]; then
-    return 0
-  fi
-
-  load_project_binding
-  ensure_runtime_branch_checked_out
-
-  if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
-    die "Standalone mode requires local runtime plan: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-  fi
-  if [[ ! -f "$RUNTIME_REQUIREMENTS_PATH" ]]; then
-    die "Standalone mode requires local runtime EARS: $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH")."
-  fi
-  if ! grep -q '[^[:space:]]' "$RUNTIME_REQUIREMENTS_PATH"; then
-    die "Standalone mode requires non-empty local runtime EARS: $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH")."
-  fi
-
-  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
-  analysis="$(analyze_feature_plan_for_worker "$IMPLEMENTATION_PLAN_PRIMARY" "$BINDING_WORKER_UUID" "$requested_step")"
-  IFS='|' read -r assigned_any requested_match first_unchecked blocked_by <<<"$analysis"
-
-  if [[ -n "$requested_step" ]]; then
-    if [[ "$requested_match" -ne 1 ]]; then
-      die "Standalone mode could not find requested step '$requested_step' assigned to worker '$BINDING_WORKER_UUID' in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-    fi
-    SELECTED_STEP="$requested_step"
-  else
-    if [[ "$assigned_any" -eq 0 ]]; then
-      die "Standalone mode found no steps assigned to worker '$BINDING_WORKER_UUID' in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-    fi
-    if [[ -z "$first_unchecked" ]]; then
-      if [[ -n "$blocked_by" ]]; then
-        die "Standalone mode: assigned step for worker '$BINDING_WORKER_UUID' is blocked by step '$blocked_by' in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-      fi
-      die "Standalone mode found assigned steps for worker '$BINDING_WORKER_UUID' but all assigned checklist bullets are complete in $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")."
-    fi
-    SELECTED_STEP="$first_unchecked"
-  fi
-
-  SELECTED_FEATURE_ID=""
-  SELECTED_FEATURE_PATH="$ASDLC_OVERMIND_DIR"
-  SELECTED_SOURCE_PLAN_PATH=""
-  SELECTED_SOURCE_EARS_PATH=""
-  SELECTED_SELECTION_MODE="standalone_local"
-  SELECTED_REQUESTED_STEP="$requested_step"
-
-  FEATURE_CONTEXT_READY=1
-  FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
-  FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
-  echo "orchestrator: selected standalone step '$SELECTED_STEP' for worker '$BINDING_WORKER_UUID' from $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
+_prompt_exhausted_feature_cleanup() {
+  printf '\nFeature '\''%s'\'' is exhausted — all assigned bullets are complete.\n' "$SELECTED_FEATURE_ID" >&2
+  printf 'To start a new feature, .asdlc_worker/feature_meta_sync.yaml must be removed.\n\n' >&2
+  printf '  1. Yes, delete it for me\n' >&2
+  printf '  2. Dismissed, I'\''ll do it myself\n\n' >&2
+  local choice
+  while true; do
+    printf 'Choose 1 or 2: ' >&2
+    IFS= read -r choice
+    case "$choice" in
+      1)
+        rm -f "$FEATURE_META_SYNC_FILE"
+        echo "feature_meta_sync.yaml deleted. Re-run orchestrator to select a new feature." >&2
+        exit 0
+        ;;
+      2)
+        echo "Remove .asdlc_worker/feature_meta_sync.yaml when ready, then re-run orchestrator." >&2
+        exit 0
+        ;;
+      *)
+        printf 'Invalid choice. ' >&2
+        ;;
+    esac
+  done
 }
 
 _try_fast_path_feature_context() {
   local requested_step="$1"
   local resume_mode="$2"
-  local current_branch=""
 
-  if ! try_reuse_feature_sync_for_resume "$requested_step"; then
+  if ! try_reuse_feature_meta_sync_for_resume "$requested_step"; then
     return 1
   fi
 
-  if [[ -z "$SELECTED_STEP" ]]; then
-    local _fa _ri _fu _analysis
+  if [[ -z "$requested_step" ]]; then
+    local _fa _ri _fu _bb _analysis
     _analysis="$(analyze_feature_plan_for_worker "$SELECTED_SOURCE_PLAN_PATH" "$BINDING_WORKER_UUID" "")"
     IFS='|' read -r _fa _ri _fu _bb <<<"$_analysis"
-    if [[ -z "$_fu" ]]; then
-      return 1
-    fi
-    SELECTED_STEP="$_fu"
-  fi
-
-  # Clean up orchestrator-created untracked files left on the runtime branch so
-  # that phase scripts can checkout the step branch without conflicts.
-  current_branch="$(get_current_branch_name)"
-  if [[ "$current_branch" == "$RUNTIME_BRANCH" ]]; then
-    local _f
-    for _f in "$IMPLEMENTATION_PLAN_PRIMARY" "$RUNTIME_REQUIREMENTS_PATH" \
-              "$BLOCKER_LOG_FILE" "$OPEN_QUESTIONS_FILE" \
-              "$USER_REVIEW_FILE" "$DECISIONS_FILE" "$HISTORY_FILE"; do
-      if [[ -f "$_f" ]] && ! git -C "$ROOT" ls-files --error-unmatch -- "$_f" >/dev/null 2>&1; then
-        rm -f "$_f"
+    if [[ -n "$_fu" ]]; then
+      SELECTED_STEP="$_fu"
+      if [[ "$resume_mode" -eq 0 && -t 0 ]]; then
+        printf '\nCurrent feature: '\''%s'\'' (step %s)\n\n' "$SELECTED_FEATURE_ID" "$_fu" >&2
+        printf '  1. Proceed with current feature\n' >&2
+        printf '  2. Change feature\n\n' >&2
+        local _choice
+        while true; do
+          printf 'Choose 1 or 2: ' >&2
+          IFS= read -r _choice
+          case "$_choice" in
+            1) break ;;
+            2)
+              CURRENT_FEATURE_SWITCH_FROM_ID="$SELECTED_FEATURE_ID"
+              SELECTED_FEATURE_ID=""
+              SELECTED_FEATURE_PATH=""
+              SELECTED_SOURCE_PLAN_PATH=""
+              SELECTED_SOURCE_EARS_PATH=""
+              SELECTED_STEP=""
+              return 1
+              ;;
+            *) printf 'Invalid choice. ' >&2 ;;
+          esac
+        done
       fi
-    done
-  fi
-
-  if [[ "$resume_mode" -eq 1 && "$current_branch" != "$RUNTIME_BRANCH" ]]; then
-    if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" || ! -f "$RUNTIME_REQUIREMENTS_PATH" ]]; then
-      die "Cannot resume on branch '$current_branch' because $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY") and $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH") are not both present there. Sync '$current_branch' with '$RUNTIME_BRANCH' branch to obtain these files and retry."
+    elif [[ -n "$_bb" ]]; then
+      die "Feature '$SELECTED_FEATURE_ID' is blocked: assigned step is gated by step '$_bb'."
+    else
+      if [[ -t 0 ]]; then
+        _prompt_exhausted_feature_cleanup
+      else
+        die "Feature '$SELECTED_FEATURE_ID' is exhausted — all assigned bullets are complete. Remove .asdlc_worker/feature_meta_sync.yaml to select a new feature."
+      fi
     fi
   fi
 
-  IMPLEMENTATION_PLAN_FILE="$IMPLEMENTATION_PLAN_PRIMARY"
-  write_feature_sync_metadata "$SELECTED_STEP"
+  setup_feature_plan_paths "$SELECTED_STEP"
   FEATURE_CONTEXT_READY=1
   FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
   FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
@@ -1412,7 +1444,7 @@ ensure_feature_runtime_context() {
 
   start_branch="$(get_current_branch_name)"
 
-  # Fast path: reuse existing feature sync without switching to the runtime branch.
+  # Fast path: reuse existing feature meta sync without switching to the runtime branch.
   # Only attempted when the binding file is accessible on the current branch.
   # Handles --resume runs and re-invocations on an already-started feature.
   # Starting from master must still reach overmind first so step branches fork
@@ -1420,6 +1452,7 @@ ensure_feature_runtime_context() {
   if [[ -n "$start_branch" ]] && [[ "$start_branch" != "master" ]] && [[ -f "$PROJECT_BINDING_FILE" ]]; then
     load_project_binding
     ensure_bound_project_synced_for_default_mode
+
     if _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
       return 0
     fi
@@ -1432,7 +1465,6 @@ ensure_feature_runtime_context() {
   ensure_bound_project_synced_for_default_mode
 
   if [[ "$start_branch" == "master" ]] && _try_fast_path_feature_context "$requested_step" "$resume_mode"; then
-    mirror_selected_feature_to_runtime "$SELECTED_STEP"
     return 0
   fi
 
@@ -1530,21 +1562,18 @@ ensure_feature_runtime_context() {
     die "Selected feature '$SELECTED_FEATURE_ID' has no runnable step for worker '$BINDING_WORKER_UUID'."
   fi
 
-  mirror_selected_feature_to_runtime "$SELECTED_STEP"
+  setup_feature_plan_paths "$SELECTED_STEP"
   FEATURE_CONTEXT_READY=1
   FEATURE_CONTEXT_REQUESTED_STEP="$requested_step"
   FEATURE_CONTEXT_RESUME_MODE="$resume_mode"
+  CURRENT_FEATURE_SWITCH_FROM_ID=""
   echo "orchestrator: selected feature '$SELECTED_FEATURE_ID' (mode=$SELECTED_SELECTION_MODE, project=$BINDING_PROJECT_ID, step=$SELECTED_STEP)." >&2
 }
 
 ensure_runtime_context() {
   local requested_step="${1:-}"
   local resume_mode="${2:-0}"
-  if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-    ensure_standalone_runtime_context "$requested_step" "$resume_mode"
-  else
-    ensure_feature_runtime_context "$requested_step" "$resume_mode"
-  fi
+  ensure_feature_runtime_context "$requested_step" "$resume_mode"
 }
 
 get_first_unchecked_step() {
@@ -1670,7 +1699,7 @@ get_current_branch_name() {
 
 get_step_from_branch_name() {
   local branch="$1"
-  if [[ "$branch" =~ ^step-(.+)-(plan|implementation|user-review|review|ai-audit)$ ]]; then
+  if [[ "$branch" =~ ^step-([0-9]+([.][0-9]+)*)-[^-].*-(plan|implementation|user-review|review|ai-audit)$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -1678,16 +1707,25 @@ get_step_from_branch_name() {
 }
 
 get_preferred_step_plan() {
-  local branch step plan
+  local branch step plan latest
   branch="$(get_current_branch_name)"
   if step="$(get_step_from_branch_name "$branch")"; then
-    plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
     if [[ -f "$plan" ]]; then
       printf '%s' "$plan"
       return 0
     fi
   fi
-  get_latest_step_plan
+  if latest="$(get_latest_step_plan "$SELECTED_FEATURE_ID" 2>/dev/null)"; then
+    printf '%s' "$latest"
+    return 0
+  fi
+  if [[ -n "$SELECTED_STEP" ]]; then
+    printf '%s' "$ASDLC_STEP_PLANS_DIR/step-$SELECTED_STEP-$SELECTED_FEATURE_ID.md"
+    return 0
+  fi
+  echo "No step plans found for feature '$SELECTED_FEATURE_ID'." >&2
+  return 1
 }
 
 build_model_prompt_arg() {
@@ -1711,13 +1749,16 @@ run_implementation_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
   fi
 
   if [[ ! -f "$latest_plan" ]]; then
+    if [[ "$DRY_RUN" -eq 1 && "$RESUME_MODE" -eq 0 ]]; then
+      return 0
+    fi
     echo "Step plan not found: $latest_plan" >&2
     exit 1
   fi
@@ -1729,7 +1770,7 @@ run_implementation_phase() {
 
   prompt_out="$(resolve_prompt_output_path "implementation" "$step")"
 
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1772,13 +1813,16 @@ run_user_review_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
   fi
 
   if [[ ! -f "$latest_plan" ]]; then
+    if [[ "$DRY_RUN" -eq 1 && "$RESUME_MODE" -eq 0 ]]; then
+      return 0
+    fi
     echo "Step plan not found: $latest_plan" >&2
     exit 1
   fi
@@ -1789,7 +1833,7 @@ run_user_review_phase() {
   fi
 
   prompt_out="$(resolve_prompt_output_path "user_review" "$step")"
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_user_review.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_user_review.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1832,13 +1876,16 @@ run_ai_audit_phase() {
   local latest_plan step prompt_out
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
   fi
 
   if [[ ! -f "$latest_plan" ]]; then
+    if [[ "$DRY_RUN" -eq 1 && "$RESUME_MODE" -eq 0 ]]; then
+      return 0
+    fi
     echo "Step plan not found: $latest_plan" >&2
     exit 1
   fi
@@ -1855,7 +1902,7 @@ run_ai_audit_phase() {
   fi
 
   prompt_out="$(resolve_prompt_output_path "ai_audit" "$step")"
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_audit.sh" --step-plan "$latest_plan" --out "$prompt_out")
+  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_audit.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1895,13 +1942,16 @@ run_post_review_phase() {
   local latest_plan step
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
-    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   else
     latest_plan="$(get_preferred_step_plan)"
     step="$(get_step_from_plan_path "$latest_plan")"
   fi
 
   if [[ ! -f "$latest_plan" ]]; then
+    if [[ "$DRY_RUN" -eq 1 && "$RESUME_MODE" -eq 0 ]]; then
+      return 0
+    fi
     echo "Step plan not found: $latest_plan" >&2
     exit 1
   fi
@@ -1912,7 +1962,7 @@ run_post_review_phase() {
   fi
 
   if [[ "$DRY_RUN" -eq 0 ]]; then
-    local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+    local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
     if [[ ! -f "$review_artifact" ]]; then
       echo "Cannot start post_review for step $step: ai_audit phase is incomplete." >&2
       echo "Run: .asdlc_worker/scripts/orchestrator.sh --resume $step" >&2
@@ -1920,7 +1970,7 @@ run_post_review_phase() {
     fi
   fi
 
-  local cmd=("$ASDLC_SCRIPTS_DIR/post_review.sh" --step "$step")
+  local cmd=("$ASDLC_SCRIPTS_DIR/post_review.sh" --step "$step" --feature-id "$SELECTED_FEATURE_ID")
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "post_review" "$step")")"
     echo "$(shell_join "${cmd[@]}")"
@@ -1967,48 +2017,13 @@ run_phase() {
   esac
 }
 
-run_phase_with_optional_feature_sync() {
-  local phase="$1"
-  run_phase "$phase"
-}
-
-copy_runtime_plan_worktree_to_file() {
-  local target_file="$1"
-  if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
-    return 1
-  fi
-  cp "$IMPLEMENTATION_PLAN_PRIMARY" "$target_file"
-}
-
-ensure_selected_source_plan_clean_before_sync() {
-  local plan_rel="$1"
-  local status_output=""
-
-  if ! status_output="$(git -C "$BOUND_PROJECT_PATH" status --short -- "$plan_rel" 2>&1)"; then
-    echo "Global implementation-plan sync failed while checking local ASDLC plan state for $SELECTED_SOURCE_PLAN_PATH." >&2
-    printf '%s\n' "$status_output" >&2
-    return 1
-  fi
-
-  if [[ -n "$status_output" ]]; then
-    echo "Global implementation-plan sync failed because the selected ASDLC feature plan already has local changes: $SELECTED_SOURCE_PLAN_PATH" >&2
-    echo "Clean, commit, or stash the local changes in $BOUND_PROJECT_PATH before rerunning orchestrator." >&2
-    return 1
-  fi
-
-  return 0
-}
-
-restore_selected_source_plan_from_head() {
-  local plan_rel="$1"
-  git -C "$BOUND_PROJECT_PATH" restore --source=HEAD --staged --worktree -- "$plan_rel" >/dev/null 2>&1 || true
-}
-
 commit_selected_source_plan_update_if_needed() {
   local step="$1"
   local plan_rel=""
   local err=""
   local commit_message=""
+
+  ensure_bound_project_git_ready
 
   if ! plan_rel="$(bound_project_repo_relpath "$SELECTED_SOURCE_PLAN_PATH")"; then
     echo "Global implementation-plan sync failed because the selected feature source plan is outside the bound ASDLC project repo." >&2
@@ -2029,7 +2044,6 @@ commit_selected_source_plan_update_if_needed() {
 
   commit_message="ASDLC plan sync: ${SELECTED_FEATURE_ID:-selected-feature} step $step"
   if ! err="$(git -C "$BOUND_PROJECT_PATH" commit -m "$commit_message" -- "$plan_rel" 2>&1)"; then
-    restore_selected_source_plan_from_head "$plan_rel"
     echo "Global implementation-plan sync failed while creating an ASDLC sync commit for $SELECTED_SOURCE_PLAN_PATH." >&2
     printf '%s\n' "$err" >&2
     return 1
@@ -2039,6 +2053,7 @@ commit_selected_source_plan_update_if_needed() {
 }
 
 run_bound_project_pull_rebase_for_outbound_sync() {
+  ensure_bound_project_git_ready
   local err=""
   if ! err="$(git -C "$BOUND_PROJECT_PATH" pull --rebase 2>&1)"; then
     echo "Global implementation-plan sync failed while rebasing the bound ASDLC project repo: $BOUND_PROJECT_PATH" >&2
@@ -2094,47 +2109,12 @@ prompt_for_outbound_sync_failure_action() {
 
 run_global_plan_sync_attempt() {
   local step="$1"
-  local tmp_runtime=""
-  local err=""
   local commit_status=0
 
   if [[ -z "$SELECTED_SOURCE_PLAN_PATH" ]]; then
     echo "Global implementation-plan sync failed because the selected feature source plan path is unknown." >&2
     return 1
   fi
-
-  local plan_rel=""
-  if ! plan_rel="$(bound_project_repo_relpath "$SELECTED_SOURCE_PLAN_PATH")"; then
-    echo "Global implementation-plan sync failed because the selected feature source plan is outside the bound ASDLC project repo." >&2
-    echo "Selected feature source plan: $SELECTED_SOURCE_PLAN_PATH" >&2
-    echo "Bound ASDLC project repo: $BOUND_PROJECT_PATH" >&2
-    return 1
-  fi
-  if ! ensure_selected_source_plan_clean_before_sync "$plan_rel"; then
-    return 1
-  fi
-
-  if [[ ! -f "$IMPLEMENTATION_PLAN_PRIMARY" ]]; then
-    echo "Global implementation-plan sync failed because the worker runtime implementation plan is missing: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
-    return 1
-  fi
-
-  tmp_runtime="$(mktemp)"
-  if ! copy_runtime_plan_worktree_to_file "$tmp_runtime"; then
-    rm -f "$tmp_runtime"
-    echo "Global implementation-plan sync failed because the worker runtime implementation plan could not be read: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY")." >&2
-    return 1
-  fi
-
-  if [[ ! -f "$SELECTED_SOURCE_PLAN_PATH" ]] || ! cmp -s "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH"; then
-    if ! err="$(cp "$tmp_runtime" "$SELECTED_SOURCE_PLAN_PATH" 2>&1)"; then
-      rm -f "$tmp_runtime"
-      echo "Global implementation-plan sync failed while copying the worker runtime implementation plan to $SELECTED_SOURCE_PLAN_PATH." >&2
-      printf '%s\n' "$err" >&2
-      return 1
-    fi
-  fi
-  rm -f "$tmp_runtime"
 
   if commit_selected_source_plan_update_if_needed "$step"; then
     commit_status=0
@@ -2177,10 +2157,10 @@ get_post_review_target_step() {
 
 run_global_plan_sync_before_post_review() {
   local step="$1"
-  local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local review_artifact="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
   local action=""
 
-  if [[ "$STANDALONE_MODE" -eq 1 || "$DRY_RUN" -eq 1 ]]; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
     return 0
   fi
   if [[ ! -f "$review_artifact" ]]; then
@@ -2492,7 +2472,7 @@ list_unchecked_functional_requirement_items() {
 
 phase_eval_functional_requirements_counts() {
   local step="$1"
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   local functional_section normalized_items
   local total=0
   local done=0
@@ -2537,7 +2517,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "missing_step_plan" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan not found: $ASDLC_STEP_PLANS_DIR/step-$step.md" >&2
+    echo "Step plan not found: $ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md" >&2
     echo "Implementation phase was not finished correctly because step plan is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2545,7 +2525,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "missing_section" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan gate requires section '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step.md." >&2
+    echo "Step plan gate requires section '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
     echo "Implementation phase was not finished correctly because ordered checklist section is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2553,7 +2533,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_state" == "no_checklist_items" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "No ordered plan checklist items were found under '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step.md." >&2
+    echo "No ordered plan checklist items were found under '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
     echo "Add ordered bullets as checklist items and mark them [x] only when each is proven complete." >&2
     echo "Implementation phase was not finished correctly because ordered checklist items are missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
@@ -2562,7 +2542,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
     local step_plan ordered_section normalized_items unchecked
-    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
     ordered_section="$(get_markdown_section_body "$step_plan" "## Plan (ordered)")"
     normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
     unchecked="$(list_unchecked_ordered_plan_items "$normalized_items")"
@@ -2580,7 +2560,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_state" == "missing_section" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-$step.md." >&2
+    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
     echo "Implementation phase was not finished correctly because functional requirements section is missing." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
     return 1
@@ -2588,7 +2568,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_state" == "no_items" ]]; then
     echo "Implementation exit gate failed for step $step." >&2
-    echo "No translated functional requirements were found in .asdlc_worker/step_plans/step-$step.md." >&2
+    echo "No translated functional requirements were found in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
     echo "Add entries like: - [ ] FR-$step-001 The system SHALL ... EARS[REQ-...]." >&2
     echo "Implementation phase was not finished correctly because functional requirements checklist is empty." >&2
     echo "Restart implementation with: $rerun_cmd" >&2
@@ -2597,7 +2577,7 @@ ensure_implementation_phase_completion_gate() {
 
   if [[ "$functional_done" -ne "$functional_total" ]]; then
     local step_plan functional_section normalized_fr unchecked_fr
-    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
     functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
     normalized_fr="$(list_normalized_functional_requirement_items "$functional_section")"
     unchecked_fr="$(list_unchecked_functional_requirement_items "$normalized_fr")"
@@ -2617,7 +2597,7 @@ ensure_implementation_phase_completion_gate() {
 
 phase_eval_ordered_plan_counts() {
   local step="$1"
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
   local ordered_section normalized_items
   local total=0
   local checked=0
@@ -2681,9 +2661,9 @@ check_required_sections() {
 
 evaluate_design_phase() {
   local step="$1"
-  local design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-design.md"
+  local design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
   if [[ ! -f "$design_file" ]]; then
-    phase_eval_set "design" "incomplete" "missing .asdlc_worker/step_designs/step-$step-design.md"
+    phase_eval_set "design" "incomplete" "missing .asdlc_worker/step_designs/step-$step-$SELECTED_FEATURE_ID-design.md"
     return 0
   fi
 
@@ -2694,7 +2674,7 @@ evaluate_planning_phase() {
   local step="$1"
   local counts="$2"
   local plan_checked have_review review_checked impl_total impl_checked
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
 
   IFS='|' read -r _ plan_checked have_review review_checked impl_total impl_checked <<<"$counts"
 
@@ -2709,7 +2689,7 @@ evaluate_planning_phase() {
 
 implementation_branch_exists_for_step() {
   local step="$1"
-  local branch="step-$step-implementation"
+  local branch="step-$step-$SELECTED_FEATURE_ID-implementation"
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 1
   fi
@@ -2718,7 +2698,7 @@ implementation_branch_exists_for_step() {
 
 is_implementation_complete_for_step() {
   local step="$1"
-  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
 
   if [[ -f "$review_file" ]]; then
     return 0
@@ -2737,23 +2717,23 @@ is_implementation_complete_for_step() {
 
 evaluate_implementation_phase() {
   local step="$1"
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step.md"
+  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
 
   if [[ ! -f "$step_plan" ]]; then
-    phase_eval_set "implementation" "invalid" "missing .asdlc_worker/step_plans/step-$step.md"
+    phase_eval_set "implementation" "invalid" "missing .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md"
     return 0
   fi
 
   if is_implementation_complete_for_step "$step"; then
-    phase_eval_set "implementation" "complete" "implementation marker detected (branch step-$step-implementation or later-phase artifact present)"
+    phase_eval_set "implementation" "complete" "implementation marker detected (branch step-$step-$SELECTED_FEATURE_ID-implementation or later-phase artifact present)"
   else
-    phase_eval_set "implementation" "incomplete" "missing implementation marker (expected branch step-$step-implementation)"
+    phase_eval_set "implementation" "incomplete" "missing implementation marker (expected branch step-$step-$SELECTED_FEATURE_ID-implementation)"
   fi
 }
 
 user_review_branch_exists_for_step() {
   local step="$1"
-  local branch="step-$step-user-review"
+  local branch="step-$step-$SELECTED_FEATURE_ID-user-review"
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 1
   fi
@@ -2762,7 +2742,7 @@ user_review_branch_exists_for_step() {
 
 is_user_review_complete_for_step() {
   local step="$1"
-  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
 
   if [[ -f "$review_file" ]]; then
     return 0
@@ -2780,15 +2760,15 @@ evaluate_user_review_phase() {
   if is_user_review_complete_for_step "$step"; then
     phase_eval_set "user_review" "complete" "user_review marker detected (step branch or review artifact present)"
   else
-    phase_eval_set "user_review" "incomplete" "missing user_review marker (expected branch step-$step-user-review)"
+    phase_eval_set "user_review" "incomplete" "missing user_review marker (expected branch step-$step-$SELECTED_FEATURE_ID-user-review)"
   fi
 }
 
 evaluate_ai_audit_phase() {
   local step="$1"
-  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step.md"
+  local review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$step-$SELECTED_FEATURE_ID.md"
   if [[ ! -f "$review_file" ]]; then
-    phase_eval_set "ai_audit" "incomplete" "missing .asdlc_worker/step_review_results/review_result-$step.md"
+    phase_eval_set "ai_audit" "incomplete" "missing .asdlc_worker/step_review_results/review_result-$step-$SELECTED_FEATURE_ID.md"
     return 0
   fi
 
@@ -2971,10 +2951,6 @@ while [[ $# -gt 0 ]]; do
       FEATURE_RICH_DESIGN_PLANNING=0
       shift
       ;;
-    --standalone)
-      STANDALONE_MODE=1
-      shift
-      ;;
     --help|-h)
       usage
       exit 0
@@ -2999,12 +2975,7 @@ if [[ "$RESUME_MODE" -eq 1 ]]; then
 else
   REQUESTED_STEP_FOR_FEATURE_CONTEXT="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
 fi
-if [[ "$STANDALONE_MODE" -eq 1 ]]; then
-  echo "orchestrator: standalone mode enabled; bypassing ASDLC feature discovery, remote validation, and artifact mirroring." >&2
-  echo "orchestrator: standalone mode runtime inputs: $(repo_relpath "$IMPLEMENTATION_PLAN_PRIMARY"), $(repo_relpath "$RUNTIME_REQUIREMENTS_PATH")." >&2
-else
-  echo "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled (<project-repo>/<feature-id>/implementation_plan.md + requirements_ears.md -> overmind runtime files)." >&2
-fi
+echo "orchestrator: default mode active; reading and writing plan/ears directly at bound-source paths." >&2
 ensure_runtime_context "$REQUESTED_STEP_FOR_FEATURE_CONTEXT" "$RESUME_MODE"
 
 if [[ "$RESUME_MODE" -eq 1 ]]; then
@@ -3055,7 +3026,7 @@ for phase in "${REQUESTED_PHASES[@]+"${REQUESTED_PHASES[@]}"}"; do
     if [[ "$phase_key" == "post_review" ]]; then
       run_global_plan_sync_before_post_review "$(get_post_review_target_step)"
     fi
-    run_phase_with_optional_feature_sync "$phase"
+    run_phase "$phase"
     if [[ "$phase_key" == "ai_audit" ]]; then
       RAN_AI_AUDIT=1
     fi

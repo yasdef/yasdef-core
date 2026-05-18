@@ -19,6 +19,7 @@ STEP_PLAN_GOLDEN="$ASDLC_GOLDEN_EXAMPLES_DIR/step_plan_GOLDEN_EXAMPLE.md"
 STEP=""
 OUT=""
 DESIGN_FILE=""
+FEATURE_ID=""
 INCLUDE_AGENTS=0
 BRANCH_NAME=""
 FEATURE_RICH_DESIGN_PLANNING=0
@@ -499,6 +500,11 @@ while [[ $# -gt 0 ]]; do
       BRANCH_NAME="$2"
       shift 2
       ;;
+    --feature-id)
+      require_option_arg "--feature-id" "${2:-}"
+      FEATURE_ID="$2"
+      shift 2
+      ;;
     --include-agents)
       INCLUDE_AGENTS=1
       shift
@@ -552,11 +558,11 @@ else
 fi
 
 if [[ -z "$OUT" ]]; then
-  OUT="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  OUT="$ASDLC_STEP_PLANS_DIR/step-$STEP-$FEATURE_ID.md"
 fi
 
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-$FEATURE_ID-design.md"
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
@@ -683,13 +689,13 @@ emit() {
   fi
   if [[ -n "$DESIGN_LAR_SECTION" ]]; then
     printf 'Linked Artifacts (in scope): after writing the step plan, invoke `.asdlc_worker/scripts/helpers/sync_step_lars.sh %s %s` to sync the ## Linked Artifacts (in scope) section deterministically; do not echo the block textually into the step plan.\n' "$STEP" "$out_label"
-    printf 'Fetch rule (planning): at the start of context-gathering, fetch each in-scope LAR locator using available web/MCP tooling and treat the fetched content as one more context input alongside .asdlc_worker/overmind/implementation_plan.md, .asdlc_worker/overmind/reqirements_ears.md, the design artifact, and ADRs. Route any fetch failure through existing ask-user mechanisms (.asdlc_worker/open_questions.md, .asdlc_worker/blocker_log.md, two-option prompts) using the standard "cannot resolve LAR-NNN (locator: ...). How should I proceed?" question pattern.\n'
   fi
   printf 'Before ending the planning phase, run `%s %s`.\n' "${PLANNING_READINESS_HELPER#"$ROOT"/}" "$STEP"
   printf 'If the readiness check fails, do not emit the final completion line. Follow the Planning Readiness Gate rules in `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.\n'
   printf 'Only after the Planning Readiness Gate is satisfied, end your final response with this exact last line: "Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."\n'
   printf 'Commit gate: when you commit planning artifacts, include both the step plan and the feature design artifact (do not commit only %s).\n' "$out_label"
   printf 'Minimum commit set (if changed): %s, %s\n' "$out_label" "$design_label"
+  printf 'Bound ASDLC repo rule: the implementation plan at `%s` is in the bound ASDLC repo, not the worker repo. When you mark bullets [x] there, commit that file directly on its current branch — do NOT create a new branch in the ASDLC repo. The orchestrator handles pushing that change.\n' "$PLAN"
   printf 'Write/update the step plan at: %s\n' "$OUT"
   printf 'Feature design artifact (required): %s\n' "$DESIGN_FILE"
   if [[ "$OPEN_QUESTIONS_HAS_ANY" -eq 1 ]]; then
@@ -700,7 +706,7 @@ emit() {
   printf 'Use golden examples from the context pack.\n'
   printf '\n'
   printf 'Context pack\n'
-  printf '== .asdlc_worker/overmind/implementation_plan.md (Step %s - %s) ==\n' "$STEP" "$STEP_TITLE"
+  printf '== %s (Step %s - %s) ==\n' "$PLAN" "$STEP" "$STEP_TITLE"
   printf '%s\n\n' "$STEP_SECTION"
   printf '== .asdlc_worker/step_designs/step-%s-design.md ==\n' "$STEP"
   cat "$DESIGN_FILE"

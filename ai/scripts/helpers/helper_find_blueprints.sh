@@ -109,10 +109,13 @@ resolve_feature_dir() {
     return 0
   fi
 
-  sync_feature_path="$(read_yaml_scalar "$FEATURE_SYNC_FILE" "source_feature_path" || true)"
-  if [[ -n "$sync_feature_path" && -d "$sync_feature_path" ]]; then
-    printf '%s' "$sync_feature_path"
-    return 0
+  if [[ -n "${ASDLC_RUNTIME_PLAN_PATH:-}" ]]; then
+    local plan_dir
+    plan_dir="$(dirname "$ASDLC_RUNTIME_PLAN_PATH")"
+    if [[ -d "$plan_dir" ]]; then
+      printf '%s' "$plan_dir"
+      return 0
+    fi
   fi
 
   return 1
@@ -130,7 +133,7 @@ fi
 
 FEATURE_DIR="$(resolve_feature_dir || true)"
 if [[ -z "$FEATURE_DIR" ]]; then
-  echo "Blueprint lookup failed: run this helper from an ASDLC feature folder with implementation_plan.md and requirements_ears.md, or provide .asdlc_worker/feature_sync.yaml with source_feature_path." >&2
+  echo "Blueprint lookup failed: run this helper from an ASDLC feature folder with implementation_plan.md and requirements_ears.md, or ensure ASDLC_RUNTIME_PLAN_PATH is set." >&2
   exit 1
 fi
 

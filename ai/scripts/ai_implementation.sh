@@ -16,12 +16,13 @@ STEP=""
 OUT=""
 STEP_PLAN=""
 DESIGN_FILE=""
+FEATURE_ID=""
 INCLUDE_AGENTS=0
 SKIP_BRANCH=0
 
 usage() {
   cat <<'USAGE'
-Usage: .asdlc_worker/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--include-agents] [--no-include-agents] [--no-branch]
+Usage: .asdlc_worker/scripts/ai_implementation.sh [--step 1.3] [--step-plan file] [--design file] [--out file] [--feature-id <id>] [--include-agents] [--no-include-agents] [--no-branch]
 
 Defaults:
   - If --step is omitted, uses the first unchecked bullet in .asdlc_worker/overmind/implementation_plan.md.
@@ -31,7 +32,7 @@ Defaults:
   - .asdlc_worker/decisions.md and .asdlc_worker/user_review.md are pointer-only by default; rely on design/step-plan extracted sections.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - --no-include-agents is accepted for compatibility and keeps pointer-only behavior.
-  - Always creates/switches to branch step-<step>-implementation.
+  - Always creates/switches to branch step-<step>-<feature-id>-implementation.
   - Use --no-branch to skip git branch creation/switch (prompt generation only).
 USAGE
 }
@@ -47,7 +48,7 @@ require_option_arg() {
 }
 
 ensure_implementation_branch() {
-  local target="step-$STEP-implementation"
+  local target="step-$STEP-$FEATURE_ID-implementation"
 
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "Not a git repository: $ROOT" >&2
@@ -143,7 +144,7 @@ derive_step_from_step_plan_path() {
   local file="$1"
   local base step
   base="$(basename "$file")"
-  if [[ "$base" =~ ^step-(.+)\.md$ ]]; then
+  if [[ "$base" =~ ^step-([0-9]+(\.[0-9]+)*) ]]; then
     step="${BASH_REMATCH[1]}"
     printf '%s' "$step"
     return 0
@@ -374,6 +375,11 @@ while [[ $# -gt 0 ]]; do
       DESIGN_FILE="$2"
       shift 2
       ;;
+    --feature-id)
+      require_option_arg "--feature-id" "${2:-}"
+      FEATURE_ID="$2"
+      shift 2
+      ;;
     --include-agents)
       INCLUDE_AGENTS=1
       shift
@@ -413,14 +419,14 @@ fi
 if [[ -z "$STEP" ]]; then
   line="$(get_next_unchecked)"
   if [[ -z "$line" ]]; then
-    echo "No unchecked bullets found in .asdlc_worker/overmind/implementation_plan.md." >&2
+    echo "No unchecked bullets found in $PLAN." >&2
     exit 1
   fi
   IFS='|' read -r STEP STEP_TITLE BULLET <<<"$line"
 else
   STEP_TITLE="$(get_step_title "$STEP")"
   if [[ -z "$STEP_TITLE" ]]; then
-    echo "Step $STEP not found in .asdlc_worker/overmind/implementation_plan.md." >&2
+    echo "Step $STEP not found in $PLAN." >&2
     exit 1
   fi
   BULLET="$(get_step_first_unchecked "$STEP")"
@@ -430,13 +436,23 @@ else
 fi
 
 if [[ -z "$STEP_PLAN" ]]; then
-  STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  if [[ -n "$FEATURE_ID" ]]; then
+    STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP-$FEATURE_ID.md"
+  else
+    STEP_PLAN="$ASDLC_STEP_PLANS_DIR/step-$STEP.md"
+  fi
 fi
 if [[ -z "$DESIGN_FILE" ]]; then
-  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-design.md"
+  DESIGN_FILE="$ASDLC_STEP_DESIGNS_DIR/step-$STEP-$FEATURE_ID-design.md"
 fi
 if [[ -z "$OUT" ]]; then
   OUT="$ASDLC_PROMPTS_DIR/impl_prompts/${PROJECT}-step-$STEP.prompt.txt"
+fi
+
+if [[ ! -f "$STEP_PLAN" ]]; then
+  echo "Step plan not found at $STEP_PLAN." >&2
+  echo "Run .asdlc_worker/scripts/ai_plan.sh --step $STEP first." >&2
+  exit 1
 fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then

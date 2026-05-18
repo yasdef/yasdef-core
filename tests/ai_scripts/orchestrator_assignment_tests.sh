@@ -95,6 +95,10 @@ expect {
     send_next
     exp_continue
   }
+  -re {Select feature number: $} {
+    send_next
+    exp_continue
+  }
   eof
 }
 catch wait result
@@ -246,22 +250,6 @@ EOF
   commit_project_repo_changes "$source_dir" "add feature $feature_id"
 }
 
-write_local_overmind_runtime() {
-  local repo_dir="$1"
-  local worker_uuid="$2"
-  local step="${3:-1.7}"
-
-  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<EOF
-### Step $step Local runtime step
-#### Assigned: $worker_uuid
-- [ ] Plan and discuss the step (SP=1)
-EOF
-  cat >"$repo_dir/.asdlc_worker/overmind/reqirements_ears.md" <<'EOF'
-### Requirement 1 Local runtime requirement
-- The system SHALL support local standalone behavior.
-EOF
-}
-
 set_single_phase_model() {
   local repo_dir="$1"
   local phase="$2"
@@ -292,16 +280,19 @@ test_bound_project_single_feature_auto_selected() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
-  assert_contains "$out" "orchestrator: default mode active; ASDLC artifact read/copy flow is enabled"
+  assert_contains "$out" "orchestrator: default mode active; reading and writing plan/ears directly at bound-source paths."
   assert_contains "$out" "orchestrator: selected feature 'feature-a' (mode=auto_single, project=project-alpha, step=2.2)."
   assert_contains "$out" "orchestrator: resolved routed step '2.2' for design; injecting --step into ai_design.sh."
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-single-feature-design-2-2-log"
   assert_contains "$out" ".asdlc_worker/scripts/ai_design.sh --step 2.2"
   assert_not_contains "$out" "design-1-1-log"
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "feature_id: 'feature-a'"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "selection_mode: 'auto_single'"
-  assert_file_contains "$repo_dir/.asdlc_worker/overmind/implementation_plan.md" "### Step 2.2 Worker step"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-a'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "project_id: 'project-alpha'"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/implementation_plan.md"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/requirements_ears.md"
+  assert_file_contains "$source_dir/feature-a/implementation_plan.md" "### Step 2.2 Worker step"
 }
 
 test_bound_project_path_equals_overmind_source_path() {
@@ -323,8 +314,10 @@ test_bound_project_path_equals_overmind_source_path() {
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "selected feature 'feature-x'"
   assert_contains "$out" "step=1.5"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "bound_project_path: '$source_dir'"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "overmind_source_path: '$source_dir'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-x'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "project_id: 'project-direct'"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/implementation_plan.md"
 }
 
 test_git_directory_is_skipped_during_feature_enumeration() {
@@ -396,9 +389,10 @@ test_requested_step_filters_candidate_features() {
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run -- --step 2.2 2>&1)"
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-step-filter-design-2-2-log"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "feature_id: 'feature-b'"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "requested_step: '2.2'"
-  assert_file_contains "$repo_dir/.asdlc_worker/feature_sync.yaml" "selected_step: '2.2'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-b'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "selected_step: '2.2'"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/overmind/implementation_plan.md"
 }
 
 test_multiple_candidate_features_require_explicit_interactive_selection() {
@@ -553,6 +547,8 @@ test_planning_dry_run_injects_resolved_step_when_not_explicit() {
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
   assert_contains "$out" ".asdlc_worker/scripts/ai_plan.sh --step 3.4"
+  assert_contains "$out" "--branch-name step-3.4-feature-routing-plan"
+  assert_contains "$out" "--feature-id feature-routing"
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-planning-step-injection-planning-latest-log"
 }
 
@@ -620,52 +616,6 @@ test_runtime_branch_rebases_master_before_feature_routing() {
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
   assert_file_contains "$repo_dir/MASTER_FRESHNESS.txt" "master freshness"
   assert_contains "$(git -C "$repo_dir" merge-base --is-ancestor master overmind; printf '%s' "$?")" "0"
-}
-
-test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation() {
-  local repo_dir="$TMP_ROOT/repo-standalone-local-routing"
-  local source_dir="$TMP_ROOT/source-standalone-local-routing-does-not-exist"
-  local project_id="project-iota"
-  local worker_uuid="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-  local out=""
-
-  mkdir -p "$repo_dir"
-  setup_repo "$repo_dir"
-  write_local_overmind_runtime "$repo_dir" "$worker_uuid" "7.3"
-  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
-
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone --debug --dry-run 2>&1)"
-  assert_contains "$out" "orchestrator: standalone mode enabled; bypassing ASDLC feature discovery, remote validation, and artifact mirroring."
-  assert_contains "$out" "orchestrator: standalone mode runtime inputs: .asdlc_worker/overmind/implementation_plan.md, .asdlc_worker/overmind/reqirements_ears.md."
-  assert_contains "$out" "orchestrator: selected standalone step '7.3' for worker '$worker_uuid' from .asdlc_worker/overmind/implementation_plan.md."
-  assert_contains "$out" ".asdlc_worker/scripts/ai_design.sh --step 7.3"
-  assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-standalone-local-routing-design-7-3-log"
-  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_sync.yaml"
-}
-
-test_standalone_fails_fast_when_local_runtime_ears_missing() {
-  local repo_dir="$TMP_ROOT/repo-standalone-missing-ears"
-  local source_dir="$TMP_ROOT/source-standalone-missing-ears-does-not-exist"
-  local project_id="project-kappa"
-  local worker_uuid="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
-  local out=""
-  local status=0
-
-  mkdir -p "$repo_dir"
-  setup_repo "$repo_dir"
-  cat >"$repo_dir/.asdlc_worker/overmind/implementation_plan.md" <<EOF
-### Step 1.2 Missing local ears
-#### Assigned: $worker_uuid
-- [ ] Plan and discuss the step (SP=1)
-EOF
-  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
-
-  set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --standalone --dry-run 2>&1)"
-  status=$?
-  set -e
-  assert_nonzero_status "$status"
-  assert_contains "$out" "Standalone mode requires local runtime EARS: .asdlc_worker/overmind/reqirements_ears.md."
 }
 
 test_dep_none_step_is_selected() {
@@ -919,6 +869,359 @@ test_multi_dep_one_unsatisfied_step_skipped() {
   assert_contains "$out" "blocked by step '1.2'"
 }
 
+test_exits_nonzero_when_bound_source_plan_has_uncommitted_changes() {
+  local repo_dir="$TMP_ROOT/repo-dirty-plan"
+  local source_dir="$TMP_ROOT/source-dirty-plan"
+  local project_id="project-dirty-plan"
+  local worker_uuid="e0000000-0000-0000-0000-000000000001"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-dirty" "### Step 1.1 Dirty plan step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+
+  printf '\n# uncommitted-change\n' >>"$source_dir/feature-dirty/implementation_plan.md"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "Bound-source plan is dirty: $source_dir/feature-dirty/implementation_plan.md"
+  assert_contains "$out" "git -C '$source_dir'"
+}
+
+assert_zero_status() {
+  local status="$1"
+  if [[ "$status" -ne 0 ]]; then
+    echo "Assertion failed: expected zero status, got $status" >&2
+    exit 1
+  fi
+}
+
+write_feature_meta_sync() {
+  local repo_dir="$1"
+  local project_id="$2"
+  local worker_uuid="$3"
+  local feature_id="$4"
+  local selected_step="$5"
+
+  cat >"$repo_dir/.asdlc_worker/feature_meta_sync.yaml" <<EOF
+project_id: '$project_id'
+worker_uuid: '$worker_uuid'
+feature_id: '$feature_id'
+selected_step: '$selected_step'
+EOF
+}
+
+test_fast_path_blocked_feature_exits_with_blocker_message() {
+  local repo_dir="$TMP_ROOT/repo-fast-path-blocked"
+  local source_dir="$TMP_ROOT/source-fast-path-blocked"
+  local project_id="project-fast-path-blocked"
+  local worker_uuid="f0000000-0000-0000-0000-000000000001"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-fp-blocked" "### Step 1.1 Upstream step
+#### Assigned: other-worker
+- [ ] Do upstream work (SP=2)
+
+### Step 2.1 Blocked worker step
+#### Depends on: 1.1
+#### Assigned: $worker_uuid
+- [ ] Implement something (SP=3)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-fp-blocked" "2.1"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "feature-fp-blocked"
+  assert_contains "$out" "blocked"
+  assert_contains "$out" "1.1"
+  assert_not_contains "$out" "candidate features"
+  assert_not_contains "$out" "Proceed with current feature"
+}
+
+test_fast_path_exhausted_feature_noninteractive_exits_with_exhausted_message() {
+  local repo_dir="$TMP_ROOT/repo-fast-path-exhausted"
+  local source_dir="$TMP_ROOT/source-fast-path-exhausted"
+  local project_id="project-fast-path-exhausted"
+  local worker_uuid="f0000000-0000-0000-0000-000000000002"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-fp-exhausted" "### Step 1.1 Completed step
+#### Assigned: $worker_uuid
+- [x] All done (SP=2)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-fp-exhausted" "1.1"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_nonzero_status "$status"
+  assert_contains "$out" "feature-fp-exhausted"
+  assert_contains "$out" "exhausted"
+  assert_contains "$out" "feature_meta_sync.yaml"
+  assert_not_contains "$out" "candidate features"
+  assert_not_contains "$out" "Proceed with current feature"
+}
+
+test_fast_path_exhausted_feature_interactive_choice1_deletes_file() {
+  local repo_dir="$TMP_ROOT/repo-fast-path-exhausted-choice1"
+  local source_dir="$TMP_ROOT/source-fast-path-exhausted-choice1"
+  local project_id="project-fp-exhausted-choice1"
+  local worker_uuid="f0000000-0000-0000-0000-000000000003"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-fp-done" "### Step 1.1 Completed step
+#### Assigned: $worker_uuid
+- [x] All done (SP=2)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-fp-done" "1.1"
+
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'1\n' --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_zero_status "$status"
+  assert_contains "$out" "deleted"
+  assert_file_not_exists "$repo_dir/.asdlc_worker/feature_meta_sync.yaml"
+}
+
+test_fast_path_exhausted_feature_interactive_choice2_keeps_file() {
+  local repo_dir="$TMP_ROOT/repo-fast-path-exhausted-choice2"
+  local source_dir="$TMP_ROOT/source-fast-path-exhausted-choice2"
+  local project_id="project-fp-exhausted-choice2"
+  local worker_uuid="f0000000-0000-0000-0000-000000000004"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-fp-done2" "### Step 1.1 Completed step
+#### Assigned: $worker_uuid
+- [x] All done (SP=2)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-fp-done2" "1.1"
+
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'2\n' --dry-run 2>&1)"
+  status=$?
+  set -e
+  assert_zero_status "$status"
+  assert_contains "$out" "feature_meta_sync.yaml"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature-fp-done2"
+}
+
+test_startup_prompt_interactive_proceed_reuses_current_feature() {
+  local repo_dir="$TMP_ROOT/repo-startup-prompt-proceed"
+  local source_dir="$TMP_ROOT/source-startup-prompt-proceed"
+  local project_id="project-startup-prompt-proceed"
+  local worker_uuid="b0000000-0000-0000-0000-000000000001"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-prompt-a" "### Step 2.1 Demo step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-prompt-a" "2.1"
+
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'1\n' --dry-run)"
+  status=$?
+  set -e
+
+  assert_zero_status "$status"
+  assert_contains "$out" "Proceed with current feature"
+  assert_contains "$out" "selected feature 'feature-prompt-a'"
+  assert_not_contains "$out" "Multiple candidate features"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-prompt-a'"
+}
+
+test_startup_prompt_interactive_change_selects_new_feature_with_current_label() {
+  local repo_dir="$TMP_ROOT/repo-startup-prompt-change"
+  local source_dir="$TMP_ROOT/source-startup-prompt-change"
+  local project_id="project-startup-prompt-change"
+  local worker_uuid="b0000000-0000-0000-0000-000000000002"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-chg-a" "### Step 1.1 Feature A step
+#### Assigned: $worker_uuid
+- [ ] Do work A (SP=1)
+"
+  create_feature "$source_dir" "feature-chg-b" "### Step 2.2 Feature B step
+#### Assigned: $worker_uuid
+- [ ] Do work B (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-chg-a" "1.1"
+
+  # feature-chg-a is sorted first alphabetically; picker shows: 1) feature-chg-a (CURRENT), 2) feature-chg-b
+  # input: 2 (Change), 2 (select feature-chg-b)
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'2\n2\n' --dry-run)"
+  status=$?
+  set -e
+
+  assert_zero_status "$status"
+  assert_contains "$out" "Change feature"
+  assert_contains "$out" "(CURRENT)"
+  assert_contains "$out" "selected feature 'feature-chg-b'"
+  assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-chg-b'"
+  # Task 7.1: verify feature_meta_sync.yaml has exactly 4 fields (no routing-signal field)
+  local yaml_line_count
+  yaml_line_count="$(grep -c '' "$repo_dir/.asdlc_worker/feature_meta_sync.yaml")"
+  assert_equal "4" "$yaml_line_count"
+  assert_not_contains "$(cat "$repo_dir/.asdlc_worker/feature_meta_sync.yaml")" "CURRENT_FEATURE_SWITCH_FROM_ID"
+}
+
+test_startup_prompt_skipped_when_noninteractive() {
+  local repo_dir="$TMP_ROOT/repo-startup-prompt-noninteractive"
+  local source_dir="$TMP_ROOT/source-startup-prompt-noninteractive"
+  local project_id="project-startup-prompt-noninteractive"
+  local worker_uuid="b0000000-0000-0000-0000-000000000003"
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-noninteractive" "### Step 1.1 Demo step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-noninteractive" "1.1"
+
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
+  assert_contains "$out" "selected feature 'feature-noninteractive'"
+  assert_not_contains "$out" "Proceed with current feature"
+  assert_not_contains "$out" "Change feature"
+}
+
+test_startup_prompt_skipped_in_resume_mode() {
+  local repo_dir="$TMP_ROOT/repo-startup-prompt-resume"
+  local source_dir="$TMP_ROOT/source-startup-prompt-resume"
+  local project_id="project-startup-prompt-resume"
+  local worker_uuid="b0000000-0000-0000-0000-000000000004"
+  local out=""
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-resume-skip" "### Step 1.1 Demo step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-resume-skip" "1.1"
+
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run 2>&1)"
+  set -e
+  assert_contains "$out" "Resume dry-run for step 1.1"
+  assert_not_contains "$out" "Proceed with current feature"
+  assert_not_contains "$out" "Change feature"
+}
+
+test_picker_no_current_label_when_current_id_not_in_candidates() {
+  local repo_dir="$TMP_ROOT/repo-picker-no-current-label"
+  local source_dir="$TMP_ROOT/source-picker-no-current-label"
+  local project_id="project-picker-no-current-label"
+  local worker_uuid="b0000000-0000-0000-0000-000000000006"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-ncl-a" "### Step 1.1 Feature A
+#### Assigned: $worker_uuid
+- [ ] Do work A (SP=1)
+"
+  create_feature "$source_dir" "feature-ncl-b" "### Step 2.1 Feature B
+#### Assigned: $worker_uuid
+- [ ] Do work B (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  # Stale feature_meta_sync.yaml pointing to a non-existent feature: fast path fails,
+  # CURRENT_FEATURE_SWITCH_FROM_ID is never set, picker shows candidates without (CURRENT).
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-nonexistent" "1.1"
+
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'1\n' --dry-run)"
+  status=$?
+  set -e
+
+  assert_zero_status "$status"
+  assert_contains "$out" "Multiple candidate features found"
+  assert_not_contains "$out" "(CURRENT)"
+}
+
+test_startup_prompt_change_single_candidate_auto_selects() {
+  local repo_dir="$TMP_ROOT/repo-startup-prompt-single-auto"
+  local source_dir="$TMP_ROOT/source-startup-prompt-single-auto"
+  local project_id="project-startup-prompt-single-auto"
+  local worker_uuid="b0000000-0000-0000-0000-000000000007"
+  local out=""
+  local status=0
+
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  init_project_repo "$source_dir" "$project_id" "$worker_uuid"
+  create_feature "$source_dir" "feature-single-auto" "### Step 3.1 Demo step
+#### Assigned: $worker_uuid
+- [ ] Plan and discuss the step (SP=1)
+"
+  write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  write_feature_meta_sync "$repo_dir" "$project_id" "$worker_uuid" "feature-single-auto" "3.1"
+
+  # User chooses Change (2), slow-path finds only feature-single-auto → auto-selects without picker
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'2\n' --dry-run)"
+  status=$?
+  set -e
+
+  assert_zero_status "$status"
+  assert_contains "$out" "Change feature"
+  assert_contains "$out" "selected feature 'feature-single-auto'"
+  assert_not_contains "$out" "Select feature number"
+}
+
 test_bound_project_single_feature_auto_selected
 test_bound_project_path_equals_overmind_source_path
 test_git_directory_is_skipped_during_feature_enumeration
@@ -932,8 +1235,6 @@ test_fails_when_project_id_mismatch_in_init_progress_definition
 test_planning_dry_run_injects_resolved_step_when_not_explicit
 test_non_master_start_can_cancel_before_switching_to_overmind
 test_runtime_branch_rebases_master_before_feature_routing
-test_standalone_routes_from_local_overmind_runtime_and_skips_remote_validation
-test_standalone_fails_fast_when_local_runtime_ears_missing
 test_dep_none_step_is_selected
 test_dep_missing_line_step_is_selected
 test_dep_satisfied_step_is_selected
@@ -943,5 +1244,16 @@ test_dep_nonexistent_step_id_is_plan_error
 test_dep_zero_bullet_step_is_plan_error
 test_multi_dep_all_satisfied_step_selected
 test_multi_dep_one_unsatisfied_step_skipped
+test_exits_nonzero_when_bound_source_plan_has_uncommitted_changes
+test_fast_path_blocked_feature_exits_with_blocker_message
+test_fast_path_exhausted_feature_noninteractive_exits_with_exhausted_message
+test_fast_path_exhausted_feature_interactive_choice1_deletes_file
+test_fast_path_exhausted_feature_interactive_choice2_keeps_file
+test_startup_prompt_interactive_proceed_reuses_current_feature
+test_startup_prompt_interactive_change_selects_new_feature_with_current_label
+test_startup_prompt_skipped_when_noninteractive
+test_startup_prompt_skipped_in_resume_mode
+test_picker_no_current_label_when_current_id_not_in_candidates
+test_startup_prompt_change_single_candidate_auto_selects
 
 echo "All orchestrator assignment tests passed."

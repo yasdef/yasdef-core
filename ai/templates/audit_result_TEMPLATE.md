@@ -8,7 +8,7 @@ File: `.asdlc_worker/step_review_results/review_result-<current_step>.md`
 - Branch / commit: `<branch name and/or last commit>`
 
 ## Entry Proof Check (Section 6.0)
-- Target bullet: `<copied from .asdlc_worker/overmind/implementation_plan.md>` — **PROVEN** | **NOT_PROVEN**
+- Target bullet: `<copied from the implementation plan at $ASDLC_RUNTIME_PLAN_PATH>` — **PROVEN** | **NOT_PROVEN**
   - Code refs: `<path + key symbol>`
   - Reachability: `<entrypoint-first flow>`
   - Test evidence: `<new/updated test or credible existing coverage mapping>`

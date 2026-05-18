@@ -13,6 +13,9 @@ STEP_PLAN_TEMPLATE_SRC="$SOURCE_ROOT/ai/templates/step_plan_TEMPLATE.md"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
+export ASDLC_RUNTIME_PLAN_PATH=".asdlc_worker/overmind/implementation_plan.md"
+export ASDLC_RUNTIME_EARS_PATH=".asdlc_worker/overmind/reqirements_ears.md"
+
 assert_contains() {
   local haystack="$1"
   local needle="$2"
@@ -80,7 +83,7 @@ setup_plan_repo() {
 - [ ] Review step implementation.
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-demo-design.md" <<'EOF'
 ## Target Bullets
 - Implement the feature endpoint.
 
@@ -209,7 +212,7 @@ EOF
 
   case "$readiness_mode" in
     ready)
-      cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [ ] 1. Implement the feature endpoint.
@@ -241,7 +244,7 @@ EOF
 - [ ] Implement the feature endpoint. [REQ-1]
 - [ ] Review step implementation.
 EOF
-      cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+      cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 # Step Plan: 1.1 - Demo
 ## Plan (ordered)
 - [ ] 1. Implement the feature endpoint.
@@ -274,7 +277,7 @@ run_plan() {
   local repo_dir="$1"
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_plan.sh --step 1.1 --out .asdlc_worker/step_plans/step-1.1.md
+    .asdlc_worker/scripts/ai_plan.sh --step 1.1 --feature-id demo --out .asdlc_worker/step_plans/step-1.1-demo.md
   )
 }
 
@@ -282,7 +285,7 @@ run_impl() {
   local repo_dir="$1"
   (
     cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl.prompt.txt --no-branch
+    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-demo.md --design .asdlc_worker/step_designs/step-1.1-design.md --out .asdlc_worker/prompts/impl.prompt.txt --no-branch
   )
 }
 
@@ -290,7 +293,7 @@ test_helper_ready_exit_code() {
   local repo_dir="$TMP_ROOT/helper-ready"
   setup_helper_repo "$repo_dir"
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 # Step Plan
 ## Plan (ordered)
 - [ ] Demo
@@ -330,13 +333,13 @@ EOF
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || exit 1
-  assert_contains "$out" "Planning readiness failed: step plan not found: .asdlc_worker/step_plans/step-1.1.md"
+  assert_contains "$out" "Planning readiness failed: step plan not found"
 }
 
 test_helper_missing_section_fails() {
   local repo_dir="$TMP_ROOT/helper-missing-section"
   setup_helper_repo "$repo_dir"
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 # Step Plan
 ## Plan (ordered)
 - [ ] Demo
@@ -359,7 +362,7 @@ EOF
 test_helper_unchecked_gate_fails() {
   local repo_dir="$TMP_ROOT/helper-unchecked-gate"
   setup_helper_repo "$repo_dir"
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 # Step Plan
 ## Plan (ordered)
 - [ ] Demo
@@ -391,7 +394,7 @@ test_helper_bootstrap_requires_scaffold_section_and_first_plan_item() {
   setup_helper_repo "$repo_dir"
   mkdir -p "$repo_dir/ai/step_designs"
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-demo-design.md" <<'EOF'
 ## First-Feature Bootstrap (only if needed)
 - Bootstrap required: yes
 - Repo state rationale: Empty backend repo.
@@ -401,7 +404,7 @@ test_helper_bootstrap_requires_scaffold_section_and_first_plan_item() {
 - Planning handoff: Scaffold creation must come before endpoint implementation.
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-demo.md" <<'EOF'
 # Step Plan
 ## Scaffold Bootstrap Plan
 - Use the approved backend blueprint.
@@ -465,7 +468,7 @@ test_implementation_prompt_fails_fast_when_helper_fails() {
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || exit 1
-  assert_contains "$out" "Planning readiness failed: step plan not found: .asdlc_worker/step_plans/step-1.1.md"
+  assert_contains "$out" "Planning readiness failed: step plan not found"
   if [[ -f "$repo_dir/.asdlc_worker/prompts/impl.prompt.txt" ]]; then
     echo "Assertion failed: implementation prompt should not be written when readiness fails" >&2
     exit 1

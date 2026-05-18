@@ -58,7 +58,7 @@ asdlc_worker_require_runtime_layout() {
   export ASDLC_HISTORY_FILE="$ASDLC_WORKER_HOME/history.md"
   export ASDLC_BINDING_FILE="$ASDLC_WORKER_HOME/project_overmind.yaml"
   export ASDLC_WORKER_BINDING_FILE="$ASDLC_WORKER_HOME/asdlc_worker.yaml"
-  export ASDLC_FEATURE_SYNC_FILE="$ASDLC_WORKER_HOME/feature_sync.yaml"
+  export ASDLC_FEATURE_SYNC_FILE="$ASDLC_WORKER_HOME/feature_meta_sync.yaml"
   export ASDLC_TEMPLATES_DIR="$ASDLC_WORKER_HOME/templates"
   export ASDLC_GOLDEN_EXAMPLES_DIR="$ASDLC_WORKER_HOME/golden_examples"
   export ASDLC_LOGS_DIR="$ASDLC_WORKER_HOME/logs"
@@ -67,6 +67,4 @@ asdlc_worker_require_runtime_layout() {
   export ASDLC_STEP_PLANS_DIR="$ASDLC_WORKER_HOME/step_plans"
   export ASDLC_STEP_REVIEW_RESULTS_DIR="$ASDLC_WORKER_HOME/step_review_results"
   export ASDLC_OVERMIND_DIR="$ASDLC_WORKER_HOME/overmind"
-  export ASDLC_RUNTIME_PLAN_PATH="$ASDLC_OVERMIND_DIR/implementation_plan.md"
-  export ASDLC_RUNTIME_EARS_PATH="$ASDLC_OVERMIND_DIR/reqirements_ears.md"
 }

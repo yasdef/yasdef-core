@@ -26,6 +26,7 @@ GENERATED_EXCLUDE_PATHS=(
   ".asdlc_worker/logs"
   ".asdlc_worker/prompts"
   ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
+  ".asdlc_worker/feature_meta_sync.yaml"
 )
 DURABLE_COMMIT_PATHS=(
   ".asdlc_worker/asdlc_worker.yaml"
