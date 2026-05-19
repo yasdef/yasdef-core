@@ -144,7 +144,7 @@ derive_step_from_step_plan_path() {
   local file="$1"
   local base step
   base="$(basename "$file")"
-  if [[ "$base" =~ ^step-([0-9]+(\.[0-9]+)*) ]]; then
+  if [[ "$base" =~ ^step-([0-9]+(\.[0-9]+)*[a-z]?) ]]; then
     step="${BASH_REMATCH[1]}"
     printf '%s' "$step"
     return 0
