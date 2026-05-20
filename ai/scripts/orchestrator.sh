@@ -2129,10 +2129,8 @@ run_global_plan_sync_attempt() {
     return 1
   fi
 
-  if [[ "$commit_status" -eq 0 ]]; then
-    if ! push_selected_source_plan_sync_commit; then
-      return 1
-    fi
+  if ! push_selected_source_plan_sync_commit; then
+    return 1
   fi
 
   return 0
