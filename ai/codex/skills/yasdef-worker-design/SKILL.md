@@ -107,4 +107,4 @@ Each decision item must be concrete, action-driving, and contain mutually exclus
 
 ## Completion
 
-Do not emit a special sentinel line. The skill is done when the design artifact is updated and `check_design_readiness.py` exits `0`.
+Only after the design artifact is updated and `check_design_readiness.py` exits `0`, end your final response with this exact last line: `Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
