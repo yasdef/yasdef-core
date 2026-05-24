@@ -116,10 +116,6 @@ setup_repo() {
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_design.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "design"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "planning"
@@ -140,7 +136,7 @@ EOF
 #!/usr/bin/env bash
 echo "post_review"
 EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_design.sh" "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
     "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" \
     "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
@@ -282,9 +278,10 @@ test_bound_project_single_feature_auto_selected() {
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --debug --dry-run 2>&1)"
   assert_contains "$out" "orchestrator: default mode active; reading and writing plan/ears directly at bound-source paths."
   assert_contains "$out" "orchestrator: selected feature 'feature-a' (mode=auto_single, project=project-alpha, step=2.2)."
-  assert_contains "$out" "orchestrator: resolved routed step '2.2' for design; injecting --step into ai_design.sh."
+  assert_contains "$out" "orchestrator: resolved routed step '2.2' for design skill prompt."
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-single-feature-design-2-2-log"
-  assert_contains "$out" ".asdlc_worker/scripts/ai_design.sh --step 2.2"
+  assert_contains "$out" "write yasdef-worker-design prompt for step 2.2"
+  assert_contains "$out" "yasdef-worker-design"
   assert_not_contains "$out" "design-1-1-log"
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
   assert_file_contains "$repo_dir/.asdlc_worker/feature_meta_sync.yaml" "feature_id: 'feature-a'"

@@ -178,12 +178,26 @@ test_init_bootstraps_existing_git_root() {
   assert_dir_exists "$runtime_dir/overmind"
   assert_file_exists "$runtime_dir/scripts/register_worker.sh"
   assert_file_exists "$runtime_dir/scripts/helpers/runtime_layout.sh"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/SKILL.md"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/scripts/build_design_context.py"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/scripts/check_design_readiness.py"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/assets/feature_design_TEMPLATE.md"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/assets/feature_design_GOLDEN_EXAMPLE.md"
+  if [[ -e "$runtime_dir/scripts/ai_design.sh" ]]; then
+    echo "Assertion failed: legacy design prompt script should not be installed: $runtime_dir/scripts/ai_design.sh" >&2
+    exit 1
+  fi
+  if [[ -e "$runtime_dir/scripts/helpers/check_design_readiness.sh" ]]; then
+    echo "Assertion failed: legacy design readiness shell helper should not be installed: $runtime_dir/scripts/helpers/check_design_readiness.sh" >&2
+    exit 1
+  fi
   assert_file_exists "$runtime_dir/AI_DEVELOPMENT_PROCESS.md"
   assert_file_exists "$runtime_dir/asdlc_worker.yaml"
   assert_contains "$(cat "$runtime_dir/asdlc_worker.yaml")" "worker_repo_root: '$repo_resolved'"
   assert_line_count "1" ".asdlc_worker/scripts" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/feature_meta_sync.yaml" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".codex/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/blocker_log.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/decisions.md"
@@ -235,8 +249,14 @@ test_update_preserves_local_state_and_is_idempotent() {
     echo "Assertion failed: expected generated logs directory to be overwritten during update" >&2
     exit 1
   fi
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/SKILL.md"
+  if [[ -e "$runtime_dir/scripts/ai_design.sh" ]]; then
+    echo "Assertion failed: legacy design prompt script should not be installed during update" >&2
+    exit 1
+  fi
   assert_line_count "1" ".asdlc_worker/scripts" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/scripts/helpers" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".codex/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
 }
 
 test_init_stashes_unrelated_changes_after_install_commit() {

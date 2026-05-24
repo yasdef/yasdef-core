@@ -463,7 +463,7 @@ fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
   echo "Feature design not found at $DESIGN_FILE." >&2
-  echo "Run .asdlc_worker/scripts/ai_design.sh --step $STEP first." >&2
+  echo "Run the orchestrator design phase for step $STEP first; it invokes the yasdef-worker-design skill." >&2
   exit 1
 fi
 

@@ -150,22 +150,7 @@ test_clear_path_signal_is_unchanged() {
   assert_contains "$out" "== Design-extracted things to decide =="
 }
 
-test_feature_rich_mode_block_is_opt_in() {
-  local repo_dir="$TMP_ROOT/repo-feature-rich-opt-in"
-  setup_repo "$repo_dir" "- No open questions."
-
-  local rich_out
-  rich_out="$(run_plan "$repo_dir" --feature-rich-design-planning)"
-  assert_contains "$rich_out" "Feature-rich design/planning mode: ENABLED (planning-only add-on)."
-  assert_contains "$rich_out" "record each in \`## Decisions Needed\` as \`Accepted\` or \`Deferred\`"
-
-  local default_out
-  default_out="$(run_plan "$repo_dir")"
-  assert_not_contains "$default_out" "Feature-rich design/planning mode: ENABLED (planning-only add-on)."
-}
-
 test_decision_prompt_contract_and_numeric_reply
 test_clear_path_signal_is_unchanged
-test_feature_rich_mode_block_is_opt_in
 
 echo "All ai_plan decision prompt tests passed."

@@ -11,7 +11,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 
 ## Git safety (local workflow)
 - Never commit directly on `main`/`master`. All commits happen on a local topic branch.
-- Branch setup is handled by scripts: `ai/scripts/ai_design.sh` and `ai/scripts/ai_plan.sh` use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, `ai/scripts/ai_user_review.sh` uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
+- Branch setup is handled by scripts: the orchestrator and `ai/scripts/ai_plan.sh` use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, `ai/scripts/ai_user_review.sh` uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
 - Local workflow: create a local branch before starting a step implementation phase, commit only after tests pass and the user approves, do not push. Any merge to `main`/`master` is a separate explicit follow-up action, not part of step completion.
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
@@ -19,7 +19,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - `overmind/reqirements_ears.md`: source of truth for behavioral requirements and acceptance criteria; it is consumed directly at boundary phases (Design and ai_audit).
 - `overmind/implementation_plan.md`: step-level backlog and target-bullet contract artifact; Implementation/User Review do not use it as the execution state machine, and `ai_audit` starts with explicit target-bullet proof-check against it.
 - `ai/step_designs/`: feature design artifacts created before planning for user review.
-- `ai/templates/feature_design_TEMPLATE.md` and `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`: structure and example for feature design artifacts.
+- `.codex/skills/yasdef-worker-design/assets/feature_design_TEMPLATE.md` and `.codex/skills/yasdef-worker-design/assets/feature_design_GOLDEN_EXAMPLE.md`: structure and example for feature design artifacts.
 - `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts and the only mid-phase execution contract (`## Plan (ordered)` + translated functional requirements + `## Linked Artifacts (in scope)` shortlist propagated from the design artifact).
 - `ai/blocker_log.md`: unknowns/blockers discovered while working an in-progress step.
 - `ai/templates/blocker_log_TEMPLATE.md` and `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`: structure and example for blocker log entries.
@@ -51,46 +51,10 @@ Scope: this file defines the AI-assisted development process and is intended to 
 ### 1) Feature design (mandatory)
 Before step planning:
 - Feature design phase is analysis-only: do not implement runtime code in this phase.
-- Generate or update the feature design artifact via `ai/scripts/ai_design.sh` at `ai/step_designs/step-<step>-design.md`.
-- Use `ai/templates/feature_design_TEMPLATE.md` as the default structure and follow `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`.
-- The feature design should be concise and capture: goals/non-goals, scope/out of scope, decisions/trade-offs, proposal/design details, risks/mitigations, quality/testing, alternatives, open questions, and relevant code references.
-- Design must include both:
-  - step scope bullets (`## Target Bullets (excluding planning/review)`), and
-  - selected EARS requirement blocks for planning translation (`## Selected EARS Requirements (for planning translation)`).
-- After extracting `### Requirement N` blocks, perform the third-stage LAR funnel: scan the extracted blocks for `**Linked Artifacts:**` sections with `- LAR-NNN` list items, dedup IDs, look each up in the YAML-like `## Linked Artifacts` registry of `overmind/reqirements_ears.md`, and propagate the result as a `## Linked Artifacts (in scope)` shortlist into the design artifact via `ai/scripts/helpers/sync_step_lars.sh`; do not fetch LAR content in the design phase.
-- Apply `#### Bootstrap decision algorithm` before design handoff.
-- If bootstrap is required and stack/architecture guidance is needed, run `ai/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context and evaluate class-relevant `project_stack_blueprint_*.md` files from the project-level directory above that feature folder.
-- Use project class metadata from `ai/project_overmind.yaml` to scope blueprint relevance; if class metadata is missing/unsupported or no relevant blueprint exists, stop and ask the user for stack/scaffold direction instead of inventing one.
-- Include only relevant constraints from `AGENTS.md` and relevant insights from `ai/user_review.md` (do not dump all rules).
-- Shortlist only relevant accepted ADRs from `ai/decisions.md` and capture them in the design artifact (do not dump all ADRs).
-- In this phase, do not finalize durable decisions and do not update `ai/decisions.md`; capture candidate decisions under "Things to Decide" in the design artifact for final planning discussion.
-- In feature design, perform `#### Missing discussion points gates` before handoff to planning and add all meaningful unresolved findings to `## Things to Decide (for final planning discussion)`.
-- Design decision quality gate: make "Things to Decide" entries concrete and action-driving (decision-shaped, not generic questions), with mutually exclusive options and explicit trade-offs so planning can present clear `1`/`2` choices.
-- Design decision depth gate: for non-trivial scope, capture at least 1-3 plan-critical "Things to Decide" items. If there are truly no plan-critical choices, explicitly record `- None.` with short rationale.
-#### Bootstrap decision algorithm
-- Inspect the current step goal and the current implementation evidence in the bound repo for the current class.
-- Treat the step as first-feature bootstrap only when it must create the initial runnable scaffold/stack for that class because there is no meaningful existing implementation to extend.
-- Main evidence to inspect:
-  - existing source files for the class
-  - existing app/module scaffold
-  - existing dependency/build setup
-  - existing runtime entrypoints
-  - whether the step bullets are scaffold-creation work versus normal feature-extension work
-- If the step is first-feature bootstrap, add one compact section: `## First-Feature Bootstrap (only if needed)`.
-- In that section, record `Bootstrap required: yes`, the blueprint lookup result, blueprint evidence or explicit user stack decision, and a short planning handoff.
-#### Missing discussion points gates
-- Before design handoff, run a lightweight missing-discussion-points ambiguity scan focused on planning-relevant gaps.
-- Use this structured taxonomy when scanning:
-  - Scope boundaries and exclusions (what is in/out, assumptions, sequencing impact).
-  - External interfaces and dependencies (APIs/contracts, compatibility, upstream/downstream assumptions).
-  - Data and state lifecycle (schema/data shape, transitions, persistence/migration/backfill concerns).
-  - Failure, recovery, and rollback behavior (error handling, retries/idempotency, partial-failure strategy).
-  - Operational and quality constraints (performance/security/observability/compliance expectations).
-  - Verification strategy (what must be proved in planning/implementation/tests before closure).
-- Normalize all planning-relevant unresolved findings into design `## Things to Decide (for final planning discussion)`; each item must be concrete, decision-ready, and mutually exclusive so planning can use the existing two-option prompt contract.
-- If no meaningful planning-relevant unresolved findings remain, record `- None.` with short rationale in that section.
-- Track unresolved questions/unknowns in `ai/open_questions.md` when they need explicit follow-up in planning.
-- Design is a hard gate: planning must not run without `ai/step_designs/step-<step>-design.md`.
+- Detailed design-phase workflow, context assembly, bootstrap handling, missing-discussion gates, LAR shortlist behavior, and readiness validation now live in the installed Codex skill at `.codex/skills/yasdef-worker-design/SKILL.md`.
+- The orchestrator invokes Codex with a prompt that calls the `yasdef-worker-design` skill for the selected step.
+- The design artifact remains the planning scope contract and must be written under `.asdlc_worker/step_designs/`.
+- Design is a hard gate: planning must not run without the selected step design artifact.
 - Implementation prompts must use this design artifact plus the step plan as primary context inputs.
 
 
@@ -150,7 +114,7 @@ Before step planning:
 - Decision prompt scope gate: do not auto-select unresolved design decisions in planning. Require explicit user choice unless the same decision was already explicitly provided by the user for the current step.
 - Decision prompt actionability gate: keep the two options mutually exclusive and actionable, and explicitly allow the user to reply with only `1` or `2`.
 - Decision-depth quality gate: if design unresolved decisions are empty but a plan-critical trade-off still exists in prerequisites/risks/tests/docs, ask one explicit two-option confirmation prompt before closing planning; if no plan-critical trade-offs remain, explicitly record that no additional decision prompt is required.
-- Missing-discussion-points closure gate: apply `#### Missing discussion points gates` from Section 1 as a planning closure check; do not close planning if any meaningful unresolved design discussion point was skipped without an explicit recorded outcome.
+- Missing-discussion-points closure gate: apply the missing-discussion gate from `.codex/skills/yasdef-worker-design/SKILL.md` as a planning closure check; do not close planning if any meaningful unresolved design discussion point was skipped without an explicit recorded outcome.
 - UR-shortlist quality gate: do not close planning if `## Applicable UR Shortlist` is missing, uses non-canonical content, or includes more than 8 UR IDs.
 - If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
 - Planning Readiness Gate: before emitting the planning completion line, run `ai/scripts/helpers/check_planning_readiness.sh <step>`.

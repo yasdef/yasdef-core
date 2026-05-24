@@ -52,15 +52,11 @@ Designer model/session: gpt-5.3-codex, session=<fill>
 
 ## Linked Artifacts (in scope)
 - LAR-003 | Figma | Close Command UI Mockup | https://figma.com/file/example/close-command
+- LAR-007 | NOT FOUND IN REGISTRY
 
 ## Applicable ADR Shortlist (from .asdlc_worker/decisions.md)
-- ADR-0001 — idempotent duplicate response behavior is directly relevant for close retries.
-- ADR-0005 — event stream routing constraints apply to any new close-command writes.
-
-## Applicable AGENTS.md Constraints
-- Command validation before writes.
-- Transaction rollback on any exception.
-- Stable error semantics and API doc updates if contract changes.
+- ADR-0001 - idempotent duplicate response behavior is directly relevant for close retries.
+- ADR-0005 - event stream routing constraints apply to any new close-command writes.
 
 ## Applicable User Review Rules
 - UR-0021: avoid thin wrappers with no semantics.

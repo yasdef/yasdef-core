@@ -23,7 +23,6 @@ cd "$ROOT"
 
 DRY_RUN=0
 DEBUG_MODE=0
-FEATURE_RICH_DESIGN_PLANNING=0
 REQUESTED_PHASES=()
 PLAN_ARGS=()
 RAN_AI_AUDIT=0
@@ -66,11 +65,11 @@ CURRENT_FEATURE_SWITCH_FROM_ID=""
 
 usage() {
   cat <<'EOF'
-Usage: .asdlc_worker/scripts/orchestrator.sh [--resume <step>] [--debug] [--feature-rich-design-planning] [--dry-run] [--help] [-- <phase-script args>]
+Usage: .asdlc_worker/scripts/orchestrator.sh [--resume <step>] [--debug] [--dry-run] [--help] [-- <phase-script args>]
 
 Default behavior:
   - Runs all phases in .asdlc_worker/setup/models.md, in order, then runs post_review.
-  - design runs .asdlc_worker/scripts/ai_design.sh and generates/updates a feature-design artifact.
+  - design invokes Codex with a prompt that calls the yasdef-worker-design skill and generates/updates a feature-design artifact.
   - planning runs .asdlc_worker/scripts/ai_plan.sh using the planning model entry.
   - implementation runs .asdlc_worker/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command.
   - user_review runs .asdlc_worker/scripts/ai_user_review.sh for the latest step plan, validates entry gate markers, then runs the user_review model command.
@@ -78,8 +77,6 @@ Default behavior:
   - post_review runs .asdlc_worker/scripts/post_review.sh for the latest step plan and appends post-review metrics to .asdlc_worker/history.md.
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
   - --debug enables per-step/per-phase artifact files for logs and prompts.
-  - --feature-rich-design-planning enables an opt-in richer contract for design/planning prompts only.
-  - --feature-rich-design-planning does not change implementation/user_review/ai_audit/post_review behavior.
   - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
   - When running interactively, asks for confirmation before planning/implementation/user_review/ai_audit.
   - If interactive confirmation is denied for any phase, orchestration stops immediately and does not prompt downstream phases in that run.
@@ -92,7 +89,6 @@ Examples:
   .asdlc_worker/scripts/orchestrator.sh -- --step 1.3 --out .asdlc_worker/tmp/step-1.3.md
   .asdlc_worker/scripts/orchestrator.sh --resume 1.3
   .asdlc_worker/scripts/orchestrator.sh --resume 1.3 --dry-run
-  .asdlc_worker/scripts/orchestrator.sh --feature-rich-design-planning -- --step 1.3
   .asdlc_worker/scripts/orchestrator.sh --debug -- --step 1.3
   .asdlc_worker/scripts/orchestrator.sh --dry-run
 EOF
@@ -206,12 +202,17 @@ ensure_ai_context_files() {
 }
 
 ensure_orchestrator_prereqs() {
-  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_design.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_plan.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_implementation.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_user_review.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_audit.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/post_review.sh"
+}
+
+ensure_uv_available() {
+  if ! command -v uv >/dev/null 2>&1; then
+    die "ASDLC orchestrator requires 'uv' to be installed and available in PATH."
+  fi
 }
 
 extract_step_and_title_from_plan() {
@@ -554,6 +555,51 @@ list_phases() {
   ' "$MODELS"
 }
 
+ensure_design_branch() {
+  local target="$1"
+  local current=""
+
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "Feature design requires a git repository."
+  fi
+
+  current="$(get_current_branch_name)"
+  if [[ "$current" == "$target" ]]; then
+    return 0
+  fi
+
+  if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$target"; then
+    if ! git -C "$ROOT" checkout "$target" >/dev/null; then
+      die "Failed to switch to existing branch: $target"
+    fi
+    echo "Switched to existing branch: $target" >&2
+  else
+    if ! git -C "$ROOT" checkout -b "$target" >/dev/null; then
+      die "Failed to create and switch to branch: $target"
+    fi
+    echo "Created and switched to branch: $target" >&2
+  fi
+}
+
+write_design_skill_prompt() {
+  local step="$1"
+  local design_out="$2"
+  local branch_name="$3"
+  local prompt_out="$4"
+
+  {
+    printf 'Use the `yasdef-worker-design` skill to run the ASDLC worker design phase.\n'
+    printf '\n'
+    printf 'Inputs:\n'
+    printf -- '- Step: %s\n' "$step"
+    printf -- '- Feature id: %s\n' "$SELECTED_FEATURE_ID"
+    printf -- '- Branch: %s\n' "$branch_name"
+    printf -- '- Design output: %s\n' "$design_out"
+    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
+    printf -- '- Runtime requirements EARS: %s\n' "$ASDLC_RUNTIME_EARS_PATH"
+  } >"$prompt_out"
+}
+
 run_planning_phase() {
   load_model_config "planning"
 
@@ -572,9 +618,6 @@ run_planning_phase() {
   fi
   plan_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
   plan_cmd+=(--feature-id "$SELECTED_FEATURE_ID")
-  if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
-    plan_cmd+=(--feature-rich-design-planning)
-  fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_planning_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -621,29 +664,33 @@ run_design_phase() {
   explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
   design_prompt_out="$(resolve_prompt_output_path "design" "$step")"
 
-  local design_cmd=("$ASDLC_SCRIPTS_DIR/ai_design.sh")
-  if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
-    design_cmd+=("${PLAN_ARGS[@]}")
-  fi
+  local design_out=""
   if [[ -z "$explicit_step" ]]; then
-    echo "orchestrator: resolved routed step '$step' for design; injecting --step into ai_design.sh." >&2
-    design_cmd+=(--step "$step")
+    echo "orchestrator: resolved routed step '$step' for design skill prompt." >&2
   fi
   local _has_design_out=0
   local _pi=0
   while [[ $_pi -lt ${#PLAN_ARGS[@]} ]]; do
     case "${PLAN_ARGS[$_pi]:-}" in
-      --design-out|--design-out=*) _has_design_out=1; break ;;
+      --design-out)
+        if [[ $((_pi + 1)) -lt ${#PLAN_ARGS[@]} ]]; then
+          design_out="${PLAN_ARGS[$((_pi + 1))]}"
+          _has_design_out=1
+        fi
+        break
+        ;;
+      --design-out=*)
+        design_out="${PLAN_ARGS[$_pi]#--design-out=}"
+        _has_design_out=1
+        break
+        ;;
     esac
     _pi=$((_pi + 1))
   done
   if [[ "$_has_design_out" -eq 0 ]]; then
-    design_cmd+=(--design-out "$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md")
+    design_out="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
   fi
-  design_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
-  if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
-    design_cmd+=(--feature-rich-design-planning)
-  fi
+  local branch_name="step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_design_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -657,12 +704,13 @@ run_design_phase() {
     fi
     echo "dry-run prompt: $(repo_relpath "$design_prompt_out")"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "design" "$step")")"
-    echo "$(shell_join "${design_cmd[@]}") > $(printf '%q' "$design_prompt_out") && $(shell_join "${dry_design_cmd[@]}")"
+    echo "write yasdef-worker-design prompt for step $step to $(printf '%q' "$design_prompt_out") && $(shell_join "${dry_design_cmd[@]}")"
     return 0
   fi
 
+  ensure_design_branch "$branch_name"
   mkdir -p "$(dirname "$design_prompt_out")"
-  "${design_cmd[@]}" >"$design_prompt_out"
+  write_design_skill_prompt "$step" "$design_out" "$branch_name" "$design_prompt_out"
 
   local prompt_arg
   prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$design_prompt_out")"
@@ -2941,14 +2989,6 @@ while [[ $# -gt 0 ]]; do
       DEBUG_MODE=1
       shift
       ;;
-    --feature-rich-design-planning)
-      FEATURE_RICH_DESIGN_PLANNING=1
-      shift
-      ;;
-    --no-feature-rich-design-planning)
-      FEATURE_RICH_DESIGN_PLANNING=0
-      shift
-      ;;
     --help|-h)
       usage
       exit 0
@@ -2966,6 +3006,8 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+ensure_uv_available
 
 REQUESTED_STEP_FOR_FEATURE_CONTEXT=""
 if [[ "$RESUME_MODE" -eq 1 ]]; then

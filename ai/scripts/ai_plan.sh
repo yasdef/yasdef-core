@@ -22,11 +22,10 @@ DESIGN_FILE=""
 FEATURE_ID=""
 INCLUDE_AGENTS=0
 BRANCH_NAME=""
-FEATURE_RICH_DESIGN_PLANNING=0
 
 usage() {
   cat <<'EOF'
-Usage: .asdlc_worker/scripts/ai_plan.sh [--step 1.3] [--out file] [--design file] [--include-agents] [--branch-name name] [--feature-rich-design-planning]
+Usage: .asdlc_worker/scripts/ai_plan.sh [--step 1.3] [--out file] [--design file] [--include-agents] [--branch-name name]
 
 Defaults:
   - If --step is omitted, uses the first unchecked bullet in .asdlc_worker/overmind/implementation_plan.md.
@@ -35,7 +34,6 @@ Defaults:
   - .asdlc_worker/decisions.md is pointer-only by default.
   - AGENTS.md is referenced by default (pointer-only); use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-plan unless --branch-name is provided.
-  - --feature-rich-design-planning enables opt-in richer planning guidance for optional hardening decisions.
 EOF
 }
 
@@ -513,14 +511,6 @@ while [[ $# -gt 0 ]]; do
       INCLUDE_AGENTS=0
       shift
       ;;
-    --feature-rich-design-planning)
-      FEATURE_RICH_DESIGN_PLANNING=1
-      shift
-      ;;
-    --no-feature-rich-design-planning)
-      FEATURE_RICH_DESIGN_PLANNING=0
-      shift
-      ;;
     -h|--help)
       usage
       exit 0
@@ -567,7 +557,7 @@ fi
 
 if [[ ! -f "$DESIGN_FILE" ]]; then
   echo "Feature design artifact not found at $DESIGN_FILE." >&2
-  echo "Run .asdlc_worker/scripts/ai_design.sh --step $STEP first." >&2
+  echo "Run the orchestrator design phase for step $STEP first; it invokes the yasdef-worker-design skill." >&2
   exit 1
 fi
 
@@ -682,11 +672,6 @@ emit() {
 
   printf 'Planning phase for Step %s.\n' "$STEP"
   printf 'Use .asdlc_worker/AI_DEVELOPMENT_PROCESS.md (Section 2, Estimation Gates, Prompt governance) as the process rules for this phase.\n'
-  if [[ "$FEATURE_RICH_DESIGN_PLANNING" -eq 1 ]]; then
-    printf 'Feature-rich design/planning mode: ENABLED (planning-only add-on).\n'
-    printf 'Derive up to 5 optional hardening candidates from design risks/trade-offs and record each in `## Decisions Needed` as `Accepted` or `Deferred` with rationale.\n'
-    printf 'If any optional item materially changes implementation path and remains unresolved, ask one explicit two-option prompt (`1.` recommended, `2.` alternative) before planning closure.\n'
-  fi
   if [[ -n "$DESIGN_LAR_SECTION" ]]; then
     printf 'Linked Artifacts (in scope): after writing the step plan, invoke `.asdlc_worker/scripts/helpers/sync_step_lars.sh %s %s` to sync the ## Linked Artifacts (in scope) section deterministically; do not echo the block textually into the step plan.\n' "$STEP" "$out_label"
   fi

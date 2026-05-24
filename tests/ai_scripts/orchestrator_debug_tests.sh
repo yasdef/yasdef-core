@@ -57,6 +57,14 @@ assert_not_contains() {
   fi
 }
 
+assert_nonzero_status() {
+  local status="$1"
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: expected non-zero status" >&2
+    exit 1
+  fi
+}
+
 setup_repo() {
   local repo_dir="$1"
   local worker_uuid="11111111-1111-1111-1111-111111111111"
@@ -72,10 +80,6 @@ setup_repo() {
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_design.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "PROMPT_MARKER=${PROMPT_MARKER:-default-design}"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-planning}"
@@ -101,7 +105,7 @@ EOF
 echo "MODEL_MARKER=${MODEL_MARKER:-default-model}"
 echo "Token usage: input=1 output=1 total=2"
 EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_design.sh" "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
     "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
     "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/fake_model.sh"
 
@@ -209,7 +213,8 @@ run_non_debug_design_writes_latest_only() {
   local latest_log="$repo_dir/.asdlc_worker/logs/repo-non-debug-design-latest-log"
   assert_file_exists "$latest_prompt"
   assert_file_exists "$latest_log"
-  assert_contains_file "$latest_prompt" "PROMPT_MARKER=first"
+  assert_contains_file "$latest_prompt" "yasdef-worker-design"
+  assert_contains_file "$latest_prompt" "step-1.1-feature-one-design.md"
   assert_contains_file "$latest_log" "MODEL_MARKER=first"
 }
 
@@ -228,8 +233,29 @@ run_debug_design_writes_step_specific() {
   local step_log="$repo_dir/.asdlc_worker/logs/repo-debug-design-1-1-log"
   assert_file_exists "$step_prompt"
   assert_file_exists "$step_log"
-  assert_contains_file "$step_prompt" "PROMPT_MARKER=debug"
+  assert_contains_file "$step_prompt" "Use the \`yasdef-worker-design\` skill"
+  assert_contains_file "$step_prompt" "Step: 1.1"
   assert_contains_file "$step_log" "MODEL_MARKER=debug"
+}
+
+run_orchestrator_fails_when_uv_missing() {
+  local repo_dir="$TMP_ROOT/repo-missing-uv"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+
+  local out=""
+  local status=0
+  set +e
+  out="$(
+    cd "$repo_dir" &&
+    set_single_phase_model "$repo_dir" "planning" &&
+    PATH="/usr/bin:/bin:/usr/sbin:/sbin" .asdlc_worker/scripts/orchestrator.sh --dry-run -- --step 1.1 2>&1
+  )"
+  status=$?
+  set -e
+
+  assert_nonzero_status "$status"
+  assert_contains "$out" "ERROR: ASDLC orchestrator requires 'uv' to be installed and available in PATH."
 }
 
 run_latest_overwrite_and_legacy_preserved() {
@@ -258,7 +284,7 @@ run_latest_overwrite_and_legacy_preserved() {
   local latest_log="$repo_dir/.asdlc_worker/logs/repo-overwrite-design-latest-log"
   assert_file_exists "$latest_prompt"
   assert_file_exists "$latest_log"
-  assert_contains_file "$latest_prompt" "PROMPT_MARKER=second"
+  assert_contains_file "$latest_prompt" "yasdef-worker-design"
   assert_contains_file "$latest_log" "MODEL_MARKER=second"
 
   local step_after
@@ -311,66 +337,12 @@ run_source_includes_user_review_interactive_confirmation() {
   assert_contains "$out" "planning|implementation|user_review|ai_audit"
 }
 
-run_feature_rich_flag_is_scoped_to_design_and_planning_only() {
-  local repo_dir="$TMP_ROOT/repo-feature-rich-flag-scope"
-  mkdir -p "$repo_dir"
-  setup_repo "$repo_dir"
-
-  local out_design
-  out_design="$(
-    cd "$repo_dir" &&
-    set_single_phase_model "$repo_dir" "design" &&
-    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning -- --step 1.1
-  )"
-  assert_contains "$out_design" "--feature-rich-design-planning"
-
-  local out_planning
-  out_planning="$(
-    cd "$repo_dir" &&
-    set_single_phase_model "$repo_dir" "planning" &&
-    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning -- --step 1.1
-  )"
-  assert_contains "$out_planning" "--feature-rich-design-planning"
-
-  local out_implementation
-  out_implementation="$(
-    cd "$repo_dir" &&
-    set_single_phase_model "$repo_dir" "implementation" &&
-    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
-  )"
-  assert_not_contains "$out_implementation" "--feature-rich-design-planning"
-
-  local out_user_review
-  out_user_review="$(
-    cd "$repo_dir" &&
-    set_single_phase_model "$repo_dir" "user_review" &&
-    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
-  )"
-  assert_not_contains "$out_user_review" "--feature-rich-design-planning"
-
-  local out_ai_audit
-  out_ai_audit="$(
-    cd "$repo_dir" &&
-    set_single_phase_model "$repo_dir" "ai_audit" &&
-    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
-  )"
-  assert_not_contains "$out_ai_audit" "--feature-rich-design-planning"
-
-  local out_post_review
-  out_post_review="$(
-    cd "$repo_dir" &&
-    set_single_phase_model "$repo_dir" "post_review" &&
-    .asdlc_worker/scripts/orchestrator.sh --dry-run --feature-rich-design-planning
-  )"
-  assert_not_contains "$out_post_review" "--feature-rich-design-planning"
-}
-
 run_non_debug_design_writes_latest_only
 run_debug_design_writes_step_specific
+run_orchestrator_fails_when_uv_missing
 run_latest_overwrite_and_legacy_preserved
 run_user_review_dry_run_reports_prompt_and_log_paths
 run_ai_audit_dry_run_reports_prompt_and_log_paths
 run_source_includes_user_review_interactive_confirmation
-run_feature_rich_flag_is_scoped_to_design_and_planning_only
 
 echo "All orchestrator debug tests passed."

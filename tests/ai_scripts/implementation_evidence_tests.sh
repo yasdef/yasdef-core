@@ -211,10 +211,6 @@ setup_orchestrator_repo() {
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
-  cat >"$repo_dir/ai/scripts/ai_design.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "design"
-EOF
   cat >"$repo_dir/ai/scripts/ai_plan.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "planning"
@@ -235,7 +231,7 @@ EOF
 #!/usr/bin/env bash
 echo "post_review"
 EOF
-  chmod +x "$repo_dir/ai/scripts/ai_design.sh" "$repo_dir/ai/scripts/ai_plan.sh" \
+  chmod +x "$repo_dir/ai/scripts/ai_plan.sh" \
     "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
     "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 

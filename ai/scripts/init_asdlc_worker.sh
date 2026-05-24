@@ -27,6 +27,7 @@ GENERATED_EXCLUDE_PATHS=(
   ".asdlc_worker/prompts"
   ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
   ".asdlc_worker/feature_meta_sync.yaml"
+  ".codex/skills/yasdef-worker-design"
 )
 DURABLE_COMMIT_PATHS=(
   ".asdlc_worker/asdlc_worker.yaml"
@@ -39,6 +40,7 @@ DURABLE_COMMIT_PATHS=(
 
 SOURCE_ROOT=""
 SOURCE_AI_DIR=""
+SOURCE_CODEX_SKILLS_DIR=""
 TARGET_INPUT=""
 TARGET_REPO_ROOT=""
 TARGET_RUNTIME_DIR=""
@@ -179,6 +181,20 @@ install_generated_dirs() {
   done
 }
 
+install_codex_skills() {
+  local source_skill_dir="$SOURCE_CODEX_SKILLS_DIR/yasdef-worker-design"
+  local target_skills_dir="$TARGET_REPO_ROOT/.codex/skills"
+  local target_skill_dir="$target_skills_dir/yasdef-worker-design"
+
+  if [[ ! -d "$source_skill_dir" ]]; then
+    die "Required Codex skill source is missing: $source_skill_dir"
+  fi
+
+  remove_generated_path "$target_skill_dir"
+  mkdir -p "$target_skills_dir"
+  copy_dir_contents "$source_skill_dir" "$target_skill_dir"
+}
+
 ensure_runtime_support_dirs() {
   mkdir -p \
     "$TARGET_RUNTIME_DIR/overmind" \
@@ -255,6 +271,7 @@ fi
 require_git
 SOURCE_ROOT="$(resolve_source_root)"
 SOURCE_AI_DIR="$SOURCE_ROOT/ai"
+SOURCE_CODEX_SKILLS_DIR="$SOURCE_ROOT/ai/codex/skills"
 
 prompt_non_empty "Enter target repository path: " TARGET_INPUT
 TARGET_REPO_ROOT="$(resolve_target_repo_root "$TARGET_INPUT")"
@@ -267,6 +284,7 @@ else
 fi
 
 install_generated_dirs
+install_codex_skills
 if [[ "$MODE" == "install" ]]; then
   install_root_runtime_files
 else
