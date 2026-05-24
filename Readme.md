@@ -19,7 +19,7 @@ This approach can be expressed in a few sentences:
 - ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that.
 - ✅ You need the Codex CLI (https://chatgpt.com/codex) available to run this framework, or you can change the model in `ai/setup/models.md` but scripts was not tested with another CLI's
 
-1. Pull this repo to your local machine, then run ai/scripts/init_asdlc_worker.sh. Script will prompts you for the path to the repo we'll work on, it will copy necessary files from `ai/` folder to `.asdlc_worker` folder in the root of your project. Also it'll setup git repo (if not yet) and add the exclusions to .git/info/exclude)
+1. Pull this repo to your local machine, then run `ai/scripts/init_asdlc_worker.sh.` Script will prompts you for the path to the repo we'll work on, it will copy necessary files from `ai/` folder to `.asdlc_worker` folder in the root of your project. Also it'll setup git repo (if not yet) and add the exclusions to .git/info/exclude)
 
 2. Make the bash scripts in `.asdlc_worker/scripts` executable:
   `chmod -R +x .asdlc_worker/scripts`
