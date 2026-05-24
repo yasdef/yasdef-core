@@ -18,7 +18,7 @@ The design phase currently depends on a generated one-shot prompt and shell-only
 - `yasdef-worker-design-skill`: Defines the repo-provided Codex skill that owns ASDLC worker design-phase context assembly, interaction rules, artifact initialization, and readiness validation.
 
 ### Modified Capabilities
-- `worker-runtime-bootstrap`: Installs the design skill into `.codex/skills` and excludes legacy design shell helpers from runtime installation/update.
+- `worker-runtime-bootstrap`: Installs and tracks the design skill under `.codex/skills`, while excluding legacy design shell helpers from runtime installation/update.
 - `orchestrator-worker-assigned-step-routing`: Routes the design phase through a skill-invoking Codex prompt while preserving existing feature/step selection and downstream phases.
 - `design-to-planning-readiness-gate`: Moves design readiness validation ownership from installed shell helper to the skill-bundled Python gate.
 
@@ -26,7 +26,7 @@ The design phase currently depends on a generated one-shot prompt and shell-only
 
 - `ai/codex/skills/yasdef-worker-design/**`: new skill definition, Python scripts, and design template/golden-example assets.
 - `ai/templates/feature_design_TEMPLATE.md` and `ai/golden_examples/feature_design_GOLDEN_EXAMPLE.md`: removed; the design skill owns these assets now.
-- `ai/scripts/init_asdlc_worker.sh`: copies the skill into target `.codex/skills` and ignores generated skill files.
+- `ai/scripts/init_asdlc_worker.sh`: copies the skill into target `.codex/skills` and includes it in the durable init commit.
 - `ai/scripts/orchestrator.sh`: no longer requires or runs `ai_design.sh`; design phase invokes the configured model with a skill call prompt.
 - `ai/AI_DEVELOPMENT_PROCESS.md`: section 1 becomes a pointer to the installed skill.
 - `tests/skills_python_scripts/**` and selected script tests: cover skill scripts and install/routing behavior.

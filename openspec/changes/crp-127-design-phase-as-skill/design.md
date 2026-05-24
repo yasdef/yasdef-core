@@ -37,7 +37,7 @@ The skill lives at `ai/codex/skills/yasdef-worker-design` with:
 The design template and golden example are no longer installed as generic `.asdlc_worker/templates` or `.asdlc_worker/golden_examples` assets. `build_design_context.py` reads the template from its skill `assets/` directory when initializing a missing design artifact and prints the skill golden example in the context pack so the model has a local style reference.
 
 **Installer behavior.**
-`init_asdlc_worker.sh` creates `<target>/.codex/skills` if needed and replaces only the `yasdef-worker-design` skill directory from source. The installed skill is added to `.git/info/exclude` so first-time install stashing does not remove it as unrelated untracked work.
+`init_asdlc_worker.sh` creates `<target>/.codex/skills` if needed and replaces only the `yasdef-worker-design` skill directory from source. The installed skill is treated as a durable project asset: it is not added to `.git/info/exclude`, and first install includes it in the generated init commit so it is not stashed as unrelated untracked work.
 
 **Legacy design helpers.**
 No backwards compatibility path is kept. The source/runtime design shell helpers are removed:

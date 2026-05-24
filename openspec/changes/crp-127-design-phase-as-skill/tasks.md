@@ -9,7 +9,7 @@
 ## 2. Install the skill into worker projects
 
 - [x] 2.1 Update `ai/scripts/init_asdlc_worker.sh` to copy the skill into `<target>/.codex/skills/yasdef-worker-design`
-- [x] 2.2 Ensure `.codex/skills/yasdef-worker-design` is ignored as generated target runtime content
+- [x] 2.2 Ensure `.codex/skills/yasdef-worker-design` is installed as a trackable durable target project asset
 - [x] 2.3 Remove legacy design shell helpers from source/runtime output
 
 ## 3. Route design through the skill

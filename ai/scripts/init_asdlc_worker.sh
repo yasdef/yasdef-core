@@ -27,9 +27,9 @@ GENERATED_EXCLUDE_PATHS=(
   ".asdlc_worker/prompts"
   ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
   ".asdlc_worker/feature_meta_sync.yaml"
-  ".codex/skills/yasdef-worker-design"
 )
 DURABLE_COMMIT_PATHS=(
+  ".codex/skills/yasdef-worker-design"
   ".asdlc_worker/asdlc_worker.yaml"
   ".asdlc_worker/blocker_log.md"
   ".asdlc_worker/decisions.md"
