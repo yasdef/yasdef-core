@@ -103,7 +103,7 @@ Before handoff, scan for planning-relevant unresolved gaps:
 
 Normalize meaningful unresolved findings into `## Things to Decide (for final planning discussion)`.
 
-Each decision item must be concrete, action-driving, and contain mutually exclusive options with trade-offs. For non-trivial scope, capture 1-3 plan-critical items. If there are no plan-critical choices, write `- None.` with a short rationale.
+Each decision item must be concrete, action-driving, and contain mutually exclusive options with trade-offs, both options must be realistically viable. For non-trivial scope, capture 1-5 plan-critical items. If there are no plan-critical choices, write `- None.` with a short rationale.
 
 ## Completion
 
