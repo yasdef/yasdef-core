@@ -29,6 +29,16 @@ assert_equal() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed: expected output to NOT contain: $needle" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 setup_repo() {
   local repo_dir="$1"
   local worker_uuid="11111111-1111-1111-1111-111111111111"
@@ -221,6 +231,13 @@ EOF
   )
 }
 
+enable_implementation_phase_model() {
+  local repo_dir="$1"
+  cat >>"$repo_dir/ai/setup/models.md" <<'EOF'
+implementation | echo | mock-model
+EOF
+}
+
 run_orchestrator_capture() {
   local repo_dir="$1"
   local scenario="$2"
@@ -234,6 +251,39 @@ run_orchestrator_capture() {
   rc=$?
   set -e
   printf '%s\n%s' "$rc" "$out"
+}
+
+run_orchestrator_with_tty_input() {
+  local repo_dir="$1"
+  local input_text="$2"
+  local scenario="$3"
+  local expect_script="$TMP_ROOT/orchestrator-planning-expect-$$.tcl"
+  cat >"$expect_script" <<EOF
+log_user 1
+set timeout 20
+set responses [split [string trim \$env(EXPECT_INPUT)] "\n"]
+set idx 0
+proc send_next {} {
+  global responses idx
+  if {\$idx >= [llength \$responses]} {
+    return
+  }
+  send -- "[lindex \$responses \$idx]\r"
+  incr idx
+}
+cd "$repo_dir"
+spawn env PLANNING_SCENARIO=\$env(EXPECT_SCENARIO) .asdlc_worker/scripts/orchestrator.sh -- --step 1.1
+expect {
+  -re {Proceed\\? \\[y/n\\] $} {
+    send_next
+    exp_continue
+  }
+  eof
+}
+catch wait result
+exit [lindex \$result 3]
+EOF
+  EXPECT_INPUT="$input_text" EXPECT_SCENARIO="$scenario" expect "$expect_script" 2>&1
 }
 
 test_orchestrator_retries_when_readiness_fails() {
@@ -274,8 +324,47 @@ test_orchestrator_stops_when_ready_and_ledgers_clean() {
   assert_equal "1" "$(cat "$repo_dir/.asdlc_worker/logs/planning-counter.txt")"
 }
 
+test_orchestrator_interactive_declines_extra_planning_round() {
+  local repo_dir="$TMP_ROOT/repo-ledger-retry-interactive-stop"
+  setup_repo "$repo_dir"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'y\nn' "ledger_retry")"
+  status=$?
+  set -e
+
+  assert_equal "0" "$status"
+  assert_contains "$out" "we need one more round of planing"
+  assert_contains "$out" "Execution stopped: user declined another planning round."
+  assert_not_contains "$out" "implementation-stub"
+  assert_equal "1" "$(cat "$repo_dir/.asdlc_worker/logs/planning-counter.txt")"
+}
+
+test_orchestrator_interactive_handoff_to_implementation_skips_second_prompt() {
+  local repo_dir="$TMP_ROOT/repo-clean-first-interactive-handoff"
+  setup_repo "$repo_dir"
+  enable_implementation_phase_model "$repo_dir"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(run_orchestrator_with_tty_input "$repo_dir" $'y\ny' "clean_first")"
+  status=$?
+  set -e
+
+  [[ "$status" -ne 0 ]] || exit 1
+  assert_contains "$out" "we are ready to start next phase: implementation"
+  assert_contains "$out" "implementation-stub"
+  assert_not_contains "$out" "I am going to run next stage: implementation"
+  assert_equal "1" "$(cat "$repo_dir/.asdlc_worker/logs/planning-counter.txt")"
+}
+
 test_orchestrator_retries_when_readiness_fails
 test_orchestrator_retries_when_ledger_is_dirty
 test_orchestrator_stops_when_ready_and_ledgers_clean
+test_orchestrator_interactive_declines_extra_planning_round
+test_orchestrator_interactive_handoff_to_implementation_skips_second_prompt
 
 echo "orchestrator_planning_skill_tests: PASS"

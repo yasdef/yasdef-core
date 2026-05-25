@@ -62,6 +62,9 @@ BOUND_PROJECT_SYNC_READY=0
 RUNTIME_BRANCH_SYNC_READY=0
 START_BRANCH_VALIDATED=0
 CURRENT_FEATURE_SWITCH_FROM_ID=""
+NEXT_PHASE_ALREADY_CONFIRMED=""
+ORCHESTRATION_STOP_REQUESTED=0
+ORCHESTRATION_STOP_REASON=""
 
 usage() {
   cat <<'EOF'
@@ -442,6 +445,11 @@ confirm_phase_if_interactive() {
 
   phase_key="$(canonicalize_phase_name "$phase")"
 
+  if [[ "$NEXT_PHASE_ALREADY_CONFIRMED" == "$phase_key" ]]; then
+    NEXT_PHASE_ALREADY_CONFIRMED=""
+    return 0
+  fi
+
   if ! phase_requires_interactive_confirmation "$phase_key"; then
     return 0
   fi
@@ -460,6 +468,55 @@ confirm_phase_if_interactive() {
         return 0
         ;;
       n|'')
+        return 1
+        ;;
+      *)
+        echo "Please answer 'y' or 'n'." >&2
+        ;;
+    esac
+  done
+}
+
+confirm_planning_followup_if_interactive() {
+  local mode="$1"
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    return 0
+  fi
+
+  local answer=""
+  while true; do
+    case "$mode" in
+      rerun)
+        printf 'we need one more round of planing\n' >&2
+        ;;
+      ready)
+        printf 'we are ready to start next phase: implementation\n' >&2
+        ;;
+      *)
+        die "Unsupported planning follow-up mode: $mode"
+        ;;
+    esac
+    printf 'Proceed? [y/n] ' >&2
+    IFS= read -r answer || answer=""
+    case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
+      y)
+        if [[ "$mode" == "ready" ]]; then
+          NEXT_PHASE_ALREADY_CONFIRMED="implementation"
+        fi
+        return 0
+        ;;
+      n|'')
+        ORCHESTRATION_STOP_REQUESTED=1
+        if [[ "$mode" == "rerun" ]]; then
+          ORCHESTRATION_STOP_REASON="Execution stopped: user declined another planning round."
+        else
+          ORCHESTRATION_STOP_REASON="Execution stopped: user declined phase progression after planning."
+        fi
         return 1
         ;;
       *)
@@ -733,6 +790,13 @@ run_planning_phase() {
     fi
 
     if [[ "$readiness_status" -eq 0 && "$ledgers_dirty" -eq 0 ]]; then
+      if ! confirm_planning_followup_if_interactive "ready"; then
+        return 0
+      fi
+      return 0
+    fi
+
+    if ! confirm_planning_followup_if_interactive "rerun"; then
       return 0
     fi
 
@@ -3152,6 +3216,12 @@ for phase in "${REQUESTED_PHASES[@]+"${REQUESTED_PHASES[@]}"}"; do
       run_global_plan_sync_before_post_review "$(get_post_review_target_step)"
     fi
     run_phase "$phase"
+    if [[ "$ORCHESTRATION_STOP_REQUESTED" -eq 1 ]]; then
+      if [[ -n "$ORCHESTRATION_STOP_REASON" ]]; then
+        echo "$ORCHESTRATION_STOP_REASON" >&2
+      fi
+      break
+    fi
     if [[ "$phase_key" == "ai_audit" ]]; then
       RAN_AI_AUDIT=1
     fi
