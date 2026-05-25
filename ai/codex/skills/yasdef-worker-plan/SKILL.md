@@ -100,9 +100,9 @@ If any input is missing, inconsistent, or points to a missing required file/path
 - The two-option prompt is only how you ask the user live; it is not how you record the result. Record exactly one line per design decision in `## Decisions Needed` using the format the template and golden example model: `- <decision title> | <Accepted|Deferred|Blocked> | <chosen result and short rationale>`. If the rejected alternative is worth noting, put it inside the rationale clause — never as its own `Option 1` / `Option 2` outcome line.
 - Resolve existing items one-by-one. Do not batch unrelated questions together.
 - Ask at most one planning question per assistant message.
-- If a decision needs explicit user choice, ask using exactly two numbered options:
-  - `1.` recommended/default choice with short rationale
-  - `2.` alternative choice with short trade-off rationale
+- If a decision needs explicit user choice, ask using exactly two numbered options. Always label the first option `(Recommended)`:
+  - `1. (Recommended)` the default choice with short rationale
+  - `2.` the alternative choice with short trade-off rationale
 - Keep the two options mutually exclusive, actionable, and easy to answer with only `1` or `2`.
 - If a design item is vague, first normalize it into a concrete decision-shaped question before asking.
 - After the user answers, immediately update the step plan and rewrite the ledgers so resolved items are removed and `## Decisions Needed` reflects the current recorded outcomes. Do not leave answered items in the ledger files.
