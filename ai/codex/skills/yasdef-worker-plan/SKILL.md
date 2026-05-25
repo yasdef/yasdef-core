@@ -66,7 +66,9 @@ If any input is missing, inconsistent, or points to a missing required file/path
 
 5. Analyze the repo against the updated plan:
    - inspect relevant repo files against the current plan
-   - identify missing prerequisites, unresolved planning gaps, and plan-critical trade-offs
+   - actively scan for missing prerequisites: schema, endpoints, validators, error codes, auth assumptions, repo/metadata registration, and handoff state the later steps depend on
+   - when a prerequisite is missing, add it as a concrete `## Plan (ordered)` bullet for the current step (mark it as technical debt if discovered late) — do not record it only as a soft note in another section
+   - identify remaining planning gaps and plan-critical trade-offs
    - fix self-contained planning defects directly in the step plan instead of writing them to ledgers
    - write only new user-required unresolved items to the open-questions or blockers ledger using the `## Ledger Writing Contract`
 
@@ -90,10 +92,15 @@ If any input is missing, inconsistent, or points to a missing required file/path
 - After design `## Things to Decide`, process unresolved items already recorded in step-plan `## Decisions Needed`, then process the current open-questions ledger and blockers ledger as carried-over unresolved state from prior iterations.
 - Design `## Things to Decide` provides candidate decisions that must be resolved or explicitly recorded.
 - Step-plan `## Decisions Needed` is the current recorded decision state for the step and must be updated, not discarded or treated as a scratchpad.
-- For every design decision item processed in this session, update step-plan `## Decisions Needed` with an explicit `Accepted`, `Deferred`, or `Blocked` outcome.
+- For every design decision item processed in this session, update step-plan `## Decisions Needed` with an explicit outcome. The outcome vocabulary is fixed:
+  - `Accepted` — the decision is made; this is the chosen outcome
+  - `Deferred` — the decision is postponed to a later step or phase; state where it is tracked
+  - `Blocked` — the decision cannot be made because of an unresolved blocker; reference the blocker
+  - Do not use `Deferred` to mean "the option I did not pick." A rejected alternative is not a separate outcome.
+- The two-option prompt is only how you ask the user live; it is not how you record the result. Record exactly one line per design decision in `## Decisions Needed` using the format the template and golden example model: `- <decision title> | <Accepted|Deferred|Blocked> | <chosen result and short rationale>`. If the rejected alternative is worth noting, put it inside the rationale clause — never as its own `Option 1` / `Option 2` outcome line.
 - Resolve existing items one-by-one. Do not batch unrelated questions together.
 - Ask at most one planning question per assistant message.
-- If a decision needs explicit user choice, use exactly two numbered options:
+- If a decision needs explicit user choice, ask using exactly two numbered options:
   - `1.` recommended/default choice with short rationale
   - `2.` alternative choice with short trade-off rationale
 - Keep the two options mutually exclusive, actionable, and easy to answer with only `1` or `2`.
