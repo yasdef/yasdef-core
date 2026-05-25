@@ -800,7 +800,9 @@ fi
 ensure_commit_ref_exists "$BASE_BRANCH"
 ensure_commit_ref_exists "$REVIEW_BRANCH"
 ensure_commit_ref_exists "$IMPLEMENTATION_BRANCH"
-ensure_commit_ref_exists "$OVERMIND_BRANCH"
+if [[ ! -f "$ASDLC_BINDING_FILE" ]]; then
+  ensure_commit_ref_exists "$OVERMIND_BRANCH"
+fi
 ensure_current_branch_matches_review_branch
 resolve_metrics_refs
 trap cleanup_metrics_snapshot EXIT
