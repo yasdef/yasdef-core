@@ -27,19 +27,19 @@ The `yasdef-worker-plan` Codex skill SHALL be located at `ai/codex/skills/yasdef
 - **THEN** the skill proceeds to run context assembly
 
 ### Requirement: Orchestrator planning loop
-`ai_plan.sh` SHALL run the planning phase as a loop: invoke the `yasdef-worker-plan` skill with a compact variable-only prompt, then run `check_planning_readiness.py` and inspect per-step ledger files without invoking the model; if `check_planning_readiness.py` exits `0` AND both ledger files are empty, the loop terminates; otherwise the skill is invoked again for the next iteration.
+`ai/scripts/orchestrator.sh` SHALL run the planning phase as a loop: invoke the `yasdef-worker-plan` skill with a compact variable-only prompt, then run `check_planning_readiness.py` and inspect per-step ledger files without invoking the model; if `check_planning_readiness.py` exits `0` AND both ledger files are empty, the loop terminates; otherwise the skill is invoked again for the next iteration.
 
 #### Scenario: Loop terminates when readiness passes and ledgers are clean
 - **WHEN** `check_planning_readiness.py` exits `0` and both per-step ledger files are empty after a skill session
-- **THEN** `ai_plan.sh` exits the loop and emits the planning completion line
+- **THEN** `orchestrator.sh` exits the loop and emits the planning completion line
 
 #### Scenario: Loop re-invokes when ledgers have entries
 - **WHEN** `check_planning_readiness.py` exits `0` but a ledger file contains open entries after a skill session
-- **THEN** `ai_plan.sh` invokes the skill again for the next iteration
+- **THEN** `orchestrator.sh` invokes the skill again for the next iteration
 
 #### Scenario: Loop re-invokes when readiness fails
 - **WHEN** `check_planning_readiness.py` exits non-zero after a skill session
-- **THEN** `ai_plan.sh` invokes the skill again for the next iteration
+- **THEN** `orchestrator.sh` invokes the skill again for the next iteration
 
 ### Requirement: Orchestrator compact prompt
 The orchestrator planning phase SHALL invoke the `yasdef-worker-plan` skill using a compact prompt that passes only variable values (step, feature id, branch, design artifact path, step plan output path, runtime implementation plan path, open-questions file path, blockers file path). Planning rules SHALL NOT be duplicated in the orchestrator prompt.
@@ -104,7 +104,7 @@ The orchestrator planning phase SHALL invoke the `yasdef-worker-plan` skill usin
 - **THEN** the step plan output file is created from `assets/step_plan_TEMPLATE.md`
 
 ### Requirement: Readiness gate validates planning closure
-`check_planning_readiness.py` serves a dual role: orchestrator loop termination condition (called by `ai_plan.sh` after each skill exit) and model-callable validation inside the skill before the session exits. It SHALL validate all of the following and exit `0` only when all pass: design artifact exists; step plan exists; forbidden sections (`## Target Bullets`, `## Requirement Tags`) are absent from the step plan; required sections (`## Plan (ordered)`, `## Functional Requirements (translated from design EARS)`) exist and are ordered correctly; `## Applicable UR Shortlist` is present and contains either `- None.` or no more than 8 `UR-xxxx` entries; every selected EARS item has at least one translated FR and every FR maps to exactly one EARS source; every design Things-to-Decide item has an explicit `Accepted`, `Deferred`, or `Blocked` outcome; when design records `Bootstrap required: yes` the step plan contains `## Scaffold Bootstrap Plan` with scaffold work before dependent implementation work.
+`check_planning_readiness.py` serves a dual role: orchestrator loop termination condition (called by `orchestrator.sh` after each skill exit) and model-callable validation inside the skill before the session exits. It SHALL validate all of the following and exit `0` only when all pass: design artifact exists; step plan exists; forbidden sections (`## Target Bullets`, `## Requirement Tags`) are absent from the step plan; required sections (`## Plan (ordered)`, `## Functional Requirements (translated from design EARS)`) exist and are ordered correctly; `## Applicable UR Shortlist` is present and contains either `- None.` or no more than 8 `UR-xxxx` entries; every selected EARS item has at least one translated FR and every FR maps to exactly one EARS source; every design Things-to-Decide item has an explicit `Accepted`, `Deferred`, or `Blocked` outcome; when design records `Bootstrap required: yes` the step plan contains `## Scaffold Bootstrap Plan` with scaffold work before dependent implementation work.
 
 #### Scenario: Readiness gate exits 0 for a complete step plan
 - **WHEN** `check_planning_readiness.py` runs against a step plan that satisfies all gates

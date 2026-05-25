@@ -1,6 +1,6 @@
 ## Context
 
-The planning phase is currently driven by a detailed prompt block in `ai/scripts/ai_plan.sh` (`run_planning_phase`). This block duplicates planning rules into the orchestrator shell script, making them hard to keep in sync with `AI_DEVELOPMENT_PROCESS.md §2` and impossible to update without touching orchestration logic. There is no deterministic context assembly or readiness gate — the model is expected to self-enforce structure from a long inline prompt.
+The planning phase was previously driven by a detailed prompt block in `ai/scripts/ai_plan.sh`. That wrapper duplicated planning rules outside the skill system and required a separate legacy entrypoint to stay in sync with `AI_DEVELOPMENT_PROCESS.md §2`. There was no deterministic context assembly or readiness gate — the model was expected to self-enforce structure from a long inline prompt.
 
 The design-phase conversion (`yasdef-worker-design`) established the skill pattern: orchestrator writes a compact variable-passing prompt, the skill owns all model-facing instructions, and Python scripts handle deterministic context assembly and readiness validation. This change applies the same pattern to planning.
 
@@ -16,7 +16,7 @@ The design-phase conversion (`yasdef-worker-design`) established the skill patte
 - Cover all new Python scripts with tests under `tests/skills_python_scripts/`
 - Introduce per-step open-questions and blocker files as machine-readable orchestrator loop ledgers
 - Add gap analysis as an explicit SKILL.md-instructed phase within each planning iteration: model reads repo against current plan, identifies gaps requiring user input, writes them to ledger files
-- Restructure `ai_plan.sh` planning phase as an orchestrator loop: invoke skill → machine-check readiness + ledger state → repeat or done
+- Run planning directly from `orchestrator.sh` as a loop: invoke skill → machine-check readiness + ledger state → repeat or done
 
 **Non-Goals:**
 - Changing the step plan artifact format or the set of planning closure gates
@@ -54,14 +54,14 @@ Each skill session runs three phases in order: (1) resolve open questions from l
 `open_questions.md` and `blocker_log.md` currently use per-step sections in shared files. New planning runs under this skill use per-step files in dedicated directories: `step_open_questions/step-<step>-<feature-id>-open-questions.md` and `step_blockers/step-<step>-<feature-id>-blockers.md`. This follows the same directory-per-type pattern already established by `step_designs/` and `step_plans/`, and requires adding `ASDLC_STEP_OPEN_QUESTIONS_DIR` and `ASDLC_STEP_BLOCKERS_DIR` to `runtime_layout.sh`. This makes the orchestrator loop condition machine-checkable by file state alone. Existing shared-file entries remain valid for active steps already in progress.
 
 **Loop termination is fully machine-checked**
-After each skill exit, `ai_plan.sh` runs `check_planning_readiness.py` and inspects ledger files without invoking the model. Both must pass for the loop to terminate. `check_planning_readiness.py` serves a dual role: orchestrator loop condition (called by the shell) and model-callable validation inside the skill before the session exits.
+After each skill exit, `orchestrator.sh` runs `check_planning_readiness.py` and inspects ledger files without invoking the model. Both must pass for the loop to terminate. `check_planning_readiness.py` serves a dual role: orchestrator loop condition (called by the shell) and model-callable validation inside the skill before the session exits.
 
 **Gap analysis output discipline: ledger files only for user-required inputs**
 During the gap analysis phase, the model writes to ledger files only for gaps that require explicit user input or approval — missing prerequisites with scope ambiguity, design decisions that surface during repo analysis, conflicting constraints. Gaps the model can resolve independently within the session (adding a clear prerequisite bullet, clarifying an FR) are resolved in place without writing to ledger files.
 
 ## Risks / Trade-offs
 
-**Legacy script removal timing** → Do not remove `ai_plan.sh` planning blocks or legacy scripts until the skill is verified working in at least one live planning session. Keep both paths operative during transition.
+**No compatibility shim** → The legacy `ai_plan.sh` wrapper is removed once the orchestrator-owned planning loop is in place. Keeping a second entrypoint would only preserve prompt drift and duplicate maintenance.
 
 **Worker install propagation** → `init_asdlc_worker.sh` must be updated before the skill is usable in worker projects. If the install step is missed, workers will continue using the old inline prompt. Mitigation: make the install step part of the same PR as the skill.
 
@@ -75,10 +75,10 @@ During the gap analysis phase, the model writes to ledger files only for gaps th
 2. Move `step_plan_TEMPLATE.md` and `step_plan_GOLDEN_EXAMPLE.md` into `assets/` if they currently live elsewhere.
 3. Update `init_asdlc_worker.sh` to install the new skill directory.
 4. Update `.git/info/exclude` handling in `init_asdlc_worker.sh` for the installed skill path.
-5. Replace `run_planning_phase` prompt block with an orchestrator loop that invokes the skill with a compact variable-only prompt, then checks `check_planning_readiness.py` exit code and ledger file state, repeating until both pass.
+5. Replace the legacy planning wrapper with an orchestrator loop that invokes the skill with a compact variable-only prompt, then checks `check_planning_readiness.py` exit code and ledger file state, repeating until both pass.
 6. Initialize per-step ledger files on first skill invocation for a step; document that existing active steps using the shared-file format remain valid until replanned.
 7. Replace the detailed planning block in `AI_DEVELOPMENT_PROCESS.md` with a pointer to `SKILL.md`.
 8. Add tests under `tests/skills_python_scripts/`.
-9. Verify in a live planning session before removing legacy planning scripts.
+9. Verify in a live planning session after the orchestrator-owned path is active.
 
 ## Open Questions

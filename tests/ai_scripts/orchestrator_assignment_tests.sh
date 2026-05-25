@@ -116,10 +116,6 @@ setup_repo() {
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "planning"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "implementation"
@@ -136,8 +132,7 @@ EOF
 #!/usr/bin/env bash
 echo "post_review"
 EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
-    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" \
     "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'MODELS'
@@ -540,12 +535,17 @@ test_planning_dry_run_injects_resolved_step_when_not_explicit() {
 - [ ] Plan and discuss the step (SP=1)
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  mkdir -p "$repo_dir/.asdlc_worker/step_designs"
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-3.4-feature-routing-design.md" <<'EOF'
+## Selected EARS Requirements (for planning translation)
+### Requirement 1 Demo
+- The system SHALL support routed planning.
+EOF
   set_single_phase_model "$repo_dir" "planning"
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
-  assert_contains "$out" ".asdlc_worker/scripts/ai_plan.sh --step 3.4"
-  assert_contains "$out" "--branch-name step-3.4-feature-routing-plan"
-  assert_contains "$out" "--feature-id feature-routing"
+  assert_contains "$out" "write yasdef-worker-plan prompt for step 3.4"
+  assert_contains "$out" "dry-run prompt: .asdlc_worker/prompts/plan_prompts/repo-planning-step-injection-latest-planning-prompt.txt"
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-planning-step-injection-planning-latest-log"
 }
 

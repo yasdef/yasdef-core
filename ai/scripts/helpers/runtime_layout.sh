@@ -65,6 +65,8 @@ asdlc_worker_require_runtime_layout() {
   export ASDLC_PROMPTS_DIR="$ASDLC_WORKER_HOME/prompts"
   export ASDLC_STEP_DESIGNS_DIR="$ASDLC_WORKER_HOME/step_designs"
   export ASDLC_STEP_PLANS_DIR="$ASDLC_WORKER_HOME/step_plans"
+  export ASDLC_STEP_OPEN_QUESTIONS_DIR="$ASDLC_WORKER_HOME/step_open_questions"
+  export ASDLC_STEP_BLOCKERS_DIR="$ASDLC_WORKER_HOME/step_blockers"
   export ASDLC_STEP_REVIEW_RESULTS_DIR="$ASDLC_WORKER_HOME/step_review_results"
   export ASDLC_OVERMIND_DIR="$ASDLC_WORKER_HOME/overmind"
 }

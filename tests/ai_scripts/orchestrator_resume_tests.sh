@@ -4,6 +4,7 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
+PLAN_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -86,18 +87,16 @@ setup_repo() {
   local feature_dir=""
   local remote_dir="${repo_dir}-remote.git"
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" \
-    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind"
+    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind" \
+    "$repo_dir/.codex/skills"
   ln -s .asdlc_worker "$repo_dir/ai"
   ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp -R "$PLAN_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-plan"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "planning"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "implementation"
@@ -114,8 +113,7 @@ EOF
 #!/usr/bin/env bash
 echo "post_review"
 EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
-    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
     "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
@@ -213,18 +211,8 @@ write_design_and_plan_artifacts() {
 
   local ordered_block=""
   local include_ordered_section=1
-  local functional_block='### FR-1.1-01
-- Source EARS Block: REQ-1
-- Requirement: The system SHALL complete demo A.
-- Plan Links: 1
-- Verification: demo
-- Status: done
-### FR-1.1-02
-- Source EARS Block: REQ-1
-- Requirement: The system SHALL complete demo B.
-- Plan Links: 2
-- Verification: demo
-- Status: done'
+  local functional_block='- [x] FR-1.1-001 The system SHALL complete demo A. EARS[REQ-1]
+- [x] FR-1.1-002 The system SHALL complete demo B. EARS[REQ-1]'
   case "$ordered_mode" in
     all_checked)
       ordered_block='- [x] 1. demo A
@@ -259,6 +247,9 @@ test
 test
 ## Out of Scope
 test
+## Selected EARS Requirements (for planning translation)
+### Requirement 1 Demo
+- The system SHALL support demo behavior.
 EOF
       ;;
     missing_sections)
@@ -275,6 +266,8 @@ EOF
   if [[ "$include_ordered_section" -eq 1 ]]; then
     cat >"$repo_dir/.asdlc_worker/step_plans/step-$step-$FEATURE_ID_DEFAULT.md" <<EOF
 # Step Plan: 1.1 - Demo
+## Applicable UR Shortlist
+- None.
 ## Plan (ordered)
 $ordered_block
 ## Functional Requirements (translated from design EARS)
@@ -283,13 +276,10 @@ EOF
   else
     cat >"$repo_dir/.asdlc_worker/step_plans/step-$step-$FEATURE_ID_DEFAULT.md" <<'EOF'
 # Step Plan: 1.1 - Demo
+## Applicable UR Shortlist
+- None.
 ## Functional Requirements (translated from design EARS)
-### FR-1.1-01
-- Source EARS Block: REQ-1
-- Requirement: The system SHALL complete demo A.
-- Plan Links: 1
-- Verification: demo
-- Status: done
+- [x] FR-1.1-001 The system SHALL complete demo A. EARS[REQ-1]
 EOF
   fi
 }

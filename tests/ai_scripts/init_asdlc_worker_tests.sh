@@ -176,13 +176,25 @@ test_init_bootstraps_existing_git_root() {
   assert_dir_exists "$runtime_dir/logs"
   assert_dir_exists "$runtime_dir/prompts"
   assert_dir_exists "$runtime_dir/overmind"
+  assert_dir_exists "$runtime_dir/step_open_questions"
+  assert_dir_exists "$runtime_dir/step_blockers"
   assert_file_exists "$runtime_dir/scripts/register_worker.sh"
   assert_file_exists "$runtime_dir/scripts/helpers/runtime_layout.sh"
+  if [[ -e "$runtime_dir/scripts/ai_plan.sh" ]]; then
+    echo "Assertion failed: legacy planning prompt script should not be installed: $runtime_dir/scripts/ai_plan.sh" >&2
+    exit 1
+  fi
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/SKILL.md"
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/scripts/build_design_context.py"
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/scripts/check_design_readiness.py"
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/assets/feature_design_TEMPLATE.md"
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/assets/feature_design_GOLDEN_EXAMPLE.md"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/SKILL.md"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/scripts/build_plan_context.py"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/scripts/check_planning_readiness.py"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/scripts/sync_step_lars.py"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
   if [[ -e "$runtime_dir/scripts/ai_design.sh" ]]; then
     echo "Assertion failed: legacy design prompt script should not be installed: $runtime_dir/scripts/ai_design.sh" >&2
     exit 1
@@ -198,11 +210,18 @@ test_init_bootstraps_existing_git_root() {
   assert_line_count "1" ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/feature_meta_sync.yaml" "$repo_dir/.git/info/exclude"
   assert_line_count "0" ".codex/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".codex/skills/yasdef-worker-plan" "$repo_dir/.git/info/exclude"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/SKILL.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/build_design_context.py"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/check_design_readiness.py"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/assets/feature_design_TEMPLATE.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/assets/feature_design_GOLDEN_EXAMPLE.md"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/SKILL.md"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/scripts/build_plan_context.py"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/scripts/check_planning_readiness.py"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/scripts/sync_step_lars.py"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/blocker_log.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/decisions.md"
@@ -255,7 +274,13 @@ test_update_preserves_local_state_and_is_idempotent() {
     exit 1
   fi
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-design/SKILL.md"
+  if [[ -e "$runtime_dir/scripts/ai_plan.sh" ]]; then
+    echo "Assertion failed: legacy planning prompt script should not be installed during update: $runtime_dir/scripts/ai_plan.sh" >&2
+    exit 1
+  fi
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/SKILL.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/SKILL.md"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/SKILL.md"
   if [[ -e "$runtime_dir/scripts/ai_design.sh" ]]; then
     echo "Assertion failed: legacy design prompt script should not be installed during update" >&2
     exit 1
@@ -263,6 +288,7 @@ test_update_preserves_local_state_and_is_idempotent() {
   assert_line_count "1" ".asdlc_worker/scripts" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/scripts/helpers" "$repo_dir/.git/info/exclude"
   assert_line_count "0" ".codex/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".codex/skills/yasdef-worker-plan" "$repo_dir/.git/info/exclude"
 }
 
 test_init_stashes_unrelated_changes_after_install_commit() {
@@ -281,6 +307,7 @@ test_init_stashes_unrelated_changes_after_install_commit() {
   assert_equal "asdlc worker added" "$(git -C "$repo_dir" log -1 --pretty=%s)"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/SKILL.md"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/SKILL.md"
   assert_git_status_clean "$repo_dir"
 
   stash_list="$(git -C "$repo_dir" stash list)"

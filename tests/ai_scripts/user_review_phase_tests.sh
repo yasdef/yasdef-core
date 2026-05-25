@@ -159,10 +159,6 @@ setup_repo() {
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" \
     "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
 
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "planning"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "implementation"
@@ -180,8 +176,7 @@ EOF
 touch "$repo_dir/model-ran.flag"
 echo "model-ran"
 EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
-    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
     "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/fake_model.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'

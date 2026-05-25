@@ -105,10 +105,6 @@ setup_worker_repo() {
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "planning"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "implementation"
@@ -127,8 +123,7 @@ EOF
 set -euo pipefail
 $post_review_body
 EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
-    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" \
     "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
@@ -398,14 +393,14 @@ test_outbound_staging_failure_stops_before_post_review_noninteractive() {
 #### Assigned: $worker_uuid
 - [ ] Plan and discuss the step (SP=1)
 "
-  setup_worker_repo "$repo_dir" "echo \"ai_audit\"; printf '\n# staging-failure\n' >> '$source_dir/feature-a/implementation_plan.md'; chmod 0444 '$source_dir/.git'" "echo \"post_review\""
+  setup_worker_repo "$repo_dir" "echo \"ai_audit\"; printf '\n# staging-failure\n' >> '$source_dir/feature-a/implementation_plan.md'; touch '$source_dir/.git/index.lock'" "echo \"post_review\""
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   set +e
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh 2>&1)"
   status=$?
   set -e
-  chmod 0755 "$source_dir/.git" 2>/dev/null || true
+  rm -f "$source_dir/.git/index.lock"
 
   assert_nonzero_status "$status"
   assert_contains "$out" "Global implementation-plan sync failed while staging $source_dir/feature-a/implementation_plan.md"
@@ -647,6 +642,12 @@ test_resume_succeeds_without_local_runtime_mirror_files() {
 - [ ] Plan and discuss the step (SP=1)
 "
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
+  mkdir -p "$repo_dir/.asdlc_worker/step_designs"
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-a-design.md" <<'EOF'
+## Selected EARS Requirements (for planning translation)
+### Requirement 1 Demo
+- The system SHALL support resume behavior.
+EOF
 
   (cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run >/dev/null 2>&1)
   (

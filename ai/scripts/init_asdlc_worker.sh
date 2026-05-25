@@ -30,6 +30,7 @@ GENERATED_EXCLUDE_PATHS=(
 )
 DURABLE_COMMIT_PATHS=(
   ".codex/skills/yasdef-worker-design"
+  ".codex/skills/yasdef-worker-plan"
   ".asdlc_worker/asdlc_worker.yaml"
   ".asdlc_worker/blocker_log.md"
   ".asdlc_worker/decisions.md"
@@ -179,20 +180,26 @@ install_generated_dirs() {
       mkdir -p "$TARGET_RUNTIME_DIR/$dir"
     fi
   done
+
+  remove_generated_path "$TARGET_RUNTIME_DIR/scripts/ai_plan.sh"
 }
 
 install_codex_skills() {
-  local source_skill_dir="$SOURCE_CODEX_SKILLS_DIR/yasdef-worker-design"
   local target_skills_dir="$TARGET_REPO_ROOT/.codex/skills"
-  local target_skill_dir="$target_skills_dir/yasdef-worker-design"
+  local skill_name=""
 
-  if [[ ! -d "$source_skill_dir" ]]; then
-    die "Required Codex skill source is missing: $source_skill_dir"
-  fi
-
-  remove_generated_path "$target_skill_dir"
   mkdir -p "$target_skills_dir"
-  copy_dir_contents "$source_skill_dir" "$target_skill_dir"
+  for skill_name in yasdef-worker-design yasdef-worker-plan; do
+    local source_skill_dir="$SOURCE_CODEX_SKILLS_DIR/$skill_name"
+    local target_skill_dir="$target_skills_dir/$skill_name"
+
+    if [[ ! -d "$source_skill_dir" ]]; then
+      die "Required Codex skill source is missing: $source_skill_dir"
+    fi
+
+    remove_generated_path "$target_skill_dir"
+    copy_dir_contents "$source_skill_dir" "$target_skill_dir"
+  done
 }
 
 ensure_runtime_support_dirs() {
@@ -200,6 +207,8 @@ ensure_runtime_support_dirs() {
     "$TARGET_RUNTIME_DIR/overmind" \
     "$TARGET_RUNTIME_DIR/step_designs" \
     "$TARGET_RUNTIME_DIR/step_plans" \
+    "$TARGET_RUNTIME_DIR/step_open_questions" \
+    "$TARGET_RUNTIME_DIR/step_blockers" \
     "$TARGET_RUNTIME_DIR/step_review_results"
 }
 
@@ -236,7 +245,7 @@ commit_durable_runtime_files() {
 
   for path in "${DURABLE_COMMIT_PATHS[@]}"; do
     if [[ -e "$TARGET_REPO_ROOT/$path" ]]; then
-      git -C "$TARGET_REPO_ROOT" add "$path"
+      git -C "$TARGET_REPO_ROOT" add -f "$path"
     fi
   done
 

@@ -80,10 +80,6 @@ setup_repo() {
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_plan.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "PROMPT_MARKER=${PROMPT_MARKER:-default-planning}"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "PROMPT_MARKER=${PROMPT_MARKER:-default-implementation}"
@@ -105,8 +101,7 @@ EOF
 echo "MODEL_MARKER=${MODEL_MARKER:-default-model}"
 echo "Token usage: input=1 output=1 total=2"
 EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_plan.sh" \
-    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
     "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/fake_model.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'

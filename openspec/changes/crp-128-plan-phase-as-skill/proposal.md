@@ -1,11 +1,11 @@
 ## Why
 
-The planning phase is currently driven by inline prompt generation in `ai/scripts/ai_plan.sh`, which duplicates planning rules into the orchestrator and makes them hard to update independently. Converting to a repo-provided Codex skill moves planning instructions, context assembly, readiness validation, and LAR sync into a versioned, installable skill — matching the design-phase pattern established by `yasdef-worker-design`.
+The planning phase was previously driven by inline prompt generation in `ai/scripts/ai_plan.sh`, which duplicated planning rules outside the skill system and made them hard to update independently. Converting planning to a repo-provided Codex skill and invoking it directly from `ai/scripts/orchestrator.sh` moves planning instructions, context assembly, readiness validation, and LAR sync into a versioned, installable skill — matching the design-phase pattern established by `yasdef-worker-design`.
 
 ## What Changes
 
 - Add `ai/codex/skills/yasdef-worker-plan/` with `SKILL.md`, Python scripts (`build_plan_context.py`, `check_planning_readiness.py`, `sync_step_lars.py`), and assets (`step_plan_TEMPLATE.md`, `step_plan_GOLDEN_EXAMPLE.md`)
-- Wrap the planning phase in `ai/scripts/ai_plan.sh` as an orchestrator loop: invoke `yasdef-worker-plan` skill with a compact variable-only prompt, then machine-check plan readiness and ledger state; repeat until both pass
+- Run the planning phase directly from `ai/scripts/orchestrator.sh` as a loop: invoke `yasdef-worker-plan` with a compact variable-only prompt, then machine-check plan readiness and ledger state; repeat until both pass
 - Introduce per-step open-questions and blocker files (`step_open_questions/step-<step>-<feature-id>-open-questions.md`, `step_blockers/step-<step>-<feature-id>-blockers.md`) as machine-readable loop ledgers, following the same directory-per-type pattern as `step_designs/` and `step_plans/`, replacing the current section-based shared files for new planning runs
 - Move `step_plan_TEMPLATE.md` and `step_plan_GOLDEN_EXAMPLE.md` into the skill `assets/` directory
 - Update `init_asdlc_worker.sh` to install `.codex/skills/yasdef-worker-plan` alongside existing skills
@@ -22,7 +22,7 @@ The planning phase is currently driven by inline prompt generation in `ai/script
 
 ## Impact
 
-- `ai/scripts/ai_plan.sh`: orchestrator planning prompt becomes compact (variables only)
+- `ai/scripts/orchestrator.sh`: planning prompt becomes compact (variables only) and owns the re-invocation loop
 - `ai/scripts/init_asdlc_worker.sh`: installs new skill directory into `.codex/skills/`
 - `ai/AI_DEVELOPMENT_PROCESS.md §2`: planning rules pointer replaces inline block
 - `tests/skills_python_scripts/`: new focused tests for planning scripts

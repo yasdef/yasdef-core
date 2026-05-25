@@ -1,6 +1,6 @@
 # Step plan template
 
-This file is the template for `.asdlc_worker/step_plans/step-<step>.md`.
+This file is the template for `.asdlc_worker/step_plans/step-<step>-<feature-id>.md`.
 
 ---
 
@@ -10,13 +10,14 @@ Planner model/session: <fill>
 Execution model/session (intended): <fill>
 
 ## Design Anchor (scope source of truth)
-- Feature design: `.asdlc_worker/step_designs/step-<step>-design.md`
+- Feature design: <design path>
 - Scope contract lives in design sections: `## Target Bullets`, `## Goal`, `## In Scope`, `## Out of Scope`
 - Requirement-translation source lives in design section: `## Selected EARS Requirements (for planning translation)`
 - If scope changes, update the feature design first, then update this step plan.
 
 ## Preconditions / Dependencies
-- Review `.asdlc_worker/blocker_log.md` and `.asdlc_worker/open_questions.md` for the current step.
+- Review per-step open questions: `<open questions path>`
+- Review per-step blockers: `<blockers path>`
 - <missing prerequisites or required decisions>
 
 ## Linked Artifacts (in scope)
@@ -33,7 +34,7 @@ Execution model/session (intended): <fill>
 - [ ] FR-<step-id>-001 The system SHALL <implementation-specific, testable behavior>. EARS[REQ-<id>]
 
 ## Architecture / Helper Flow
-- Put execution mechanics here when they matter for implementation invariants (for example transaction scope, validator order, repository boundaries, lock ordering).
+- Put execution mechanics here when they matter for implementation invariants.
 - <overview of helper/service design and call flow>
 
 ## Implementation Notes / Constraints
@@ -53,7 +54,7 @@ Execution model/session (intended): <fill>
 - <explicit assumptions>
 
 ## Decisions Needed
-- <for each design "Things to Decide" item: Accepted/Deferred/Blocked + rationale + follow-up artifact if deferred/blocked>
+- <design decision title> | Accepted/Deferred/Blocked | <rationale and follow-up>
 
 ## Sources (if any)
 - <web.run sources or other references>

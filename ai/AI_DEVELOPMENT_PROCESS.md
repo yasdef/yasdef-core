@@ -11,7 +11,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 
 ## Git safety (local workflow)
 - Never commit directly on `main`/`master`. All commits happen on a local topic branch.
-- Branch setup is handled by scripts: the orchestrator and `ai/scripts/ai_plan.sh` use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, `ai/scripts/ai_user_review.sh` uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
+- Branch setup is handled by scripts: the orchestrator planning/design phases use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, `ai/scripts/ai_user_review.sh` uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
 - Local workflow: create a local branch before starting a step implementation phase, commit only after tests pass and the user approves, do not push. Any merge to `main`/`master` is a separate explicit follow-up action, not part of step completion.
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
@@ -59,72 +59,18 @@ Before step planning:
 
 
 ### 2) Step plan and discussion (mandatory first bullet)
-
-#### 2.1) Planning draft and decision capture
 - Planning phase is analysis-only: do not implement runtime code in this phase.
-- Execute the planning flow autonomously end-to-end; do not pause for generic "next step" confirmation. Ask the user only for required project-specific inputs/decisions or true blockers.
-- Generate or update the step plan artifact via `ai/scripts/ai_plan.sh` and write it to `ai/step_plans/step-<step>.md`.
-- Use `ai/templates/step_plan_TEMPLATE.md` as the default structure and follow the style in `ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md`.
+- Detailed planning workflow, context assembly, ledger handling, LAR sync, and readiness validation now live in the installed Codex skill at `.codex/skills/yasdef-worker-plan/SKILL.md`.
+- The orchestrator invokes Codex with a compact prompt that calls the `yasdef-worker-plan` skill for one planning iteration, then machine-checks readiness plus the per-step ledger files before deciding whether to re-invoke.
+- Planning writes the step plan under `.asdlc_worker/step_plans/` and uses per-step ledgers under `.asdlc_worker/step_open_questions/` and `.asdlc_worker/step_blockers/`.
 - The plan may be produced in a separate session/model. Record planner and intended execution model/session IDs in the plan.
 - Use web research for best practices when needed; record sources in the plan to reduce hallucinations.
-- Mirror the design's `## Linked Artifacts (in scope)` block verbatim into the step plan via `ai/scripts/helpers/sync_step_lars.sh`.
-- The plan must be concise and execution-focused: ordered steps, constraints, decisions, tests, and docs/artifacts to update.
-- Scope contract lives in the feature design artifact: `## Goal`, `## In Scope`, and `## Out of Scope`. Do not restate those sections in the step plan; instead add a pointer to the design and focus the plan on execution.
-- If present, the optional design bootstrap section is the source of truth for bootstrap handling; planning must not re-investigate repo emptiness or independently re-decide bootstrap need.
-- Step-plan structure contract:
-  - Do not include `## Target Bullets` in step plans.
-  - Do not include `## Requirement Tags` in step plans.
-  - Require `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)` (in that order).
-- Only when design records `Bootstrap required: yes`, require `## Scaffold Bootstrap Plan` in the step plan and place scaffold creation before dependent feature implementation work in `## Plan (ordered)`.
-- Functional-requirement translation contract (Design -> Plan):
-  - Planning translates the design-selected EARS into plain step-plan FRs. Design keeps the EARS source context; implementation and user_review operate on FRs only.
-  - Resolve planning decisions that change runtime behavior before translating design EARS into final FR wording.
-  - Each translated functional requirement maps to exactly one selected EARS source item from design, and each selected EARS source item maps to at least one translated functional requirement.
-  - If one selected EARS source item contains multiple independent `SHALL` outcomes, split them into multiple FRs unless the behavior is inseparable for verification.
-  - Each translated requirement must be self-contained, implementation-specific, testable, and use one `SHALL` statement only.
-  - Do not make FR meaning depend on `## Decisions Needed`, `## Architecture / Helper Flow`, or `## Implementation Notes / Constraints`; encode accepted outcomes directly in the FR text.
-  - Keep internal execution mechanics (transactions, validators, repositories, lock ordering, and similar details) out of FRs unless a mechanic is the only concise way to state a non-negotiable observable invariant; prefer writing the invariant as externally testable behavior and record the mechanics in architecture/constraints instead.
-- Canonical translated functional requirement template (required in step plan):
-  - `- [ ] FR-<step-id>-<nnn> The system SHALL ... EARS[REQ-...]`
-- The plan must include an "Implementation Notes" or "Constraints" section that explicitly references `AGENTS.md` and `ai/AI_DEVELOPMENT_PROCESS.md`.
-- The plan must include an "Architecture / Helper Flow" section describing helper/service design and call flow when applicable.
-- The plan must include an "Applicable UR Shortlist" section.
-- Accepted shortlist content is strict: either exact `- None.` (use this when there are no UR rules yet, or none apply), or a curated list where each bullet includes a `UR-xxxx` ID with optional one-line rationale.
-- Prioritize shortlist signal quality: when using UR IDs, recommended shortlist size is 3-8 items; enforced maximum is 8.
-- The plan must include design-derived constraints and decisions needed for execution:
-  - Include relevant constraints extracted from design's `Applicable AGENTS.md Constraints` and `Applicable User Review Rules`.
-  - Include non-negotiable invariants derived from the design's ADR shortlist and the step plan context.
-- Planning prompt/output should avoid inlining full `AGENTS.md` and full `ai/user_review.md`; use design-extracted relevant subsets by default.
-- Execution uses `ai/scripts/ai_implementation.sh` and requires the step plan file; update the plan if execution deviates.
-- Identify prerequisites (schema, endpoints, validators, error codes, auth assumptions).
-- If prerequisites are missing, add them as new bullets to the current step (mark as technical debt if discovered late).
-- Identify decisions that must be made (including all design "Things to Decide" items); ask questions and record the outcome in `ai/decisions.md` when durable.
-- If design "Things to Decide" entries are vague, normalize them into concrete decision prompts before closure (clear options, impact/risk trade-off, and what changes in implementation depending on choice).
-- If any decision is required to proceed, explicitly ask the user before implementing.
-- Resolve every item listed in design `## Things to Decide (for final planning discussion)` (or `## Things to Decide`) during planning. In the step plan `## Decisions Needed`, record an explicit outcome per item: `Accepted`, `Deferred`, or `Blocked` (with rationale and where the follow-up is tracked).
-- Review `ai/open_questions.md` for the current step; add new questions there and remove answered ones.
-- Add only true blockers/unknowns to `ai/blocker_log.md` using `ai/templates/blocker_log_TEMPLATE.md` and `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md` (only for steps already in progress).
-- Add SP estimates to every bullet in the step and record the step total (see Estimation Gates below). If the step total exceeds the target range, split the step before implementing code.
-
-#### 2.2) Plan quality gates and closure
-- Open-questions quality gate: do not consider the planning bullet complete while any open questions remain for the step. Ask questions one-by-one (at most one per assistant message), wait for the user's answer, then update the step plan and remove/close the answered question(s) in `ai/open_questions.md`.
-- Things-to-decide quality gate: do not consider the planning bullet complete while any design "Things to Decide" item lacks an explicit recorded outcome in the step plan. If unresolved, ask the user, then update the step plan and tracking artifacts.
-- Decision-confirmation quality gate: for each unresolved item from design `## Things to Decide`, ask the user for an explicit decision and record the answer before closing planning, even when a preferred/default option exists in design notes.
-- Decision prompt format (when decision-confirmation gate triggers): use exactly two options in numbered format. Option `1.` must be the recommended/default choice with short rationale; option `2.` must be the alternative with short trade-off rationale.
-- Decision prompt scope gate: do not auto-select unresolved design decisions in planning. Require explicit user choice unless the same decision was already explicitly provided by the user for the current step.
-- Decision prompt actionability gate: keep the two options mutually exclusive and actionable, and explicitly allow the user to reply with only `1` or `2`.
-- Decision-depth quality gate: if design unresolved decisions are empty but a plan-critical trade-off still exists in prerequisites/risks/tests/docs, ask one explicit two-option confirmation prompt before closing planning; if no plan-critical trade-offs remain, explicitly record that no additional decision prompt is required.
-- Missing-discussion-points closure gate: apply the missing-discussion gate from `.codex/skills/yasdef-worker-design/SKILL.md` as a planning closure check; do not close planning if any meaningful unresolved design discussion point was skipped without an explicit recorded outcome.
-- UR-shortlist quality gate: do not close planning if `## Applicable UR Shortlist` is missing, uses non-canonical content, or includes more than 8 UR IDs.
-- If blockers, open questions, or unresolved design "Things to Decide" items remain, present them and continue planning discussion; do not finish the planning phase until they are resolved/closed.
-- Planning Readiness Gate: before emitting the planning completion line, run `ai/scripts/helpers/check_planning_readiness.sh <step>`.
-- If the Planning Readiness Gate exits non-zero, do not emit the completion line. Tell the user what failed and present exactly two options: `1.` try to fix the reason and re-run the helper, `2.` finish the step immediately with failed status.
-- After presenting the Planning Readiness Gate options, stop and wait for the user's reply. Do not choose option `1` or `2` without explicit user input.
-- If the user chooses `1`, continue planning, fix the readiness issue, and re-run the Planning Readiness Gate.
-- If the user chooses `2`, finish the step immediately with failed status.
-- Do not emit the planning completion line unless the Planning Readiness Gate later exits `0`.
-- Only when the plan is accepted, open questions are resolved/closed, and all design "Things to Decide" items have explicit outcomes, immediately mark the "Plan and discuss the step" bullet as done and add Step sections to `ai/blocker_log.md` and `ai/open_questions.md` (even if "none"), then commit the planning artifacts.
-- Completion-line gate: output the exact planning completion line (`Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after verifying in `overmind/implementation_plan.md` that this step's "Plan and discuss the step." bullet is marked `[x]` (and included in the planning commit when changed).
+- The cross-phase plan contract remains:
+  - do not include `## Target Bullets` or `## Requirement Tags` in the step plan
+  - require `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)` in that order
+  - keep FRs self-contained and map each FR to exactly one `EARS[REQ-...]` source
+  - keep `## Applicable UR Shortlist` as exact `- None.` or a curated list of at most 8 `UR-xxxx` entries
+- Execution uses `ai/scripts/ai_implementation.sh` and requires the step plan file; update the plan first if execution must deviate from it.
 
 ### 3) Implement ordered plan (adaptive batch execution)
 #### 3.1) Adaptive implementation execution

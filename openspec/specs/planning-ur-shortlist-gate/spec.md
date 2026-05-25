@@ -40,16 +40,16 @@ Planning validation MUST enforce a maximum shortlist size of 8 UR IDs per step p
 - **WHEN** the shortlist contains between 1 and 8 UR IDs
 - **THEN** planning validation passes the size gate
 
-### Requirement: ai_plan MUST fail before prompt generation on invalid shortlist structure
-`ai/scripts/ai_plan.sh` MUST perform shortlist gate checks before emitting planning prompt output and MUST exit non-zero on missing or invalid shortlist structure.
+### Requirement: Planning validation MUST fail on invalid shortlist structure
+Planning validation MUST perform shortlist gate checks before a planning iteration can be considered complete and MUST exit non-zero on missing or invalid shortlist structure.
 
-#### Scenario: Missing shortlist triggers pre-model fail-fast
-- **WHEN** `ai/scripts/ai_plan.sh` is invoked for a step plan missing the shortlist section
-- **THEN** script exits non-zero before planning prompt emission
+#### Scenario: Missing shortlist triggers readiness failure
+- **WHEN** the planning readiness validator runs for a step plan missing the shortlist section
+- **THEN** it exits non-zero with a clear error before the planning phase can complete
 
-#### Scenario: Invalid shortlist format triggers pre-model fail-fast
-- **WHEN** `ai/scripts/ai_plan.sh` is invoked for a step plan with invalid shortlist content
-- **THEN** script exits non-zero with actionable shortlist guidance before prompt emission
+#### Scenario: Invalid shortlist format triggers readiness failure
+- **WHEN** the planning readiness validator runs for a step plan with invalid shortlist content
+- **THEN** it exits non-zero with actionable shortlist guidance before the planning phase can complete
 
 ### Requirement: Implementation prompt MUST include step-plan UR shortlist context
 `ai/scripts/ai_implementation.sh` MUST include `## Applicable UR Shortlist` context from the current step plan in emitted implementation prompt context.
@@ -70,18 +70,18 @@ Planning validation MUST enforce a maximum shortlist size of 8 UR IDs per step p
 Step plan template and golden example MUST show `## Applicable UR Shortlist` with canonical valid examples (`- None.` and UR-ID shortlist format).
 
 #### Scenario: Template and golden example are aligned with validator
-- **WHEN** planners use `ai/templates/step_plan_TEMPLATE.md` and `ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md`
+- **WHEN** planners use `ai/codex/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md` and `ai/codex/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md`
 - **THEN** shortlist examples match accepted validation formats
 
 ### Requirement: Planning MUST treat design Things-to-Decide block as required clarification input
-`ai/scripts/ai_plan.sh` guidance MUST instruct planning to treat design `## Things to Decide (for final planning discussion)` as required input for user-facing clarification and decision resolution.
+`ai/codex/skills/yasdef-worker-plan/SKILL.md` MUST instruct planning to treat design `## Things to Decide (for final planning discussion)` as required input for user-facing clarification and decision resolution.
 
 #### Scenario: Planning prompt references design handoff block as required input
-- **WHEN** planning prompt guidance is generated for a step with a design artifact
+- **WHEN** planning skill guidance is loaded for a step with a design artifact
 - **THEN** the guidance explicitly requires consuming `## Things to Decide (for final planning discussion)` from design before planning closure
 
 #### Scenario: Script guidance remains minimal and process-aligned
-- **WHEN** `ai/scripts/ai_plan.sh` is updated for this behavior
+- **WHEN** `yasdef-worker-plan/SKILL.md` is updated for this behavior
 - **THEN** it only adds minimal critical wording and defers durable decision rules to `ai/AI_DEVELOPMENT_PROCESS.md`
 
 ### Requirement: Planning closure MUST enforce missing-discussion-points gate outcomes

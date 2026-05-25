@@ -9,7 +9,6 @@ PROJECT="$(basename "$ROOT")"
 PLAN="$ASDLC_RUNTIME_PLAN_PATH"
 PROCESS="$ASDLC_PROCESS_FILE"
 AGENTS="$ROOT/AGENTS.md"
-PLANNING_READINESS_HELPER="$ASDLC_HELPERS_DIR/check_planning_readiness.sh"
 IMPLEMENTATION_READINESS_HELPER="$ASDLC_HELPERS_DIR/check_implementation_readiness.sh"
 
 STEP=""
@@ -461,25 +460,11 @@ if [[ ! -f "$DESIGN_FILE" ]]; then
   exit 1
 fi
 
+echo "no script to check planing readiness" >&2
+exit 1
+
 if [[ "$SKIP_BRANCH" -eq 0 ]]; then
   ensure_implementation_branch
-fi
-
-if [[ ! -r "$PLANNING_READINESS_HELPER" ]]; then
-  echo "Planning readiness helper not found or not readable: $PLANNING_READINESS_HELPER" >&2
-  exit 1
-fi
-
-PLANNING_READINESS_STATUS=0
-PLANNING_READINESS_OUTPUT=""
-set +e
-PLANNING_READINESS_OUTPUT="$(bash "$PLANNING_READINESS_HELPER" "$STEP" 2>&1)"
-PLANNING_READINESS_STATUS=$?
-set -e
-
-if [[ "$PLANNING_READINESS_STATUS" -ne 0 ]]; then
-  printf '%s\n' "$PLANNING_READINESS_OUTPUT" >&2
-  exit "$PLANNING_READINESS_STATUS"
 fi
 
 if [[ ! -r "$IMPLEMENTATION_READINESS_HELPER" ]]; then

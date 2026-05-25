@@ -3,8 +3,8 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 AI_IMPL_SRC="$SOURCE_ROOT/ai/scripts/ai_implementation.sh"
-PLANNING_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_planning_readiness.sh"
 IMPLEMENTATION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
+PLAN_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan"
 AI_AUDIT_SRC="$SOURCE_ROOT/ai/scripts/ai_audit.sh"
 AI_AUDIT_DISPOSITION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 POST_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/post_review.sh"
@@ -13,6 +13,7 @@ RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
+export UV_CACHE_DIR="$TMP_ROOT/uv-cache"
 
 assert_contains() {
   local haystack="$1"
@@ -69,16 +70,16 @@ assert_line_before() {
 setup_impl_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_designs" \
-    "$repo_dir/.asdlc_worker/templates" "$repo_dir/.asdlc_worker/golden_examples" "$repo_dir/.asdlc_worker/overmind"
+    "$repo_dir/.asdlc_worker/templates" "$repo_dir/.asdlc_worker/golden_examples" "$repo_dir/.asdlc_worker/overmind" \
+    "$repo_dir/.codex/skills"
   ln -s .asdlc_worker "$repo_dir/ai"
   ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
   cp "$AI_IMPL_SRC" "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
-  cp "$PLANNING_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh"
   cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
+  cp -R "$PLAN_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-plan"
   chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" \
-    "$repo_dir/.asdlc_worker/scripts/helpers/check_planning_readiness.sh" \
     "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
 
   cat >"$repo_dir/overmind/implementation_plan.md" <<'EOF'
@@ -95,6 +96,12 @@ EOF
 # Step Plan: 1.1 - Demo
 ## Design Anchor (scope source of truth)
 - .asdlc_worker/step_designs/step-1.1-feature-one-design.md
+## Applicable UR Shortlist
+- UR-0100 - Validate JWT auth boundary handling.
+- UR-0101 - Keep endpoint contract assertions stable.
+## Plan (ordered)
+- [ ] 1. Implement part A [REQ-1] [NFR-2].
+- [x] 2. Implement part B [REQ-1].
 ## Functional Requirements (translated from design EARS)
 ### FR-1.1-01
 - Source EARS Block: REQ-1
@@ -108,12 +115,6 @@ EOF
 - Plan Links: 2
 - Verification: Add/update tests.
 - Status: done
-## Applicable UR Shortlist
-- UR-0100 - Validate JWT auth boundary handling.
-- UR-0101 - Keep endpoint contract assertions stable.
-## Plan (ordered)
-- [ ] 1. Implement part A [REQ-1] [NFR-2].
-- [x] 2. Implement part B [REQ-1].
 ## Implementation Notes / Constraints
 - Follow AGENTS.md.
 - Keep diffs minimal.
@@ -146,6 +147,9 @@ EOF
 - Over-slimming can remove needed context -> keep mandatory fields.
 ## Applicable AGENTS.md Constraints
 - follow constraints
+## Selected EARS Requirements (for planning translation)
+### Requirement 1 Demo
+- The system SHALL implement part A behavior.
 ## Applicable User Review Rules
 - UR-0101 - Keep endpoint contract assertions stable.
 - UR-0102 - Validate requirement mapping in tests.
@@ -157,7 +161,7 @@ EOF
 - `.asdlc_worker/scripts/ai_implementation.sh` - prompt generation.
 - `tests/ai_scripts/implementation_evidence_tests.sh` - prompt assertions.
 ## Things to Decide (for final planning discussion)
-- none
+- None.
 EOF
 
   cat >"$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md" <<'EOF'
@@ -204,17 +208,13 @@ setup_orchestrator_repo() {
   local worker_uuid="11111111-1111-1111-1111-111111111111"
   local source_dir="$TMP_ROOT/source-evidence-${repo_dir##*/}"
   local remote_dir="${source_dir}-remote.git"
-  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/overmind"
+  mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/overmind" "$repo_dir/.codex/skills"
   ln -s .asdlc_worker "$repo_dir/ai"
   ln -s .asdlc_worker/overmind "$repo_dir/overmind"
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp -R "$PLAN_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-plan"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
-
-  cat >"$repo_dir/ai/scripts/ai_plan.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "planning"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "implementation"
@@ -231,8 +231,7 @@ EOF
 #!/usr/bin/env bash
 echo "post_review"
 EOF
-  chmod +x "$repo_dir/ai/scripts/ai_plan.sh" \
-    "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/ai/scripts/ai_user_review.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
     "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
@@ -312,6 +311,9 @@ EOF
   cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-one-design.md" <<'EOF'
 ## Goal
 test
+## Selected EARS Requirements (for planning translation)
+### Requirement 1 Demo
+- The system SHALL support demo behavior.
 ## In Scope
 test
 ## Out of Scope
@@ -348,41 +350,26 @@ seed_review_result_artifact() {
 EOF
 }
 
-test_ai_implementation_prompt_has_deterministic_structure() {
+test_ai_implementation_fails_fast_without_planning_readiness_script() {
   local repo_dir="$TMP_ROOT/repo-ai-impl"
   setup_impl_repo "$repo_dir"
 
-  (
-    cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
-  )
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch 2>&1)"
+  status=$?
+  set -e
 
-  local prompt
-  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt")"
-  assert_contains "$prompt" "Phase contract (read first)"
-  assert_contains "$prompt" "Anti-regression checklist (max 8)"
-  assert_contains "$prompt" "Execution list (step plan \`## Plan (ordered)\`)"
-  assert_contains "$prompt" "Step-plan execution context"
-  assert_contains "$prompt" "Scope contract (design)"
-  assert_contains "$prompt" "Key design details (excerpt)"
-  assert_contains "$prompt" "Codebase entrypoints (design references)"
-  assert_contains "$prompt" "## Functional Requirements (translated from design EARS)"
-  assert_contains "$prompt" "### FR-1.1-01"
-  assert_contains "$prompt" "- [ ] 1. Implement part A [REQ-1] [NFR-2]."
-  assert_contains "$prompt" "- [x] 2. Implement part B [REQ-1]."
-  assert_contains "$prompt" "## Applicable UR Shortlist"
-  assert_contains "$prompt" "UR-0100 - Validate JWT auth boundary handling."
-  assert_contains "$prompt" 'Before ending the implementation phase, run `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh 1.1`.'
-  assert_contains "$prompt" 'If that readiness check fails, do not emit the final completion line. Follow the Implementation Readiness Gate rules in `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.'
-  assert_line_before "$prompt" "Phase contract (read first)" "Anti-regression checklist (max 8)"
-  assert_line_before "$prompt" "Anti-regression checklist (max 8)" "Execution list (step plan \`## Plan (ordered)\`)"
-  assert_line_before "$prompt" "Execution list (step plan \`## Plan (ordered)\`)" "Step-plan execution context"
-  assert_line_before "$prompt" "Step-plan execution context" "Scope contract (design)"
-  assert_line_before "$prompt" "Scope contract (design)" "Key design details (excerpt)"
-  assert_line_before "$prompt" "Key design details (excerpt)" "Codebase entrypoints (design references)"
-  assert_line_before "$prompt" "Codebase entrypoints (design references)" "Process pointers"
-  assert_not_contains "$prompt" "== estimation summary =="
-  assert_not_contains "$prompt" "== repo snapshot =="
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: ai_implementation should fail fast until the implementation phase is migrated to a skill." >&2
+    exit 1
+  fi
+  assert_contains "$out" "no script to check planing readiness"
+  if [[ -e "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt" ]]; then
+    echo "Assertion failed: ai_implementation should not emit a prompt after the fail-fast gate." >&2
+    exit 1
+  fi
 }
 
 test_implementation_readiness_helper_fails_on_unchecked_ordered_items() {
@@ -441,313 +428,6 @@ EOF
   fi
   assert_contains "$out" "Implementation readiness failed for step 1.1."
   assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before handing off implementation."
-}
-
-test_ai_implementation_allows_non_executable_planning_helper() {
-  local repo_dir="$TMP_ROOT/repo-impl-planning-helper-no-exec"
-  setup_impl_repo "$repo_dir"
-  chmod -x "$repo_dir/ai/scripts/helpers/check_planning_readiness.sh"
-
-  local status=0
-  local out=""
-  set +e
-  out="$(cd "$repo_dir" && .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl.prompt.txt --no-branch 2>&1)"
-  status=$?
-  set -e
-
-  if [[ "$status" -ne 0 ]]; then
-    echo "Assertion failed: ai_implementation should allow a readable planning helper without execute bit" >&2
-    echo "$out" >&2
-    exit 1
-  fi
-  assert_not_contains "$out" "Planning readiness helper not found or not readable:"
-}
-
-test_ai_implementation_prompt_builds_deduped_anti_regression_checklist() {
-  local repo_dir="$TMP_ROOT/repo-ai-impl-step-plan-shortlist"
-  setup_impl_repo "$repo_dir"
-
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
-# Step Plan: 1.1 - Demo
-## Design Anchor (scope source of truth)
-- .asdlc_worker/step_designs/step-1.1-feature-one-design.md
-## Functional Requirements (translated from design EARS)
-### FR-1.1-01
-- Source EARS Block: REQ-1
-- Requirement: The system SHALL implement part A behavior.
-- Plan Links: 1
-- Verification: Add/update tests.
-- Status: pending
-### FR-1.1-02
-- Source EARS Block: REQ-1
-- Requirement: The system SHALL implement part B behavior.
-- Plan Links: 2
-- Verification: Add/update tests.
-- Status: pending
-## Applicable UR Shortlist
-- UR-0001 - Step-plan rule one.
-- UR-0002 - Step-plan rule two.
-## Plan (ordered)
-- [ ] 1. Implement part A [REQ-1].
-- [ ] 2. Implement part B [REQ-1].
-## Implementation Notes / Constraints
-- Follow AGENTS.md.
-## Tests
-- Add/update tests.
-## Docs / Artifacts
-- Update docs.
-## Risks / Edge Cases
-- None.
-## Decisions Needed
-- None.
-EOF
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-one-design.md" <<'EOF'
-## Goal
-- Goal.
-## In Scope
-- Scope.
-## Out of Scope
-- Out.
-## Non-goals
-- Non-goal.
-## Proposal / Design Details
-- details
-## Risks and Mitigations
-- risk
-## Applicable AGENTS.md Constraints
-- constraints
-## Applicable User Review Rules
-- UR-0002 - Duplicate in design should be deduped.
-- UR-0003 - Design-only rule should be retained.
-## Applicable ADR Shortlist
-- ADR-1
-## References in Current Codebase
-- `a` - a
-EOF
-
-  (
-    cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
-  )
-
-  local prompt anti_block
-  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt")"
-  anti_block="$(printf '%s\n' "$prompt" | awk '
-    /^Anti-regression checklist \(max 8\)$/ { in_section=1; next }
-    in_section && /^Execution list \(step plan `## Plan \(ordered\)`\)$/ { exit }
-    in_section { print }
-  ')"
-
-  assert_contains "$anti_block" "UR-0001 - Step-plan rule one."
-  assert_contains "$anti_block" "UR-0002 - Step-plan rule two."
-  assert_contains "$anti_block" "UR-0003 - Design-only rule should be retained."
-  local ur2_count
-  ur2_count="$(printf '%s\n' "$anti_block" | grep -c 'UR-0002' || true)"
-  if [[ "$ur2_count" -ne 1 ]]; then
-    echo "Assertion failed: expected UR-0002 exactly once in anti-regression checklist" >&2
-    echo "$anti_block" >&2
-    exit 1
-  fi
-  local anti_count
-  anti_count="$(printf '%s\n' "$anti_block" | grep -c '^- ' || true)"
-  if (( anti_count > 8 )); then
-    echo "Assertion failed: anti-regression checklist must be capped at 8 bullets" >&2
-    echo "$anti_block" >&2
-    exit 1
-  fi
-}
-
-test_ai_implementation_prompt_caps_and_requirement_filtering() {
-  local repo_dir="$TMP_ROOT/repo-ai-impl-caps"
-  setup_impl_repo "$repo_dir"
-
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
-# Step Plan: 1.1 - Demo
-## Design Anchor (scope source of truth)
-- .asdlc_worker/step_designs/step-1.1-feature-one-design.md
-## Functional Requirements (translated from design EARS)
-### FR-1.1-01
-- Source EARS Block: REQ-1
-- Requirement: The system SHALL implement part A behavior.
-- Plan Links: 1
-- Verification: test-1
-- Status: pending
-## Applicable UR Shortlist
-- UR-0001 - one
-## Plan (ordered)
-- [ ] 1. Implement part A [REQ-1] [NFR-2].
-## Implementation Notes / Constraints
-- note-01
-- note-02
-- note-03
-- note-04
-- note-05
-- note-06
-- note-07
-- note-08
-- note-09
-- note-10
-- note-11
-- note-12
-- note-13-should-not-appear
-## Tests
-- test-1
-## Docs / Artifacts
-- docs
-## Risks / Edge Cases
-- risk-1
-- risk-2
-- risk-3
-- risk-4
-- risk-5
-- risk-6
-- risk-7
-- risk-8
-- risk-9-should-not-appear
-## Decisions Needed
-- Choice: Accepted.
-EOF
-
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-one-design.md" <<'EOF'
-## Goal
-- goal-1
-- goal-2
-## In Scope
-- scope-1
-## Out of Scope
-- out-1
-## Non-goals
-- non-goal-1
-## Proposal / Design Details
-- proposal-01
-- proposal-02
-- proposal-03
-- proposal-04
-- proposal-05
-- proposal-06
-- proposal-07
-- proposal-08
-- proposal-09
-- proposal-10
-- proposal-11
-- proposal-12
-- proposal-13
-- proposal-14
-- proposal-15
-- proposal-16
-- proposal-17
-- proposal-18
-- proposal-19
-- proposal-20
-- proposal-21-should-not-appear
-## Risks and Mitigations
-- drisk-1
-- drisk-2
-- drisk-3
-- drisk-4
-- drisk-5
-- drisk-6
-- drisk-7
-- drisk-8
-- drisk-9
-- drisk-10
-- drisk-11-should-not-appear
-## Applicable AGENTS.md Constraints
-- constraint-1
-## Applicable User Review Rules
-- UR-0001 - one
-## Applicable ADR Shortlist
-- ADR-1
-## References in Current Codebase
-- `src/main/a` - a
-EOF
-
-  (
-    cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
-  )
-
-  local prompt
-  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt")"
-  assert_contains "$prompt" "note-12"
-  assert_not_contains "$prompt" "note-13-should-not-appear"
-  assert_contains "$prompt" "risk-8"
-  assert_not_contains "$prompt" "risk-9-should-not-appear"
-  assert_contains "$prompt" "proposal-20"
-  assert_not_contains "$prompt" "proposal-21-should-not-appear"
-  assert_contains "$prompt" "drisk-10"
-  assert_not_contains "$prompt" "drisk-11-should-not-appear"
-  assert_contains "$prompt" "## Functional Requirements (translated from design EARS)"
-  assert_contains "$prompt" "### FR-1.1-01"
-  assert_contains "$prompt" "Source EARS Block: REQ-1"
-}
-
-test_ai_implementation_prompt_is_deterministic_and_compact() {
-  local repo_dir="$TMP_ROOT/repo-ai-impl-determinism"
-  setup_impl_repo "$repo_dir"
-
-  (
-    cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test-1.prompt.txt --no-branch
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test-2.prompt.txt --no-branch
-  )
-
-  if ! cmp -s "$repo_dir/.asdlc_worker/prompts/impl_prompts/test-1.prompt.txt" "$repo_dir/.asdlc_worker/prompts/impl_prompts/test-2.prompt.txt"; then
-    echo "Assertion failed: prompt output is not byte-deterministic for identical inputs" >&2
-    exit 1
-  fi
-
-  local prompt
-  local prompt_bytes
-  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test-1.prompt.txt")"
-  prompt_bytes="$(printf '%s' "$prompt" | wc -c | tr -d '[:space:]')"
-  if (( prompt_bytes > 7000 )); then
-    echo "Assertion failed: implementation prompt too large, expected <= 7000 bytes, got $prompt_bytes" >&2
-    exit 1
-  fi
-}
-
-test_ai_implementation_prompt_normalizes_plain_ordered_bullets() {
-  local repo_dir="$TMP_ROOT/repo-ai-impl-normalized-ordered"
-  setup_impl_repo "$repo_dir"
-
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-one.md" <<'EOF'
-# Step Plan: 1.1 - Demo
-## Design Anchor (scope source of truth)
-- .asdlc_worker/step_designs/step-1.1-feature-one-design.md
-## Functional Requirements (translated from design EARS)
-### FR-1.1-01
-- Source EARS Block: REQ-1
-- Requirement: The system SHALL implement part A behavior.
-- Plan Links: 1, 2
-- Verification: Add/update tests.
-- Status: pending
-## Applicable UR Shortlist
-- None.
-## Plan (ordered)
-- 1. Implement part A [REQ-1].
-- 2. Implement part B [REQ-1].
-## Implementation Notes / Constraints
-- Follow AGENTS.md.
-## Tests
-- Add/update tests.
-## Docs / Artifacts
-- Update docs.
-## Risks / Edge Cases
-- None.
-## Decisions Needed
-- None.
-EOF
-
-  (
-    cd "$repo_dir"
-    .asdlc_worker/scripts/ai_implementation.sh --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-one.md --design .asdlc_worker/step_designs/step-1.1-feature-one-design.md --out .asdlc_worker/prompts/impl_prompts/test.prompt.txt --no-branch
-  )
-
-  local prompt
-  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/test.prompt.txt")"
-  assert_contains "$prompt" "- [ ] 1. Implement part A [REQ-1]."
-  assert_contains "$prompt" "- [ ] 2. Implement part B [REQ-1]."
 }
 
 test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked() {
@@ -829,8 +509,8 @@ EOF
 }
 
 test_step_plan_template_enforces_functional_requirement_contract() {
-  local template="$SOURCE_ROOT/ai/templates/step_plan_TEMPLATE.md"
-  local golden="$SOURCE_ROOT/ai/golden_examples/step_plan_GOLDEN_EXAMPLE.md"
+  local template="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
+  local golden="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
   local template_content golden_content
 
   template_content="$(cat "$template")"
@@ -1105,7 +785,7 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   assert_contains "$prompt" '- Decisions: '
   assert_contains "$prompt" 'Run Section 6.0 first as the mandatory ai_audit entry proof-gate against `.asdlc_worker/overmind/implementation_plan.md` target bullets, then continue Sections 6.1-6.4.'
   assert_contains "$prompt" 'Audit-loop rule: after each disposition or plan update, continue Sections 6.2-6.4 until every ai_audit gate passes; do not stop early because the user approved a follow-up bullet change.'
-  assert_contains "$prompt" 'Before ending the ai_audit phase, ensure all bullets in the current step section of `.asdlc_worker/overmind/implementation_plan.md` are checklist bullets and marked `[x]`, then run `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1`.'
+  assert_contains "$prompt" 'Before ending the ai_audit phase, ensure all bullets in the current step section of `.asdlc_worker/overmind/implementation_plan.md` are checklist bullets and marked `[x]`, then run `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 feature-one`.'
   assert_contains "$prompt" 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `.asdlc_worker/overmind/implementation_plan.md`, then rerun the helper.'
   assert_contains "$prompt" 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `.asdlc_worker/overmind/implementation_plan.md`, the readiness helper passes, and the commit gate is satisfied (clean working tree).'
   assert_contains "$prompt" 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
@@ -1460,14 +1140,9 @@ test_orchestrator_post_review_requires_ai_audit_artifact() {
   assert_contains "$out" "Cannot start post_review for step 1.1: ai_audit phase is incomplete."
 }
 
-test_ai_implementation_prompt_has_deterministic_structure
+test_ai_implementation_fails_fast_without_planning_readiness_script
 test_implementation_readiness_helper_fails_on_unchecked_ordered_items
 test_implementation_readiness_helper_fails_on_unchecked_functional_requirements
-test_ai_implementation_allows_non_executable_planning_helper
-test_ai_implementation_prompt_builds_deduped_anti_regression_checklist
-test_ai_implementation_prompt_caps_and_requirement_filtering
-test_ai_implementation_prompt_is_deterministic_and_compact
-test_ai_implementation_prompt_normalizes_plain_ordered_bullets
 test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked
 test_orchestrator_implementation_runs_when_all_ordered_items_checked
 test_orchestrator_does_not_gate_implementation_when_functional_requirements_unchecked

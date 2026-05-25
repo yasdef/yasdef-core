@@ -70,7 +70,7 @@ Usage: .asdlc_worker/scripts/orchestrator.sh [--resume <step>] [--debug] [--dry-
 Default behavior:
   - Runs all phases in .asdlc_worker/setup/models.md, in order, then runs post_review.
   - design invokes Codex with a prompt that calls the yasdef-worker-design skill and generates/updates a feature-design artifact.
-  - planning runs .asdlc_worker/scripts/ai_plan.sh using the planning model entry.
+  - planning invokes Codex with a prompt that calls the yasdef-worker-plan skill and repeats until readiness plus per-step ledgers are clean.
   - implementation runs .asdlc_worker/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command.
   - user_review runs .asdlc_worker/scripts/ai_user_review.sh for the latest step plan, validates entry gate markers, then runs the user_review model command.
   - ai_audit runs .asdlc_worker/scripts/ai_audit.sh for the latest step plan (post-step audit prompt), then runs the ai_audit model command.
@@ -202,7 +202,6 @@ ensure_ai_context_files() {
 }
 
 ensure_orchestrator_prereqs() {
-  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_plan.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_implementation.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_user_review.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_audit.sh"
@@ -555,12 +554,12 @@ list_phases() {
   ' "$MODELS"
 }
 
-ensure_design_branch() {
+ensure_phase_branch() {
   local target="$1"
   local current=""
 
   if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    die "Feature design requires a git repository."
+    die "Phase execution requires a git repository."
   fi
 
   current="$(get_current_branch_name)"
@@ -600,6 +599,48 @@ write_design_skill_prompt() {
   } >"$prompt_out"
 }
 
+write_planning_skill_prompt() {
+  local step="$1"
+  local feature_id="$2"
+  local branch_name="$3"
+  local design_file="$4"
+  local step_plan_out="$5"
+  local open_questions_file="$6"
+  local blockers_file="$7"
+  local prompt_out="$8"
+
+  {
+    printf 'Use the `yasdef-worker-plan` skill to run one ASDLC worker planning iteration.\n'
+    printf '\n'
+    printf 'Inputs:\n'
+    printf -- '- Step: %s\n' "$step"
+    printf -- '- Feature id: %s\n' "$feature_id"
+    printf -- '- Branch: %s\n' "$branch_name"
+    printf -- '- Design artifact: %s\n' "$design_file"
+    printf -- '- Step plan output: %s\n' "$step_plan_out"
+    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
+    printf -- '- Open questions ledger: %s\n' "$open_questions_file"
+    printf -- '- Blockers ledger: %s\n' "$blockers_file"
+  } >"$prompt_out"
+}
+
+planning_ledger_has_entries() {
+  local path="$1"
+  if [[ ! -f "$path" ]]; then
+    return 1
+  fi
+
+  awk '
+    /^[[:space:]]*$/ { next }
+    /^[[:space:]]*#/ { next }
+    /^- None\.$/ { next }
+    /^- No open questions\.$/ { next }
+    /^- No blockers\.$/ { next }
+    { found=1; exit }
+    END { exit(found ? 0 : 1) }
+  ' "$path"
+}
+
 run_planning_phase() {
   load_model_config "planning"
 
@@ -607,17 +648,19 @@ run_planning_phase() {
   step="$(resolve_step_for_phase_from_args "planning" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")" || return 1
   explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
   planning_prompt_out="$(resolve_prompt_output_path "planning" "$step")"
+  local branch_name="step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan"
+  local design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
+  local step_plan_out="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
+  local open_questions_file="$ASDLC_STEP_OPEN_QUESTIONS_DIR/step-$step-$SELECTED_FEATURE_ID-open-questions.md"
+  local blockers_file="$ASDLC_STEP_BLOCKERS_DIR/step-$step-$SELECTED_FEATURE_ID-blockers.md"
+  local planning_readiness_script="$ROOT/.codex/skills/yasdef-worker-plan/scripts/check_planning_readiness.py"
 
-  local plan_cmd=("$ASDLC_SCRIPTS_DIR/ai_plan.sh")
-  if [[ ${#PLAN_ARGS[@]} -gt 0 ]]; then
-    plan_cmd+=("${PLAN_ARGS[@]}")
+  if [[ ! -f "$design_file" ]]; then
+    die "Planning requires the design artifact to exist first: $(repo_relpath "$design_file")"
   fi
-  if [[ -z "$explicit_step" ]]; then
-    echo "orchestrator: resolved routed step '$step' for planning; injecting --step into ai_plan.sh." >&2
-    plan_cmd+=(--step "$step")
+  if [[ ! -f "$planning_readiness_script" ]]; then
+    die "Planning requires the installed readiness script: $(repo_relpath "$planning_readiness_script")"
   fi
-  plan_cmd+=(--branch-name "step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan")
-  plan_cmd+=(--feature-id "$SELECTED_FEATURE_ID")
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_planning_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -631,29 +674,71 @@ run_planning_phase() {
     fi
     echo "dry-run prompt: $(repo_relpath "$planning_prompt_out")"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "planning" "$step")")"
-    echo "$(shell_join "${plan_cmd[@]}") > $(printf '%q' "$planning_prompt_out") && $(shell_join "${dry_planning_cmd[@]}")"
+    echo "write yasdef-worker-plan prompt for step $step to $(printf '%q' "$planning_prompt_out") && $(shell_join "${dry_planning_cmd[@]}")"
     return 0
   fi
 
+  ensure_phase_branch "$branch_name"
   mkdir -p "$(dirname "$planning_prompt_out")"
-  "${plan_cmd[@]}" >"$planning_prompt_out"
+  local iteration=1
+  while true; do
+    write_planning_skill_prompt \
+      "$step" \
+      "$SELECTED_FEATURE_ID" \
+      "$branch_name" \
+      "$design_file" \
+      "$step_plan_out" \
+      "$open_questions_file" \
+      "$blockers_file" \
+      "$planning_prompt_out"
 
-  local prompt_arg
-  prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$planning_prompt_out")"
+    local prompt_arg
+    prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$planning_prompt_out")"
 
-  local cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-    cmd+=("${MODEL_ARGS[@]}")
-  fi
-  cmd+=("$prompt_arg")
+    local cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
+    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
+      cmd+=("${MODEL_ARGS[@]}")
+    fi
+    cmd+=("$prompt_arg")
 
-  local status=0
-  if run_with_output_log "planning" "$step" "${cmd[@]}"; then
-    status=0
-  else
-    status=$?
-  fi
-  return "$status"
+    local status=0
+    if run_with_output_log "planning" "$step" "${cmd[@]}"; then
+      status=0
+    else
+      status=$?
+    fi
+    if [[ "$status" -ne 0 ]]; then
+      return "$status"
+    fi
+
+    local readiness_output=""
+    local readiness_status=0
+    set +e
+    readiness_output="$(
+      uv run python "$planning_readiness_script" \
+        --design "$design_file" \
+        --step-plan "$step_plan_out" \
+        --open-questions "$open_questions_file" \
+        --blockers "$blockers_file" 2>&1
+    )"
+    readiness_status=$?
+    set -e
+    if [[ "$readiness_status" -ne 0 ]]; then
+      printf '%s\n' "$readiness_output" >&2
+    fi
+
+    local ledgers_dirty=0
+    if planning_ledger_has_entries "$open_questions_file" || planning_ledger_has_entries "$blockers_file"; then
+      ledgers_dirty=1
+    fi
+
+    if [[ "$readiness_status" -eq 0 && "$ledgers_dirty" -eq 0 ]]; then
+      return 0
+    fi
+
+    iteration=$((iteration + 1))
+    echo "orchestrator: re-running planning for step $step (readiness_status=$readiness_status, ledgers_dirty=$ledgers_dirty, iteration=$iteration)." >&2
+  done
 }
 
 run_design_phase() {
@@ -708,7 +793,7 @@ run_design_phase() {
     return 0
   fi
 
-  ensure_design_branch "$branch_name"
+  ensure_phase_branch "$branch_name"
   mkdir -p "$(dirname "$design_prompt_out")"
   write_design_skill_prompt "$step" "$design_out" "$branch_name" "$design_prompt_out"
 
