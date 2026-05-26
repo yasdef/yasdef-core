@@ -74,7 +74,7 @@ Default behavior:
   - Runs all phases in .asdlc_worker/setup/models.md, in order, then runs post_review.
   - design invokes Codex with a prompt that calls the yasdef-worker-design skill and generates/updates a feature-design artifact.
   - planning invokes Codex with a prompt that calls the yasdef-worker-plan skill and repeats until readiness plus per-step ledgers are clean.
-  - implementation runs .asdlc_worker/scripts/ai_implementation.sh for the latest step plan, then runs the implementation model command.
+  - implementation invokes Codex with a prompt that calls the yasdef-worker-implementation skill for the latest step plan.
   - user_review runs .asdlc_worker/scripts/ai_user_review.sh for the latest step plan, validates entry gate markers, then runs the user_review model command.
   - ai_audit runs .asdlc_worker/scripts/ai_audit.sh for the latest step plan (post-step audit prompt), then runs the ai_audit model command.
   - post_review runs .asdlc_worker/scripts/post_review.sh for the latest step plan and appends post-review metrics to .asdlc_worker/history.md.
@@ -205,7 +205,6 @@ ensure_ai_context_files() {
 }
 
 ensure_orchestrator_prereqs() {
-  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_implementation.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_user_review.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_audit.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/post_review.sh"
@@ -678,6 +677,27 @@ write_planning_skill_prompt() {
     printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
     printf -- '- Open questions ledger: %s\n' "$open_questions_file"
     printf -- '- Blockers ledger: %s\n' "$blockers_file"
+  } >"$prompt_out"
+}
+
+write_implementation_skill_prompt() {
+  local step="$1"
+  local feature_id="$2"
+  local branch_name="$3"
+  local step_plan="$4"
+  local design_file="$5"
+  local prompt_out="$6"
+
+  {
+    printf 'Use the `yasdef-worker-implementation` skill to run the ASDLC worker implementation phase.\n'
+    printf '\n'
+    printf 'Inputs:\n'
+    printf -- '- Step: %s\n' "$step"
+    printf -- '- Feature id: %s\n' "$feature_id"
+    printf -- '- Branch: %s\n' "$branch_name"
+    printf -- '- Step plan: %s\n' "$step_plan"
+    printf -- '- Design artifact: %s\n' "$design_file"
+    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
   } >"$prompt_out"
 }
 
@@ -1943,7 +1963,7 @@ build_model_prompt_arg() {
 run_implementation_phase() {
   load_model_config "implementation"
 
-  local latest_plan step prompt_out
+  local latest_plan step prompt_out design_file branch_name implementation_context_script implementation_readiness_script
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
     latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
@@ -1966,8 +1986,20 @@ run_implementation_phase() {
   fi
 
   prompt_out="$(resolve_prompt_output_path "implementation" "$step")"
+  design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
+  branch_name="step-$step-$SELECTED_FEATURE_ID-implementation"
+  implementation_context_script="$ROOT/.codex/skills/yasdef-worker-implementation/scripts/build_implementation_context.py"
+  implementation_readiness_script="$ROOT/.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
 
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_implementation.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
+  if [[ ! -f "$design_file" ]]; then
+    die "Implementation requires the design artifact to exist first: $(repo_relpath "$design_file")"
+  fi
+  if [[ ! -f "$implementation_context_script" ]]; then
+    die "Implementation requires the installed context script: $(repo_relpath "$implementation_context_script")"
+  fi
+  if [[ ! -f "$implementation_readiness_script" ]]; then
+    die "Implementation requires the installed readiness script: $(repo_relpath "$implementation_readiness_script")"
+  fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -1981,12 +2013,13 @@ run_implementation_phase() {
     fi
     echo "dry-run prompt: $(repo_relpath "$prompt_out")"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "implementation" "$step")")"
-    echo "$(shell_join "${prompt_cmd[@]}") && $(shell_join "${dry_impl_cmd[@]}")"
+    echo "write yasdef-worker-implementation prompt for step $step to $(printf '%q' "$prompt_out") && $(shell_join "${dry_impl_cmd[@]}")"
     return 0
   fi
 
+  ensure_phase_branch "$branch_name"
   mkdir -p "$(dirname "$prompt_out")"
-  "${prompt_cmd[@]}"
+  write_implementation_skill_prompt "$step" "$SELECTED_FEATURE_ID" "$branch_name" "$latest_plan" "$design_file" "$prompt_out"
   local prompt_arg
   prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$prompt_out")"
   local impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -2508,350 +2541,6 @@ phase_eval_step_bullet_counts() {
       printf "%d|%d|%d|%d|%d|%d", have_plan, plan_checked, have_review, review_checked, impl_total, impl_checked
     }
   ' "$IMPLEMENTATION_PLAN_FILE"
-}
-
-get_markdown_section_body() {
-  local file="$1"
-  local heading="$2"
-  awk -v heading="$heading" '
-    $0 == heading { in_section=1; next }
-    in_section && /^## / { exit }
-    in_section { print }
-  ' "$file"
-}
-
-normalize_ordered_plan_item() {
-  local line="$1"
-
-  if [[ "$line" =~ ^-[[:space:]]+\[[xX[:space:]]\][[:space:]]+ ]]; then
-    printf '%s\n' "$line"
-    return 0
-  fi
-
-  if [[ "$line" =~ ^-[[:space:]]+ ]]; then
-    local body
-    body="$(printf '%s' "$line" | sed -E 's/^-[[:space:]]+//')"
-    printf '%s\n' "- [ ] $body"
-    return 0
-  fi
-
-  return 1
-}
-
-list_normalized_ordered_plan_items() {
-  local section="$1"
-  local line trimmed normalized
-
-  while IFS= read -r line; do
-    trimmed="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//')"
-    [[ -z "$trimmed" ]] && continue
-    if normalized="$(normalize_ordered_plan_item "$trimmed")"; then
-      printf '%s\n' "$normalized"
-    fi
-  done <<<"$section"
-}
-
-list_unchecked_ordered_plan_items() {
-  local items="$1"
-  local line
-  while IFS= read -r line; do
-    [[ -z "${line//[[:space:]]/}" ]] && continue
-    if [[ ! "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+ ]]; then
-      printf '%s\n' "$line"
-    fi
-  done <<<"$items"
-}
-
-get_step_plan_functional_requirements_section_from_file() {
-  local file="$1"
-  local section
-  section="$(get_markdown_section_body "$file" "## Functional Requirements (translated from design EARS)")"
-  if [[ -n "${section//[[:space:]]/}" ]]; then
-    printf '%s' "$section"
-    return 0
-  fi
-  section="$(get_markdown_section_body "$file" "## Functional Requirements")"
-  if [[ -n "${section//[[:space:]]/}" ]]; then
-    printf '%s' "$section"
-    return 0
-  fi
-  return 1
-}
-
-list_functional_requirement_entries() {
-  local section="$1"
-  printf '%s\n' "$section" | awk '
-    function flush_current() {
-      if (fr != "") {
-        normalized = tolower(status)
-        gsub(/[[:space:]]+/, "", normalized)
-        gsub(/`/, "", normalized)
-        if (normalized == "done") {
-          print "- [x] " fr
-        } else {
-          print "- [ ] " fr
-        }
-      }
-      fr = ""
-      status = ""
-    }
-    /^###[[:space:]]+FR-[A-Za-z0-9._-]+/ {
-      flush_current()
-      fr = $0
-      sub(/^### /, "", fr)
-      next
-    }
-    /^-[[:space:]]+Status:[[:space:]]*/ {
-      status = $0
-      sub(/^- Status:[[:space:]]*/, "", status)
-      next
-    }
-    /^-[[:space:]]+\[[xX[:space:]]\][[:space:]]+FR-[A-Za-z0-9._-]+[[:space:]]+/ {
-      flush_current()
-      print $0
-      next
-    }
-    /^-?[[:space:]]*FR-[A-Za-z0-9._-]+[[:space:]]+/ {
-      flush_current()
-      line = $0
-      sub(/^-?[[:space:]]*/, "", line)
-      print line
-      next
-    }
-    END { flush_current() }
-  '
-}
-
-normalize_functional_requirement_item() {
-  local line="$1"
-
-  if [[ "$line" =~ ^-[[:space:]]+\[[xX[:space:]]\][[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
-    printf '%s\n' "$line"
-    return 0
-  fi
-  if [[ "$line" =~ ^-[[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
-    local body
-    body="$(printf '%s' "$line" | sed -E 's/^-[[:space:]]+//')"
-    printf '%s\n' "- [ ] $body"
-    return 0
-  fi
-  if [[ "$line" =~ ^FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
-    printf '%s\n' "- [ ] $line"
-    return 0
-  fi
-  return 1
-}
-
-list_normalized_functional_requirement_items() {
-  local section="$1"
-  local entries line normalized
-  entries="$(list_functional_requirement_entries "$section")"
-  while IFS= read -r line; do
-    [[ -z "${line//[[:space:]]/}" ]] && continue
-    if normalized="$(normalize_functional_requirement_item "$line")"; then
-      printf '%s\n' "$normalized"
-    fi
-  done <<<"$entries"
-}
-
-list_unchecked_functional_requirement_items() {
-  local items="$1"
-  local line
-  while IFS= read -r line; do
-    [[ -z "${line//[[:space:]]/}" ]] && continue
-    if [[ ! "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
-      printf '%s\n' "$line"
-    fi
-  done <<<"$items"
-}
-
-phase_eval_functional_requirements_counts() {
-  local step="$1"
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
-  local functional_section normalized_items
-  local total=0
-  local done=0
-
-  if [[ ! -f "$step_plan" ]]; then
-    printf 'missing_step_plan|%d|%d|%d' "$total" "$done" "$((total - done))"
-    return 0
-  fi
-
-  functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
-  if [[ -z "${functional_section//[[:space:]]/}" ]]; then
-    printf 'missing_section|%d|%d|%d' "$total" "$done" "$((total - done))"
-    return 0
-  fi
-
-  normalized_items="$(list_normalized_functional_requirement_items "$functional_section")"
-  while IFS= read -r line; do
-    [[ -z "${line//[[:space:]]/}" ]] && continue
-    total=$((total + 1))
-    if [[ "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+FR-[A-Za-z0-9._-]+([[:space:]]+.*)?$ ]]; then
-      done=$((done + 1))
-    fi
-  done <<<"$normalized_items"
-
-  if [[ "$total" -eq 0 ]]; then
-    printf 'no_items|%d|%d|%d' "$total" "$done" "$((total - done))"
-    return 0
-  fi
-  printf 'ok|%d|%d|%d' "$total" "$done" "$((total - done))"
-}
-
-ensure_implementation_phase_completion_gate() {
-  local step="$1"
-  local ordered_counts ordered_state ordered_total ordered_checked
-  local functional_counts functional_state functional_total functional_done
-  local rerun_cmd
-  rerun_cmd=".asdlc_worker/scripts/orchestrator.sh --resume $step"
-  ordered_counts="$(phase_eval_ordered_plan_counts "$step")"
-  IFS='|' read -r ordered_state ordered_total ordered_checked _ <<<"$ordered_counts"
-  functional_counts="$(phase_eval_functional_requirements_counts "$step")"
-  IFS='|' read -r functional_state functional_total functional_done _ <<<"$functional_counts"
-
-  if [[ "$ordered_state" == "missing_step_plan" ]]; then
-    echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan not found: $ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md" >&2
-    echo "Implementation phase was not finished correctly because step plan is missing." >&2
-    echo "Restart implementation with: $rerun_cmd" >&2
-    return 1
-  fi
-
-  if [[ "$ordered_state" == "missing_section" ]]; then
-    echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan gate requires section '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
-    echo "Implementation phase was not finished correctly because ordered checklist section is missing." >&2
-    echo "Restart implementation with: $rerun_cmd" >&2
-    return 1
-  fi
-
-  if [[ "$ordered_state" == "no_checklist_items" ]]; then
-    echo "Implementation exit gate failed for step $step." >&2
-    echo "No ordered plan checklist items were found under '## Plan (ordered)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
-    echo "Add ordered bullets as checklist items and mark them [x] only when each is proven complete." >&2
-    echo "Implementation phase was not finished correctly because ordered checklist items are missing." >&2
-    echo "Restart implementation with: $rerun_cmd" >&2
-    return 1
-  fi
-
-  if [[ "$ordered_checked" -ne "$ordered_total" ]]; then
-    local step_plan ordered_section normalized_items unchecked
-    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
-    ordered_section="$(get_markdown_section_body "$step_plan" "## Plan (ordered)")"
-    normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
-    unchecked="$(list_unchecked_ordered_plan_items "$normalized_items")"
-
-    echo "Implementation exit gate failed for step $step." >&2
-    echo "All items in step plan '## Plan (ordered)' must be [x] before finishing implementation phase." >&2
-    echo "Unchecked ordered-plan items (normalized):" >&2
-    if [[ -n "$unchecked" ]]; then
-      printf '%s\n' "$unchecked" >&2
-    fi
-    echo "Implementation phase was not finished correctly because ordered checklist has unchecked items." >&2
-    echo "Restart implementation with: $rerun_cmd" >&2
-    return 1
-  fi
-
-  if [[ "$functional_state" == "missing_section" ]]; then
-    echo "Implementation exit gate failed for step $step." >&2
-    echo "Step plan gate requires section '## Functional Requirements (translated from design EARS)' in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
-    echo "Implementation phase was not finished correctly because functional requirements section is missing." >&2
-    echo "Restart implementation with: $rerun_cmd" >&2
-    return 1
-  fi
-
-  if [[ "$functional_state" == "no_items" ]]; then
-    echo "Implementation exit gate failed for step $step." >&2
-    echo "No translated functional requirements were found in .asdlc_worker/step_plans/step-$step-$SELECTED_FEATURE_ID.md." >&2
-    echo "Add entries like: - [ ] FR-$step-001 The system SHALL ... EARS[REQ-...]." >&2
-    echo "Implementation phase was not finished correctly because functional requirements checklist is empty." >&2
-    echo "Restart implementation with: $rerun_cmd" >&2
-    return 1
-  fi
-
-  if [[ "$functional_done" -ne "$functional_total" ]]; then
-    local step_plan functional_section normalized_fr unchecked_fr
-    step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
-    functional_section="$(get_step_plan_functional_requirements_section_from_file "$step_plan" || true)"
-    normalized_fr="$(list_normalized_functional_requirement_items "$functional_section")"
-    unchecked_fr="$(list_unchecked_functional_requirement_items "$normalized_fr")"
-    echo "Implementation exit gate failed for step $step." >&2
-    echo "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before finishing implementation phase." >&2
-    echo "Unchecked functional requirements (normalized):" >&2
-    if [[ -n "${unchecked_fr//[[:space:]]/}" ]]; then
-      printf '%s\n' "$unchecked_fr" >&2
-    fi
-    echo "Implementation phase was not finished correctly because functional requirements checklist has unchecked items." >&2
-    echo "Restart implementation with: $rerun_cmd" >&2
-    return 1
-  fi
-
-  return 0
-}
-
-phase_eval_ordered_plan_counts() {
-  local step="$1"
-  local step_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
-  local ordered_section normalized_items
-  local total=0
-  local checked=0
-
-  if [[ ! -f "$step_plan" ]]; then
-    printf 'missing_step_plan|%d|%d|%d' "$total" "$checked" "$((total - checked))"
-    return 0
-  fi
-
-  ordered_section="$(get_markdown_section_body "$step_plan" "## Plan (ordered)")"
-  if [[ -z "${ordered_section//[[:space:]]/}" ]]; then
-    printf 'missing_section|%d|%d|%d' "$total" "$checked" "$((total - checked))"
-    return 0
-  fi
-
-  normalized_items="$(list_normalized_ordered_plan_items "$ordered_section")"
-  if [[ -z "${normalized_items//[[:space:]]/}" ]]; then
-    printf 'no_checklist_items|%d|%d|%d' "$total" "$checked" "$((total - checked))"
-    return 0
-  fi
-
-  local line
-  while IFS= read -r line; do
-    [[ -z "${line//[[:space:]]/}" ]] && continue
-    total=$((total + 1))
-    if [[ "$line" =~ ^-[[:space:]]+\[[xX]\][[:space:]]+ ]]; then
-      checked=$((checked + 1))
-    fi
-  done <<<"$normalized_items"
-
-  printf 'ok|%d|%d|%d' "$total" "$checked" "$((total - checked))"
-}
-
-check_required_sections() {
-  local file="$1"
-  shift
-  local required=("$@")
-  local missing=()
-  local section
-
-  for section in "${required[@]}"; do
-    if ! awk -v target="$section" '
-      /^##[[:space:]]+/ {
-        line = $0
-        sub(/^##[[:space:]]+/, "", line)
-        sub(/[[:space:]]+$/, "", line)
-        if (line == target) { found = 1; exit }
-      }
-      END { exit(found ? 0 : 1) }
-    ' "$file"; then
-      missing+=("$section")
-    fi
-  done
-
-  if [[ ${#missing[@]} -eq 0 ]]; then
-    printf 'ok'
-  else
-    printf '%s' "${missing[*]}"
-  fi
 }
 
 evaluate_design_phase() {

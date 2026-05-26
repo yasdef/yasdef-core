@@ -12,7 +12,7 @@ BLOCKER_LOG="$ASDLC_BLOCKER_LOG_FILE"
 OPEN_QUESTIONS="$ASDLC_OPEN_QUESTIONS_FILE"
 AGENTS="$ROOT/AGENTS.md"
 USER_REVIEW="$ASDLC_USER_REVIEW_FILE"
-IMPLEMENTATION_READINESS_HELPER="$ASDLC_HELPERS_DIR/check_implementation_readiness.sh"
+IMPLEMENTATION_READINESS_SCRIPT="$ROOT/.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
 
 STEP=""
 OUT=""
@@ -34,7 +34,7 @@ Defaults:
   - If --out is omitted, writes to .asdlc_worker/prompts/user_review_prompts/<project>-step-<step>.user-review.prompt.txt.
   - AGENTS.md is pointer-only by default; use --include-agents to inline full contents.
   - Always creates/switches to branch step-<step>-<feature-id>-user-review from step-<step>-<feature-id>-implementation.
-  - Hard gate (before prompt/model): `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh <step>` must pass.
+  - Hard gate (before prompt/model): `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step <step> --step-plan <step-plan>` must pass.
 EOF
 }
 
@@ -70,7 +70,7 @@ ensure_user_review_branch() {
       echo "Switched to implementation branch: $implementation_branch" >&2
     else
       echo "Implementation branch not found: $implementation_branch" >&2
-      echo "Run .asdlc_worker/scripts/ai_implementation.sh for step $STEP first." >&2
+      echo "Run the orchestrator implementation phase for step $STEP first; it invokes the yasdef-worker-implementation skill." >&2
       exit 1
     fi
   fi
@@ -373,14 +373,14 @@ ensure_user_review_entry_gate() {
   local step="$1"
   local readiness_output="" readiness_status=0
 
-  if [[ ! -r "$IMPLEMENTATION_READINESS_HELPER" ]]; then
+  if [[ ! -r "$IMPLEMENTATION_READINESS_SCRIPT" ]]; then
     echo "User review precheck failed for step $step." >&2
-    echo "Implementation readiness helper is missing or not readable: $IMPLEMENTATION_READINESS_HELPER" >&2
+    echo "Implementation readiness script is missing or not readable: $IMPLEMENTATION_READINESS_SCRIPT" >&2
     exit 1
   fi
 
   set +e
-  readiness_output="$(bash "$IMPLEMENTATION_READINESS_HELPER" "$step" 2>&1)"
+  readiness_output="$(uv run python "$IMPLEMENTATION_READINESS_SCRIPT" --step "$step" --step-plan "$STEP_PLAN" 2>&1)"
   readiness_status=$?
   set -e
 
@@ -534,7 +534,7 @@ fi
 emit() {
   printf 'User review phase for Step %s\n' "$STEP"
   printf 'Use .asdlc_worker/AI_DEVELOPMENT_PROCESS.md Section 5 as the authoritative workflow.\n'
-  printf 'Entry gate already verified by script: `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh %s` passed.\n' "$STEP"
+  printf 'Entry gate already verified by script: `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step %s --step-plan %s` passed.\n' "$STEP" "$STEP_PLAN"
   printf 'User review phase-state source is step plan `## Plan (ordered)` only.\n'
   printf 'User review functional-requirement source is step plan `## Functional Requirements (translated from design EARS)`.\n'
   printf 'Do not start post-step audit/review in this phase.\n'

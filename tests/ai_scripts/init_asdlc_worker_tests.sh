@@ -180,6 +180,14 @@ test_init_bootstraps_existing_git_root() {
   assert_dir_exists "$runtime_dir/step_blockers"
   assert_file_exists "$runtime_dir/scripts/register_worker.sh"
   assert_file_exists "$runtime_dir/scripts/helpers/runtime_layout.sh"
+  if [[ -e "$runtime_dir/scripts/ai_implementation.sh" ]]; then
+    echo "Assertion failed: legacy implementation prompt script should not be installed: $runtime_dir/scripts/ai_implementation.sh" >&2
+    exit 1
+  fi
+  if [[ -e "$runtime_dir/scripts/helpers/check_implementation_readiness.sh" ]]; then
+    echo "Assertion failed: legacy implementation readiness shell helper should not be installed: $runtime_dir/scripts/helpers/check_implementation_readiness.sh" >&2
+    exit 1
+  fi
   if [[ -e "$runtime_dir/scripts/ai_plan.sh" ]]; then
     echo "Assertion failed: legacy planning prompt script should not be installed: $runtime_dir/scripts/ai_plan.sh" >&2
     exit 1
@@ -195,6 +203,9 @@ test_init_bootstraps_existing_git_root() {
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/scripts/sync_step_lars.py"
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
   assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-implementation/SKILL.md"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-implementation/scripts/build_implementation_context.py"
+  assert_file_exists "$repo_dir/.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
   if [[ -e "$runtime_dir/scripts/ai_design.sh" ]]; then
     echo "Assertion failed: legacy design prompt script should not be installed: $runtime_dir/scripts/ai_design.sh" >&2
     exit 1
@@ -211,6 +222,7 @@ test_init_bootstraps_existing_git_root() {
   assert_line_count "1" ".asdlc_worker/feature_meta_sync.yaml" "$repo_dir/.git/info/exclude"
   assert_line_count "0" ".codex/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".codex/skills/yasdef-worker-plan" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".codex/skills/yasdef-worker-implementation" "$repo_dir/.git/info/exclude"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/SKILL.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/build_design_context.py"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/check_design_readiness.py"
@@ -222,6 +234,9 @@ test_init_bootstraps_existing_git_root() {
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/scripts/sync_step_lars.py"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-implementation/SKILL.md"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-implementation/scripts/build_implementation_context.py"
+  assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/blocker_log.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/decisions.md"

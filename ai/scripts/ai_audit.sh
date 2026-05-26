@@ -77,7 +77,7 @@ ensure_review_branch() {
       if [[ "$source_branch" == "$user_review_branch" ]]; then
         echo "Run .asdlc_worker/scripts/ai_user_review.sh for step $STEP first." >&2
       else
-        echo "Run .asdlc_worker/scripts/ai_implementation.sh for step $STEP first." >&2
+        echo "Run the orchestrator implementation phase for step $STEP first; it invokes the yasdef-worker-implementation skill." >&2
       fi
       exit 1
     fi

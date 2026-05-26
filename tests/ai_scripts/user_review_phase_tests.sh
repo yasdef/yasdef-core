@@ -4,11 +4,12 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 USER_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/ai_user_review.sh"
-IMPLEMENTATION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_implementation_readiness.sh"
 RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
+IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
+export UV_CACHE_DIR="$TMP_ROOT/uv-cache"
 
 WORKER_UUID="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
@@ -148,21 +149,17 @@ setup_repo() {
   local feature_id="$6"
 
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" \
-    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind"
+    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/overmind" \
+    "$repo_dir/.codex/skills"
   ln -s .asdlc_worker "$repo_dir/ai"
   ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
   cp "$USER_REVIEW_SRC" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh"
-  cp "$IMPLEMENTATION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
-  chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" \
-    "$repo_dir/.asdlc_worker/scripts/helpers/check_implementation_readiness.sh"
+  cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh"
 
-  cat >"$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" <<'EOF'
-#!/usr/bin/env bash
-echo "implementation"
-EOF
   cat >"$repo_dir/.asdlc_worker/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "review"
@@ -176,7 +173,7 @@ EOF
 touch "$repo_dir/model-ran.flag"
 echo "model-ran"
 EOF
-  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_implementation.sh" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
+  chmod +x "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" \
     "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/fake_model.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
@@ -320,7 +317,7 @@ test_user_review_fails_fast_when_ordered_plan_unchecked() {
     exit 1
   fi
   assert_contains "$out" "User review precheck failed for step 1.1."
-  assert_contains "$out" "Unchecked ordered-plan items (normalized):"
+  assert_contains "$out" "unchecked_ordered_plan_items"
   assert_contains "$out" "- [ ] 1. Implement part A."
   assert_contains "$out" "Implementation was not finished correctly."
   assert_file_not_exists "$repo_dir/model-ran.flag"
@@ -342,7 +339,7 @@ test_user_review_normalizes_plain_ordered_bullets_to_unchecked() {
     echo "Assertion failed: plain ordered-plan bullets must be treated as unchecked and block user_review" >&2
     exit 1
   fi
-  assert_contains "$out" "Unchecked ordered-plan items (normalized):"
+  assert_contains "$out" "unchecked_ordered_plan_items"
   assert_contains "$out" "- [ ] 1. Implement part A."
   assert_contains "$out" "Implementation was not finished correctly."
   assert_file_not_exists "$repo_dir/model-ran.flag"
@@ -405,7 +402,7 @@ test_user_review_prompt_uses_ordered_plan_state_only() {
 
   local prompt
   prompt="$(cat "$repo_dir/.asdlc_worker/prompts/user_review_prompts/test.prompt.txt")"
-  assert_contains "$prompt" 'Entry gate already verified by script: `.asdlc_worker/scripts/helpers/check_implementation_readiness.sh 1.1` passed.'
+  assert_contains "$prompt" 'Entry gate already verified by script: `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-demo.md` passed.'
   assert_contains "$prompt" 'User review phase-state source is step plan `## Plan (ordered)` only.'
   assert_contains "$prompt" 'User review functional-requirement source is step plan `## Functional Requirements (translated from design EARS)`.'
   assert_not_contains "$prompt" "== .asdlc_worker/overmind/implementation_plan.md"
@@ -442,7 +439,7 @@ EOF
     exit 1
   fi
   assert_contains "$out" "User review precheck failed for step 1.1."
-  assert_contains "$out" "All items in step plan '## Functional Requirements (translated from design EARS)' must be [x] before handing off implementation."
+  assert_contains "$out" "unchecked_functional_requirement_items"
   assert_contains "$out" "Implementation was not finished correctly."
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }

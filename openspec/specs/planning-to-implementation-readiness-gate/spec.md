@@ -31,12 +31,12 @@ Planning-to-implementation readiness validation MUST be implemented through the 
 - **WHEN** the model runs the helper during planning completion and the helper exits non-zero
 - **THEN** the planning phase does not emit the standard completion line yet
 
-### Requirement: Implementation entry MUST fail fast until a replacement planning-readiness entry gate exists
-`ai/scripts/ai_implementation.sh` MUST fail fast before generating the implementation prompt or starting the model for the current step while no implementation-phase planning-readiness entry script exists.
+### Requirement: Implementation entry MUST require completed planning artifacts
+The orchestrator implementation phase MUST fail fast before starting the model when the selected step plan, design artifact, implementation skill context script, or implementation skill readiness script is missing.
 
-#### Scenario: Missing planning-readiness entry script fails implementation immediately
-- **WHEN** `ai/scripts/ai_implementation.sh` starts and no implementation-phase planning-readiness entry script exists
-- **THEN** it prints `no script to check planing readiness`, exits non-zero, and does not generate the implementation prompt or start the model
+#### Scenario: Missing implementation skill runtime fails implementation immediately
+- **WHEN** the orchestrator implementation phase starts and `.codex/skills/yasdef-worker-implementation` required scripts are missing
+- **THEN** it exits non-zero and does not start the model
 
 ### Requirement: Planning closure failure MUST use the two-option user decision contract
 When planning readiness validation fails during planning closure, the planning phase MUST ask the user to choose between continuing planning with a re-check or finishing the step immediately with failed status.

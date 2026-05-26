@@ -51,20 +51,20 @@ Planning validation MUST perform shortlist gate checks before a planning iterati
 - **WHEN** the planning readiness validator runs for a step plan with invalid shortlist content
 - **THEN** it exits non-zero with actionable shortlist guidance before the planning phase can complete
 
-### Requirement: Implementation prompt MUST include step-plan UR shortlist context
-`ai/scripts/ai_implementation.sh` MUST include `## Applicable UR Shortlist` context from the current step plan in emitted implementation prompt context.
+### Requirement: Implementation context MUST include step-plan UR shortlist context
+The implementation skill context builder MUST include `## Applicable UR Shortlist` context from the current step plan in emitted implementation context.
 
 #### Scenario: Step-plan shortlist appears in implementation prompt
 - **WHEN** step plan contains a valid `## Applicable UR Shortlist`
-- **THEN** implementation prompt includes that shortlist content for implementation-phase guidance
+- **THEN** implementation context includes that shortlist content for implementation-phase guidance
 
 #### Scenario: Design shortlist does not override step-plan shortlist
 - **WHEN** both step-plan shortlist and design shortlist exist and differ
-- **THEN** implementation prompt uses step-plan shortlist as the primary source
+- **THEN** implementation context uses the step-plan shortlist as the only anti-regression checklist source
 
 #### Scenario: Missing step-plan shortlist falls back deterministically
 - **WHEN** step plan shortlist is missing but design shortlist exists
-- **THEN** implementation prompt uses design shortlist as fallback and indicates source deterministically
+- **THEN** implementation context emits `- None.` for the anti-regression checklist and does not read design shortlist as fallback
 
 ### Requirement: Planning examples MUST reflect canonical shortlist formats
 Step plan template and golden example MUST show `## Applicable UR Shortlist` with canonical valid examples (`- None.` and UR-ID shortlist format).

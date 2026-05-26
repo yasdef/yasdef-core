@@ -11,7 +11,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 
 ## Git safety (local workflow)
 - Never commit directly on `main`/`master`. All commits happen on a local topic branch.
-- Branch setup is handled by scripts: the orchestrator planning/design phases use `step-<step>-plan`, `ai/scripts/ai_implementation.sh` uses `step-<step>-implementation`, `ai/scripts/ai_user_review.sh` uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
+- Branch setup is handled by scripts: the orchestrator planning/design phases use `step-<step>-plan`, the orchestrator implementation phase uses `step-<step>-implementation`, `ai/scripts/ai_user_review.sh` uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
 - Local workflow: create a local branch before starting a step implementation phase, commit only after tests pass and the user approves, do not push. Any merge to `main`/`master` is a separate explicit follow-up action, not part of step completion.
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
@@ -20,7 +20,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - `overmind/implementation_plan.md`: step-level backlog and target-bullet contract artifact; Implementation/User Review do not use it as the execution state machine, and `ai_audit` starts with explicit target-bullet proof-check against it.
 - `ai/step_designs/`: feature design artifacts created before planning for user review.
 - `.codex/skills/yasdef-worker-design/assets/feature_design_TEMPLATE.md` and `.codex/skills/yasdef-worker-design/assets/feature_design_GOLDEN_EXAMPLE.md`: structure and example for feature design artifacts.
-- `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for execution prompts and the only mid-phase execution contract (`## Plan (ordered)` + translated functional requirements + `## Linked Artifacts (in scope)` shortlist propagated from the design artifact).
+- `ai/step_plans/`: concise step plans produced during the step-planning phase; required input for implementation and the only mid-phase execution contract (`## Plan (ordered)` + translated functional requirements + `## Linked Artifacts (in scope)` shortlist propagated from the design artifact).
 - `ai/blocker_log.md`: unknowns/blockers discovered while working an in-progress step.
 - `ai/templates/blocker_log_TEMPLATE.md` and `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`: structure and example for blocker log entries.
 - `ai/decisions.md`: durable technical decisions (“why we chose X”).
@@ -29,10 +29,9 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - `ai/user_review.md`: rule-based user review insights with references to accepted implementations.
 
 ## Prompt governance (single source of rules)
-- Behavioral/process rules for AI execution must live in this file.
-- `ai/scripts/*.sh` prompts should stay minimal and phase-scoped: tell the model which phase it is in, where outputs go, and to follow the relevant sections of this file plus `AGENTS.md`.
-- For implementation phase prompts specifically: emit a short phase contract and avoid duplicating detailed process prose from this file; keep context focused on step-specific execution inputs (`## Plan (ordered)`, translated functional requirements, constraints, tests/risks).
-- Do not duplicate detailed workflow rules across script prompts. If a rule changes, update this file and keep scripts as thin wrappers.
+- Behavioral/process rules for AI execution must live in this file or the installed phase skill referenced by this file.
+- Orchestrator prompts should stay minimal and phase-scoped: tell the model which skill to use and pass explicit variables only.
+- Do not duplicate detailed workflow rules across orchestrator prompts. If a rule changes, update this file or the relevant phase skill.
 
 ## Planning artifact governance
 - Only add entries to `ai/blocker_log.md` under steps that are already in progress in `overmind/implementation_plan.md` (at least one bullet marked `[x]`).
@@ -55,7 +54,7 @@ Before step planning:
 - The orchestrator invokes Codex with a prompt that calls the `yasdef-worker-design` skill for the selected step.
 - The design artifact remains the planning scope contract and must be written under `.asdlc_worker/step_designs/`.
 - Design is a hard gate: planning must not run without the selected step design artifact.
-- Implementation prompts must use this design artifact plus the step plan as primary context inputs.
+- Implementation uses this design artifact for the scope contract and the step plan as the primary execution input.
 
 
 ### 2) Step plan and discussion (mandatory first bullet)
@@ -70,34 +69,15 @@ Before step planning:
   - require `## Plan (ordered)` and `## Functional Requirements (translated from design EARS)` in that order
   - keep FRs self-contained and map each FR to exactly one `EARS[REQ-...]` source
   - keep `## Applicable UR Shortlist` as exact `- None.` or a curated list of at most 8 `UR-xxxx` entries
-- Execution uses `ai/scripts/ai_implementation.sh` and requires the step plan file; update the plan first if execution must deviate from it.
+- Implementation requires the step plan file; update the plan first if execution must deviate from it.
 
 ### 3) Implement ordered plan (adaptive batch execution)
-#### 3.1) Adaptive implementation execution
-- Do not pause after the first completed item to ask for generic permission to continue. Continue through the remaining work in the same step.
-- Exception: pause and ask the user only when blocked by a required user decision/input.
-- Treat the feature design as the scope contract (`## Goal`, `## In Scope`, `## Out of Scope`) and the step plan `## Plan (ordered)` as the execution contract.
+- Detailed implementation workflow, context assembly, LAR fetch behavior, checklist update rules, verification timing, and in-session readiness validation now live in the installed Codex skill at `.codex/skills/yasdef-worker-implementation/SKILL.md`.
+- The orchestrator invokes Codex with a compact prompt that calls the `yasdef-worker-implementation` skill for the selected step.
+- Implementation writes runtime code and advances the step plan `## Plan (ordered)` and translated FR checklist state.
+- Implementation uses the design artifact by reference for the scope contract only: `## Goal`, `## In Scope`, and `## Out of Scope`.
 - `## Plan (ordered)` is the only implementation-phase execution checklist/state machine.
-- `## Functional Requirements (translated from design EARS)` is the implementation/user_review requirement contract; use it together with `## Plan (ordered)` during execution.
-- Ordered bullets are checkbox lifecycle items (`[ ]` / `[x]`). If a bullet is plain text without checkbox syntax, treat it as unchecked until normalized/closed.
-- Implementation strategy is adaptive: batch work in the most coherent order when needed, but close checklist state per ordered bullet and mark `[x]` only when that specific bullet is proven complete.
-- Review the step plan, design artifact, and supporting artifacts before coding: translated functional requirements, `ai/decisions.md`, `ai/blocker_log.md`, and `ai/open_questions.md`.
-- Fetch in-scope LAR locators: before implementing any FR that references a LAR-NNN, fetch the locator using available web/MCP tooling and use the fetched content as source of truth for whatever the artifact represents — UI details (spacing, icons, hover states, micro-interactions, breakpoints), schema structure (field names, types, constraints), API contracts (endpoints, payloads, error codes), architecture diagrams, or any other artifact-specific detail that FR text cannot fully encode. Stop and ask the user instead of inventing content when fetch fails or fetched content is ambiguous. Skip if the step plan's `## Linked Artifacts (in scope)` section is empty or absent.
-- If implementation must deviate from the step plan, update the step plan first, then continue implementation.
-- If design "Things to Decide" are still unresolved in the step plan during implementation: do not decide unilaterally in implementation. Recommend rerunning planning to resolve decisions first, then follow the user's instruction on whether to return to planning or proceed with explicit risk acceptance.
-- If a required project decision/blocker appears during implementation, stop and ask the user before proceeding.
-- Reuse existing code patterns and keep each change minimal, cohesive, readable, and directly traceable to ordered-plan work items.
-- Remove unnecessary boilerplate and avoid extra guard checks.
-- Add or update tests so the happy path is always covered and, when feasible, core reasonable non-happy-path cases are covered based on the step plan and linked requirements.
-- Record new blockers/unknowns in `ai/blocker_log.md` (using `ai/templates/blocker_log_TEMPLATE.md` and `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`), unresolved questions in `ai/open_questions.md`, and durable design choices in `ai/decisions.md` (using `ai/templates/decisions_TEMPLATE.md` and `ai/golden_examples/decisions_GOLDEN_EXAMPLE.md`).
-- Keep project-specific implementation constraints out of this section; enforce them from `AGENTS.md`.
-
-#### 3.2) Ordered checklist closure (required before Section 4)
-- Before changing any ordered bullet from `[ ]` to `[x]`, make sure that bullet is implemented and verified for the current change.
-- If implementation or verification is incomplete/uncertain, keep the bullet `[ ]`.
-- If blocked, record blockers/open questions and continue with remaining feasible work.
-- Do not use `overmind/implementation_plan.md` target bullets as implementation-phase gating or completion state.
-- Detailed target-bullet proof-check (`PROVEN`/`NOT_PROVEN`) is performed in Section 6.0 (`ai_audit` entry).
+- Do not use `overmind/implementation_plan.md` target bullets as implementation-phase gating or completion state. Detailed target-bullet proof-check (`PROVEN`/`NOT_PROVEN`) is performed in Section 6.0 (`ai_audit` entry).
 
 ### 4) Verification gates (required before Section 5)
 - **Tests (two-tier timing)**:
@@ -116,8 +96,8 @@ Before step planning:
 - Enter Section 5 only when all checklist items in step-plan `## Plan (ordered)` are marked `[x]`, all translated functional requirement checklist items are `[x]`, and the full step verification gate has passed.
 
 #### 4.2) Implementation Readiness Gate (required before Section 5)
-- Before emitting the implementation completion line, run `ai/scripts/helpers/check_implementation_readiness.sh <step>`.
-- If the Implementation Readiness Gate exits non-zero, do not emit the completion line. Tell the user what failed and present exactly two options: `1.` try to fix the reason and re-run the helper, `2.` finish the step immediately with failed status.
+- Before emitting the implementation completion line, run `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step <step> --step-plan <step-plan-file>` using `uv run python`.
+- If the Implementation Readiness Gate exits non-zero, do not emit the completion line. Tell the user what failed and present exactly two options: `1.` try to fix the reason and re-run the script, `2.` finish the step immediately with failed status.
 - After presenting the Implementation Readiness Gate options, stop and wait for the user's reply. Do not choose option `1` or `2` without explicit user input.
 - If the user chooses `1`, continue implementation, fix the readiness issue, and re-run the Implementation Readiness Gate.
 - If the user chooses `2`, finish the step immediately with failed status.
@@ -125,7 +105,7 @@ Before step planning:
 
 ### 5) User review (required before moving to the next step)
 Entry precondition:
-- Before prompt generation/model start, `ai/scripts/ai_user_review.sh` runs `ai/scripts/helpers/check_implementation_readiness.sh <step>` and fails fast if implementation was not finished correctly.
+- Before prompt generation/model start, `ai/scripts/ai_user_review.sh` runs `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step <step> --step-plan <step-plan-file>` with `uv run python` and fails fast if implementation was not finished correctly.
 - User review operates on ordered-plan completion state only; do not use `overmind/implementation_plan.md` target bullets as user_review phase-state gating.
 
 1. Before starting the user review loop, review the current-step patch as a code reviewer: inspect changed files/diff and nearby code patterns, then check for defects, regressions, missing verification, and drift from the step plan, translated requirements, design scope, accepted decisions, `AGENTS.md`, and applicable `ai/user_review.md` rules. Prioritize previous user decisions and accepted user-review rules that apply to the current changes/scope, including newly relevant rules not shortlisted earlier.
