@@ -36,6 +36,8 @@ If any input is missing, inconsistent, or points to a missing required file, do 
 
 3. Implement against `## Plan (ordered)` as the only execution checklist/state machine and `## Functional Requirements (translated from design EARS)` as the translated behavior contract.
 
+   Before you start editing, skim `## Plan (ordered)` and look for natural batches — bullets that touch the same file or module, share a dependency, or form a build order. If you spot batches, group your code changes that way and work a batch at a time; it's not a strict rule, follow this if possible.
+
 4. Batch work in a coherent order, but close state per bullet:
    - mark each ordered bullet `[x]` only when implemented and verified
    - mark each FR `[x]` only when implemented and verified
