@@ -29,11 +29,13 @@ GENERATED_EXCLUDE_PATHS=(
   ".asdlc_worker/feature_meta_sync.yaml"
   ".codex/skills/yasdef-worker-plan"
   ".codex/skills/yasdef-worker-implementation"
+  ".codex/skills/yasdef-worker-user-review"
 )
 DURABLE_COMMIT_PATHS=(
   ".codex/skills/yasdef-worker-design"
   ".codex/skills/yasdef-worker-plan"
   ".codex/skills/yasdef-worker-implementation"
+  ".codex/skills/yasdef-worker-user-review"
   ".asdlc_worker/asdlc_worker.yaml"
   ".asdlc_worker/blocker_log.md"
   ".asdlc_worker/decisions.md"
@@ -192,7 +194,7 @@ install_codex_skills() {
   local skill_name=""
 
   mkdir -p "$target_skills_dir"
-  for skill_name in yasdef-worker-design yasdef-worker-plan yasdef-worker-implementation; do
+  for skill_name in yasdef-worker-design yasdef-worker-plan yasdef-worker-implementation yasdef-worker-user-review; do
     local source_skill_dir="$SOURCE_CODEX_SKILLS_DIR/$skill_name"
     local target_skill_dir="$target_skills_dir/$skill_name"
 

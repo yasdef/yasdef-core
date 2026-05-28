@@ -830,17 +830,13 @@ test_process_doc_defines_review_brief_mode() {
   local process_doc="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
   local content
   content="$(cat "$process_doc")"
-  assert_contains "$content" 'Before asking for review feedback, provide a concise `Review Brief` (plain language, product-level) covering exactly:'
-  assert_contains "$content" "what was changed and how"
-  assert_contains "$content" "how to start code review"
-  assert_contains "$content" "what should be checked first"
-  assert_contains "$content" "Do not narrate artifact creation; focus on reviewer onboarding."
-  assert_contains "$content" "Do not guess review ordering/entrypoints. If specific entrypoints are unclear, use cautious non-speculative guidance."
-  assert_contains "$content" 'Use `ai/golden_examples/review_brief_GOLDEN_EXAMPLE.md` as the tone/structure anchor.'
+  assert_contains "$content" '.codex/skills/yasdef-worker-user-review/SKILL.md'
+  assert_contains "$content" '`yasdef-worker-user-review`'
+  assert_contains "$content" "ordered-plan completion state only"
 }
 
 test_review_brief_golden_example_exists() {
-  local golden="$SOURCE_ROOT/ai/golden_examples/review_brief_GOLDEN_EXAMPLE.md"
+  local golden="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review/assets/review_brief_GOLDEN_EXAMPLE.md"
   if [[ ! -f "$golden" ]]; then
     echo "Assertion failed: missing Review Brief golden example file: $golden" >&2
     exit 1

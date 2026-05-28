@@ -5,6 +5,7 @@ SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
+USER_REVIEW_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -80,6 +81,7 @@ setup_repo() {
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
+  cp -R "$USER_REVIEW_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-user-review"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
   cat >"$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" <<'EOF'
@@ -121,6 +123,16 @@ EOF
 - Plan Links: 1
 - Verification: demo
 - Status: done
+EOF
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-one-design.md" <<'EOF'
+## Goal
+- Demo goal.
+
+## In Scope
+- Demo scope.
+
+## Out of Scope
+- Later work.
 EOF
 
   cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1-feature-one.md" <<'EOF'

@@ -11,7 +11,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 
 ## Git safety (local workflow)
 - Never commit directly on `main`/`master`. All commits happen on a local topic branch.
-- Branch setup is handled by scripts: the orchestrator planning/design phases use `step-<step>-plan`, the orchestrator implementation phase uses `step-<step>-implementation`, `ai/scripts/ai_user_review.sh` uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
+- Branch setup is handled by scripts: the orchestrator planning/design phases use `step-<step>-plan`, the orchestrator implementation phase uses `step-<step>-implementation`, the orchestrator user_review phase uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
 - Local workflow: create a local branch before starting a step implementation phase, commit only after tests pass and the user approves, do not push. Any merge to `main`/`master` is a separate explicit follow-up action, not part of step completion.
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
@@ -104,39 +104,11 @@ Before step planning:
 - Do not emit the implementation completion line unless the Implementation Readiness Gate later exits `0`.
 
 ### 5) User review (required before moving to the next step)
-Entry precondition:
-- Before prompt generation/model start, `ai/scripts/ai_user_review.sh` runs `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step <step> --step-plan <step-plan-file>` with `uv run python` and fails fast if implementation was not finished correctly.
+- Detailed user-review workflow, context assembly, Review Brief behavior, and UR write gates now live in the installed Codex skill at `.codex/skills/yasdef-worker-user-review/SKILL.md`.
+- The orchestrator invokes Codex with a compact prompt that calls the `yasdef-worker-user-review` skill for the selected step.
+- Before prompt generation/model start, the orchestrator runs `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step <step> --step-plan <step-plan-file>` with `uv run python` and fails fast if implementation was not finished correctly.
 - User review operates on ordered-plan completion state only; do not use `overmind/implementation_plan.md` target bullets as user_review phase-state gating.
-
-1. Before starting the user review loop, review the current-step patch as a code reviewer: inspect changed files/diff and nearby code patterns, then check for defects, regressions, missing verification, and drift from the step plan, translated requirements, design scope, accepted decisions, `AGENTS.md`, and applicable `ai/user_review.md` rules. Prioritize previous user decisions and accepted user-review rules that apply to the current changes/scope, including newly relevant rules not shortlisted earlier.
-2. Triage self-check findings before asking for user review: fix immediately only when a finding is current-scope and clear/objective or review-blocking; rerun relevant verification after any fix. Otherwise, leave the code unchanged and highlight the finding in the `Review Brief` as a focused hotspot/question.
-3. Before asking for review feedback, provide a concise `Review Brief` (plain language, product-level) covering exactly:
-   1. what was changed and how (concrete system flow),
-   2. how to start code review (where to begin and recommended order),
-   3. what should be checked first (top correctness/risk hotspots).
-4. Review Brief output constraints:
-   - Keep it concise (short checklist-style summary; avoid long narrative).
-   - Scope it to current-step changes only.
-   - Reference concrete changed entrypoints/files/components/tests when available.
-   - Derive "what should be checked first" from the pre-review self-check, including any unfixed current-scope hotspots/questions.
-   - Do not narrate artifact creation; focus on reviewer onboarding.
-   - Do not guess review ordering/entrypoints. If specific entrypoints are unclear, use cautious non-speculative guidance.
-   - Keep the ai_audit entry `Evidence Reasoning Summary` separate; do not merge proof-gate entries into the Review Brief.
-   - Use `ai/golden_examples/review_brief_GOLDEN_EXAMPLE.md` as the tone/structure anchor.
-5. Ask the user for the next review item (a question or a change request). The user may provide feedback one-by-one; if they have multiple items, a short bullet list helps.
-6. When the user responds, do this in order:
-   1. Clarify ambiguous requests (ask questions if needed). If the user asked "why", answer the question first.
-   2. Implement the requested changes (and any directly necessary test/doc updates). Do not implement changes that were not requested; propose them as suggestions and ask.
-   3. Immediately update `ai/user_review.md` with any generalizable rule(s) derived from the user feedback and the implementation change (include references). If there are no generalizable rules, explicitly state that and do not change `ai/user_review.md`.
-      - UR-schema gate: new UR entries must be template-complete using `ai/templates/user_review_TEMPLATE.md` required fields: `Trigger`, `Rule`, `How to verify`, `Example(s)`, and `References`.
-      - Fallback gate: if feedback is useful but cannot populate the required UR fields with sufficient quality, do not create a UR entry; record a step-specific note in the active step plan instead.
-      - De-dup gate: if new feedback overlaps an existing UR rule, update the existing UR entry instead of adding a duplicate/new UR ID.
-7. Summarize what changed and ask for the next review round.
-8. Repeat steps 5-7 until the user explicitly confirms the review is complete (e.g., "done", "no more comments").
-9. Only after the user confirms completion:
-   - Run one final verification test command for the step (prefer the repo’s full verification gate from `AGENTS.md`) and report the result.
-10. If the final verification passes, propose the next step: Post-step audit/review (Section 6).
-- Do not run Section 6 in the implementation phase; Section 6 is executed in the `ai_audit` phase.
+- Do not run Section 6 in the user_review phase; Section 6 is executed separately in the `ai_audit` phase after user review is complete.
 
 ### 6) Post-step ai_audit/review (required before moving to the next step)
 

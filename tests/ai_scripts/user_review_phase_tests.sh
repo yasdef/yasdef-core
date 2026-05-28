@@ -3,9 +3,9 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
-USER_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/ai_user_review.sh"
 RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
+USER_REVIEW_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -62,8 +62,6 @@ assert_branch_equals() {
   fi
 }
 
-# Creates an external ASDLC source project repo with workers.yaml, init_progress_definition.yaml,
-# and a bare remote so the orchestrator's `git pull --rebase` succeeds.
 init_project_repo() {
   local source_dir="$1"
   local project_id="$2"
@@ -99,8 +97,6 @@ EOF
   )
 }
 
-# Creates a feature folder under the source repo with implementation_plan.md and
-# requirements_ears.md, then commits and pushes to the bare remote.
 create_feature() {
   local source_dir="$1"
   local feature_id="$2"
@@ -118,9 +114,6 @@ create_feature() {
   )
 }
 
-# Builds the implementation_plan body used by both the source feature and the local runtime mirror.
-# The two must be byte-identical so that the orchestrator's mirror is a no-op against git status
-# (otherwise the user_review branch handoff would see dirty state and reject the run).
 build_runtime_plan() {
   local impl_box="$1"
   cat <<EOF
@@ -155,10 +148,10 @@ setup_repo() {
   ln -s .asdlc_worker/overmind "$repo_dir/overmind"
 
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
-  cp "$USER_REVIEW_SRC" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
-  chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh" "$repo_dir/.asdlc_worker/scripts/ai_user_review.sh"
+  cp -R "$USER_REVIEW_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-user-review"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
   cat >"$repo_dir/.asdlc_worker/scripts/ai_audit.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -178,6 +171,7 @@ EOF
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
 user_review | .asdlc_worker/scripts/fake_model.sh | mock-model
+ai_audit | .asdlc_worker/scripts/fake_model.sh | mock-model
 EOF
 
   local impl_box=" "
@@ -218,11 +212,22 @@ EOF
 $ordered_block
 ## Functional Requirements (translated from design EARS)
 - [x] FR-1.1-001 The system SHALL implement part A behavior. EARS[REQ-1]
+## Applicable UR Shortlist
+- UR-0001 - Preserve deterministic behavior.
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-demo-design.md" <<'EOF'
+  cat >"$repo_dir/.asdlc_worker/step_designs/step-1.1-${feature_id}-design.md" <<'EOF'
+## Goal
+- Deliver part A.
+
+## In Scope
+- Demo part A behavior.
+
+## Out of Scope
+- Later reporting.
+
 ## Proposal / Design Details
-- demo
+- This design detail must not be in the compact prompt.
 EOF
 
   cat >"$repo_dir/.asdlc_worker/step_review_results/review_result-1.1-${feature_id}.md" <<'EOF'
@@ -233,7 +238,7 @@ EOF
 
   cat >"$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md" <<'EOF'
 ### 5) User review (required before moving to the next step)
-1. Ask user for feedback.
+- Skill-driven.
 EOF
 
   cat >"$repo_dir/.asdlc_worker/blocker_log.md" <<'EOF'
@@ -270,10 +275,6 @@ EOF
 # AGENTS
 EOF
 
-  # Orchestrator writes .asdlc_worker/feature_meta_sync.yaml during runtime context
-  # setup and emits log/prompt artifacts under .asdlc_worker/logs and
-  # .asdlc_worker/prompts. Ignore them so the user_review branch handoff sees a
-  # clean working tree on the runtime branch.
   cat >"$repo_dir/.gitignore" <<'EOF'
 .asdlc_worker/feature_meta_sync.yaml
 .asdlc_worker/logs/
@@ -288,15 +289,17 @@ EOF
     git config user.email "test@example.com"
     git add .
     git commit -qm "seed"
-    # Create the implementation branch the user_review handoff forks from.
     git branch step-1.1-feature-demo-implementation
-    # Pre-create the runtime branch so the orchestrator's slow-path checkout
-    # finds it rather than creating it from a transient HEAD.
     git branch overmind
   )
 
   init_project_repo "$source_dir" "$project_id" "$WORKER_UUID"
   create_feature "$source_dir" "$feature_id" "$plan_body" "$ears_body"
+}
+
+latest_user_review_prompt() {
+  local repo_dir="$1"
+  find "$repo_dir/.asdlc_worker/prompts/user_review_prompts" -type f | sort | tail -n1
 }
 
 test_user_review_fails_fast_when_ordered_plan_unchecked() {
@@ -364,9 +367,6 @@ test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
   local source_dir="$TMP_ROOT/source-unsafe-state"
   setup_repo "$repo_dir" 1 checked "$source_dir" "project-unsafe-state" "feature-demo"
 
-  # Start the orchestrator on the runtime branch with a dirty tracked file so
-  # the user_review handoff sees uncommitted changes on a non-implementation
-  # branch and refuses to fork the user-review branch.
   (
     cd "$repo_dir"
     git checkout -q overmind
@@ -388,44 +388,38 @@ test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
-test_user_review_prompt_uses_ordered_plan_state_only() {
-  local repo_dir="$TMP_ROOT/repo-user-review-prompt-ordered-only"
-  local source_dir="$TMP_ROOT/source-user-review-prompt-ordered-only"
-  setup_repo "$repo_dir" 0 checked "$source_dir" "project-prompt-ordered-only" "feature-demo"
+test_user_review_writes_compact_skill_prompt() {
+  local repo_dir="$TMP_ROOT/repo-user-review-skill-prompt"
+  local source_dir="$TMP_ROOT/source-user-review-skill-prompt"
+  setup_repo "$repo_dir" 1 checked "$source_dir" "project-prompt" "feature-demo"
 
   (
     cd "$repo_dir"
-    ASDLC_RUNTIME_PLAN_PATH="$source_dir/feature-demo/implementation_plan.md" \
-    ASDLC_RUNTIME_EARS_PATH="$source_dir/feature-demo/requirements_ears.md" \
-    .asdlc_worker/scripts/ai_user_review.sh --step 1.1 --feature-id feature-demo --step-plan .asdlc_worker/step_plans/step-1.1-feature-demo.md --design .asdlc_worker/step_designs/step-1.1-feature-demo-design.md --out .asdlc_worker/prompts/user_review_prompts/test.prompt.txt >/dev/null
+    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/user-review-skill-prompt.out 2>/tmp/user-review-skill-prompt.err
   )
 
-  local prompt
-  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/user_review_prompts/test.prompt.txt")"
-  assert_contains "$prompt" 'Entry gate already verified by script: `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step 1.1 --step-plan .asdlc_worker/step_plans/step-1.1-feature-demo.md` passed.'
-  assert_contains "$prompt" 'User review phase-state source is step plan `## Plan (ordered)` only.'
-  assert_contains "$prompt" 'User review functional-requirement source is step plan `## Functional Requirements (translated from design EARS)`.'
-  assert_not_contains "$prompt" "== .asdlc_worker/overmind/implementation_plan.md"
-  assert_not_contains "$prompt" 'User review checklist (`## Target Bullets`)'
+  local prompt_file prompt
+  prompt_file="$(latest_user_review_prompt "$repo_dir")"
+  assert_file_exists "$prompt_file"
+  prompt="$(cat "$prompt_file")"
+
+  assert_contains "$prompt" 'Use the `yasdef-worker-user-review` skill to run the ASDLC worker user review phase.'
+  assert_contains "$prompt" "- Step: 1.1"
+  assert_contains "$prompt" "- Feature id: feature-demo"
+  assert_contains "$prompt" "- Branch: step-1.1-feature-demo-user-review"
+  assert_contains "$prompt" "step-1.1-feature-demo.md"
+  assert_contains "$prompt" "step-1.1-feature-demo-design.md"
+  assert_contains "$prompt" "feature-demo/implementation_plan.md"
+  assert_not_contains "$prompt" "Context pack"
+  assert_not_contains "$prompt" "Entry gate already verified by script"
+  assert_not_contains "$prompt" "This design detail must not be in the compact prompt."
 }
 
-test_user_review_fails_when_functional_requirements_unchecked() {
-  local repo_dir="$TMP_ROOT/repo-functional-requirements-incomplete"
-  local source_dir="$TMP_ROOT/source-functional-requirements-incomplete"
-  setup_repo "$repo_dir" 1 checked "$source_dir" "project-functional-incomplete" "feature-demo"
-
-  cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-demo.md" <<'EOF'
-# Step Plan: 1.1 - Demo
-## Plan (ordered)
-- [x] 1. Implement part A.
-## Functional Requirements (translated from design EARS)
-- [ ] FR-1.1-001 The system SHALL implement part A behavior. EARS[REQ-1]
-EOF
-  (
-    cd "$repo_dir"
-    git add .asdlc_worker/step_plans/step-1.1-feature-demo.md
-    git commit -qm "make functional requirements unchecked"
-  )
+test_user_review_blocks_when_step_plan_missing() {
+  local repo_dir="$TMP_ROOT/repo-missing-step-plan"
+  local source_dir="$TMP_ROOT/source-missing-step-plan"
+  setup_repo "$repo_dir" 1 checked "$source_dir" "project-missing-step-plan" "feature-demo"
+  rm "$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-demo.md"
 
   local status=0
   local out=""
@@ -435,12 +429,30 @@ EOF
   set -e
 
   if [[ "$status" -eq 0 ]]; then
-    echo "Assertion failed: user_review phase must fail when translated functional requirements are unchecked" >&2
+    echo "Assertion failed: missing step plan must block user_review" >&2
     exit 1
   fi
-  assert_contains "$out" "User review precheck failed for step 1.1."
-  assert_contains "$out" "unchecked_functional_requirement_items"
-  assert_contains "$out" "Implementation was not finished correctly."
+  assert_contains "$out" "Step plan not found:"
+}
+
+test_user_review_blocks_when_design_missing() {
+  local repo_dir="$TMP_ROOT/repo-missing-design"
+  local source_dir="$TMP_ROOT/source-missing-design"
+  setup_repo "$repo_dir" 1 checked "$source_dir" "project-missing-design" "feature-demo"
+  rm "$repo_dir/.asdlc_worker/step_designs/step-1.1-feature-demo-design.md"
+
+  local status=0
+  local out=""
+  set +e
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "Assertion failed: missing design artifact must block user_review" >&2
+    exit 1
+  fi
+  assert_contains "$out" "User review requires the design artifact to exist first"
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
@@ -489,8 +501,9 @@ test_user_review_fails_fast_when_ordered_plan_unchecked
 test_user_review_normalizes_plain_ordered_bullets_to_unchecked
 test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state
-test_user_review_prompt_uses_ordered_plan_state_only
-test_user_review_fails_when_functional_requirements_unchecked
+test_user_review_writes_compact_skill_prompt
+test_user_review_blocks_when_step_plan_missing
+test_user_review_blocks_when_design_missing
 test_user_review_does_not_block_on_invalid_user_review_update
 
 echo "All user review phase tests passed."

@@ -75,7 +75,7 @@ Default behavior:
   - design invokes Codex with a prompt that calls the yasdef-worker-design skill and generates/updates a feature-design artifact.
   - planning invokes Codex with a prompt that calls the yasdef-worker-plan skill and repeats until readiness plus per-step ledgers are clean.
   - implementation invokes Codex with a prompt that calls the yasdef-worker-implementation skill for the latest step plan.
-  - user_review runs .asdlc_worker/scripts/ai_user_review.sh for the latest step plan, validates entry gate markers, then runs the user_review model command.
+  - user_review runs an orchestrator-owned implementation-readiness gate, creates/switches the user-review branch from implementation, writes a prompt for yasdef-worker-user-review, then runs the user_review model command once.
   - ai_audit runs .asdlc_worker/scripts/ai_audit.sh for the latest step plan (post-step audit prompt), then runs the ai_audit model command.
   - post_review runs .asdlc_worker/scripts/post_review.sh for the latest step plan and appends post-review metrics to .asdlc_worker/history.md.
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
@@ -205,7 +205,6 @@ ensure_ai_context_files() {
 }
 
 ensure_orchestrator_prereqs() {
-  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_user_review.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_audit.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/post_review.sh"
 }
@@ -690,6 +689,71 @@ write_implementation_skill_prompt() {
 
   {
     printf 'Use the `yasdef-worker-implementation` skill to run the ASDLC worker implementation phase.\n'
+    printf '\n'
+    printf 'Inputs:\n'
+    printf -- '- Step: %s\n' "$step"
+    printf -- '- Feature id: %s\n' "$feature_id"
+    printf -- '- Branch: %s\n' "$branch_name"
+    printf -- '- Step plan: %s\n' "$step_plan"
+    printf -- '- Design artifact: %s\n' "$design_file"
+    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
+  } >"$prompt_out"
+}
+
+ensure_user_review_branch() {
+  local step="$1"
+  local feature_id="$2"
+  local implementation_branch target current
+  implementation_branch="step-$step-$feature_id-implementation"
+  target="step-$step-$feature_id-user-review"
+
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "User review requires a git repository."
+  fi
+
+  current="$(get_current_branch_name)"
+  if [[ "$current" == "$target" ]]; then
+    return 0
+  fi
+
+  if [[ "$current" != "$implementation_branch" ]]; then
+    if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null || true)" ]]; then
+      die "User review branch must be created from $implementation_branch to carry implementation changes."
+    fi
+    if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$implementation_branch"; then
+      if ! git -C "$ROOT" checkout "$implementation_branch" >/dev/null; then
+        die "Failed to switch to implementation branch: $implementation_branch"
+      fi
+      current="$implementation_branch"
+      echo "Switched to implementation branch: $implementation_branch" >&2
+    else
+      die "Implementation branch not found: $implementation_branch"
+    fi
+  fi
+
+  if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$target"; then
+    if ! git -C "$ROOT" checkout "$target" >/dev/null; then
+      die "Failed to switch to existing branch: $target"
+    fi
+    echo "Switched to existing branch: $target" >&2
+  else
+    if ! git -C "$ROOT" checkout -b "$target" >/dev/null; then
+      die "Failed to create and switch to branch: $target"
+    fi
+    echo "Created and switched to branch: $target (from $implementation_branch with implementation changes)." >&2
+  fi
+}
+
+write_user_review_skill_prompt() {
+  local step="$1"
+  local feature_id="$2"
+  local branch_name="$3"
+  local step_plan="$4"
+  local design_file="$5"
+  local prompt_out="$6"
+
+  {
+    printf 'Use the `yasdef-worker-user-review` skill to run the ASDLC worker user review phase.\n'
     printf '\n'
     printf 'Inputs:\n'
     printf -- '- Step: %s\n' "$step"
@@ -2040,7 +2104,7 @@ run_implementation_phase() {
 run_user_review_phase() {
   load_model_config "user_review"
 
-  local latest_plan step prompt_out
+  local latest_plan step prompt_out design_file branch_name user_review_skill
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
     latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
@@ -2062,8 +2126,17 @@ run_user_review_phase() {
     exit 1
   fi
 
+  design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
+  branch_name="step-$step-$SELECTED_FEATURE_ID-user-review"
+  user_review_skill="$ROOT/.codex/skills/yasdef-worker-user-review/SKILL.md"
   prompt_out="$(resolve_prompt_output_path "user_review" "$step")"
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_user_review.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
+
+  if [[ ! -f "$design_file" ]]; then
+    die "User review requires the design artifact to exist first: $(repo_relpath "$design_file")"
+  fi
+  if [[ ! -f "$user_review_skill" ]]; then
+    die "User review requires the installed skill: $(repo_relpath "$user_review_skill")"
+  fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -2077,12 +2150,25 @@ run_user_review_phase() {
     fi
     echo "dry-run prompt: $(repo_relpath "$prompt_out")"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "user_review" "$step")")"
-    echo "$(shell_join "${prompt_cmd[@]}") && $(shell_join "${dry_user_review_cmd[@]}")"
+    echo "write yasdef-worker-user-review prompt for step $step to $(printf '%q' "$prompt_out") && $(shell_join "${dry_user_review_cmd[@]}")"
     return 0
   fi
 
+  local implementation_readiness_script="$ROOT/.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
+  if [[ -f "$implementation_readiness_script" ]]; then
+    local readiness_output readiness_status=0
+    readiness_output="$(uv run python "$implementation_readiness_script" --step "$step" --step-plan "$latest_plan" 2>&1)" || readiness_status=$?
+    if [[ "$readiness_status" -ne 0 ]]; then
+      echo "User review precheck failed for step $step." >&2
+      printf '%s\n' "$readiness_output" >&2
+      echo "Implementation was not finished correctly." >&2
+      exit 1
+    fi
+  fi
+
+  ensure_user_review_branch "$step" "$SELECTED_FEATURE_ID"
   mkdir -p "$(dirname "$prompt_out")"
-  "${prompt_cmd[@]}"
+  write_user_review_skill_prompt "$step" "$SELECTED_FEATURE_ID" "$branch_name" "$latest_plan" "$design_file" "$prompt_out"
   local prompt_arg
   prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$prompt_out")"
   local user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
