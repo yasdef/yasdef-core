@@ -21,6 +21,18 @@ The orchestrator prompt should provide:
 
 If any input is missing, inconsistent, or points to a missing required file, do not infer it from `.asdlc_worker/feature_meta_sync.yaml` or the runtime environment. Stop and ask the user for explicit instructions.
 
+## Phase Contract
+
+- Artifact precedence: step plan is the primary execution source; design supplies scope boundary only.
+- Scope boundary: use design `## Goal`, `## In Scope`, and `## Out of Scope`; do not use design `## Non-goals`.
+- Execution state machine: step plan `## Plan (ordered)` only.
+- Functional contract: implement step-plan translated FRs.
+- Checklist updates: mark ordered bullets and FRs `[x]` only when implemented and verified.
+- LAR rule: fetch in-scope locators before implementing dependent FRs; ask the user on fetch failure or ambiguity.
+- Verification timing: targeted checks during implementation; full `AGENTS.md` gate once after all ordered bullets are `[x]`.
+- Completion protocol: run `check_implementation_readiness.py` before the completion line.
+- Runtime plan gating: do not use `implementation_plan.md` target bullets as implementation-phase proof state.
+
 ## Workflow
 
 1. Run the context builder:

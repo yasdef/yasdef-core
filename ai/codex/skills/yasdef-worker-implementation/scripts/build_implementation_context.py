@@ -135,21 +135,6 @@ def print_labeled_section(label: str, body: str) -> None:
     print()
 
 
-def print_phase_contract(step: str) -> None:
-    print("## Phase Contract")
-    print("- Artifact precedence: step plan is the primary execution source; design supplies scope boundary only.")
-    print("- Scope boundary: use design `## Goal`, `## In Scope`, and `## Out of Scope`; do not use design `## Non-goals`.")
-    print("- Execution state machine: step plan `## Plan (ordered)` only.")
-    print("- Functional contract: implement step-plan translated FRs.")
-    print("- Checklist updates: mark ordered bullets and FRs `[x]` only when implemented and verified.")
-    print("- LAR rule: fetch in-scope locators before implementing dependent FRs; ask the user on fetch failure or ambiguity.")
-    print("- Verification timing: targeted checks during implementation; full `AGENTS.md` gate once after all ordered bullets are `[x]`.")
-    print("- Completion protocol: run `check_implementation_readiness.py` before the completion line.")
-    print("- Runtime plan gating: do not use `implementation_plan.md` target bullets as implementation-phase proof state.")
-    print(f"- Readiness command: `uv run python .codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py --step {step} --step-plan <step-plan-file>`.")
-    print()
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--step", required=True)
@@ -194,8 +179,6 @@ def main() -> int:
     print(f"- Runtime implementation plan: {rel(runtime_plan_path)}")
     print()
 
-    print_phase_contract(args.step)
-
     print("## Anti-regression Checklist (from step-plan `## Applicable UR Shortlist`, max 8)")
     print(anti_regression_checklist(extracted["Applicable UR Shortlist"]))
     print()
@@ -227,14 +210,6 @@ def main() -> int:
         print(design_sections.get(heading, "").strip() or "- (missing in design artifact)")
         print()
 
-    print("## Intentionally Excluded Design Sections")
-    print("- `## Non-goals`")
-    print("- `## Proposal / Design Details`")
-    print("- `## Risks and Mitigations`")
-    print("- `## Applicable ADR Shortlist`")
-    print("- `## Applicable AGENTS.md Constraints`")
-    print("- `## References in Current Codebase`")
-    print("- design UR rules")
     return 0
 
 
