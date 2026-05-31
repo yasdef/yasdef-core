@@ -6,6 +6,7 @@ ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
 USER_REVIEW_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review"
+AI_AUDIT_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-ai-audit"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -151,6 +152,7 @@ setup_repo() {
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
   cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
   cp -R "$USER_REVIEW_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-user-review"
+  cp -R "$AI_AUDIT_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-ai-audit"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
   cat >"$repo_dir/.asdlc_worker/scripts/ai_audit.sh" <<'EOF'
@@ -359,7 +361,7 @@ test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked() {
   )
 
   assert_file_exists "$repo_dir/model-ran.flag"
-  assert_branch_equals "$repo_dir" "step-1.1-feature-demo-user-review"
+  assert_branch_equals "$repo_dir" "step-1.1-feature-demo-review"
 }
 
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
@@ -494,7 +496,7 @@ EOF
     exit 1
   fi
   assert_file_exists "$repo_dir/model-ran.flag"
-  assert_branch_equals "$repo_dir" "step-1.1-feature-demo-user-review"
+  assert_branch_equals "$repo_dir" "step-1.1-feature-demo-review"
 }
 
 test_user_review_fails_fast_when_ordered_plan_unchecked

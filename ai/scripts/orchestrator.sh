@@ -76,7 +76,7 @@ Default behavior:
   - planning invokes Codex with a prompt that calls the yasdef-worker-plan skill and repeats until readiness plus per-step ledgers are clean.
   - implementation invokes Codex with a prompt that calls the yasdef-worker-implementation skill for the latest step plan.
   - user_review runs an orchestrator-owned implementation-readiness gate, creates/switches the user-review branch from implementation, writes a prompt for yasdef-worker-user-review, then runs the user_review model command once.
-  - ai_audit runs .asdlc_worker/scripts/ai_audit.sh for the latest step plan (post-step audit prompt), then runs the ai_audit model command.
+  - ai_audit creates/switches the review branch from user_review, writes a prompt for yasdef-worker-ai-audit, then runs the ai_audit model command once.
   - post_review runs .asdlc_worker/scripts/post_review.sh for the latest step plan and appends post-review metrics to .asdlc_worker/history.md.
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
   - --debug enables per-step/per-phase artifact files for logs and prompts.
@@ -205,7 +205,6 @@ ensure_ai_context_files() {
 }
 
 ensure_orchestrator_prereqs() {
-  ensure_executable_script "$ASDLC_SCRIPTS_DIR/ai_audit.sh"
   ensure_executable_script "$ASDLC_SCRIPTS_DIR/post_review.sh"
 }
 
@@ -762,6 +761,68 @@ write_user_review_skill_prompt() {
     printf -- '- Step plan: %s\n' "$step_plan"
     printf -- '- Design artifact: %s\n' "$design_file"
     printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
+  } >"$prompt_out"
+}
+
+ensure_ai_audit_review_branch() {
+  local step="$1"
+  local feature_id="$2"
+  local source_branch target current
+  source_branch="step-$step-$feature_id-user-review"
+  target="step-$step-$feature_id-review"
+
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "ai_audit requires a git repository."
+  fi
+
+  current="$(get_current_branch_name)"
+  if [[ "$current" == "$target" ]]; then
+    return 0
+  fi
+
+  if ! git -C "$ROOT" show-ref --verify --quiet "refs/heads/$source_branch"; then
+    die "Cannot start ai_audit for step $step: missing user_review branch $source_branch. Run user_review first."
+  fi
+
+  if [[ "$current" != "$source_branch" ]]; then
+    if ! git -C "$ROOT" checkout "$source_branch" >/dev/null; then
+      die "Failed to switch to user_review branch: $source_branch (working tree has conflicting uncommitted changes or branch is unavailable)."
+    fi
+    echo "Switched to user_review branch: $source_branch" >&2
+  fi
+
+  if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$target"; then
+    if ! git -C "$ROOT" checkout "$target" >/dev/null; then
+      die "Failed to switch to existing branch: $target"
+    fi
+    echo "Switched to existing branch: $target" >&2
+  else
+    if ! git -C "$ROOT" checkout -b "$target" >/dev/null; then
+      die "Failed to create and switch to branch: $target"
+    fi
+    echo "Created and switched to branch: $target (from $source_branch)." >&2
+  fi
+}
+
+write_ai_audit_skill_prompt() {
+  local step="$1"
+  local feature_id="$2"
+  local branch_name="$3"
+  local step_plan="$4"
+  local design_file="$5"
+  local prompt_out="$6"
+
+  {
+    printf 'Use the `yasdef-worker-ai-audit` skill to run the ASDLC worker ai_audit phase.\n'
+    printf '\n'
+    printf 'Inputs:\n'
+    printf -- '- Step: %s\n' "$step"
+    printf -- '- Feature id: %s\n' "$feature_id"
+    printf -- '- Branch: %s\n' "$branch_name"
+    printf -- '- Step plan: %s\n' "$step_plan"
+    printf -- '- Design artifact: %s\n' "$design_file"
+    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
+    printf -- '- Worker id: %s\n' "$BINDING_WORKER_UUID"
   } >"$prompt_out"
 }
 
@@ -2189,7 +2250,7 @@ run_user_review_phase() {
 run_ai_audit_phase() {
   load_model_config "ai_audit"
 
-  local latest_plan step prompt_out
+  local latest_plan step prompt_out design_file branch_name
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
     latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
@@ -2211,14 +2272,26 @@ run_ai_audit_phase() {
     exit 1
   fi
 
-  if [[ "$DRY_RUN" -eq 0 ]] && ! is_user_review_complete_for_step "$step"; then
+  if [[ "$DRY_RUN" -eq 0 ]] && ! user_review_branch_exists_for_step "$step"; then
     echo "Cannot start ai_audit for step $step: user_review phase is incomplete." >&2
     echo "Run: .asdlc_worker/scripts/orchestrator.sh --resume $step" >&2
     exit 1
   fi
 
+  design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
+  branch_name="step-$step-$SELECTED_FEATURE_ID-review"
   prompt_out="$(resolve_prompt_output_path "ai_audit" "$step")"
-  local prompt_cmd=("$ASDLC_SCRIPTS_DIR/ai_audit.sh" --step-plan "$latest_plan" --out "$prompt_out" --feature-id "$SELECTED_FEATURE_ID")
+  local audit_skill="$ROOT/.codex/skills/yasdef-worker-ai-audit/SKILL.md"
+  local audit_entry_script="$ROOT/.codex/skills/yasdef-worker-ai-audit/scripts/check_ai_audit_entry.py"
+  local audit_context_script="$ROOT/.codex/skills/yasdef-worker-ai-audit/scripts/build_ai_audit_context.py"
+  local audit_closure_script="$ROOT/.codex/skills/yasdef-worker-ai-audit/scripts/check_ai_audit_closure.py"
+
+  if [[ ! -f "$design_file" ]]; then
+    die "ai_audit requires the design artifact to exist first: $(repo_relpath "$design_file")"
+  fi
+  if [[ ! -f "$audit_skill" || ! -f "$audit_entry_script" || ! -f "$audit_context_script" || ! -f "$audit_closure_script" ]]; then
+    die "ai_audit requires the installed yasdef-worker-ai-audit skill and scripts under .codex/skills/yasdef-worker-ai-audit/"
+  fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -2232,12 +2305,13 @@ run_ai_audit_phase() {
     fi
     echo "dry-run prompt: $(repo_relpath "$prompt_out")"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "ai_audit" "$step")")"
-    echo "$(shell_join "${prompt_cmd[@]}") && $(shell_join "${dry_review_cmd[@]}")"
+    echo "write yasdef-worker-ai-audit prompt for step $step to $(printf '%q' "$prompt_out") && $(shell_join "${dry_review_cmd[@]}")"
     return 0
   fi
 
+  ensure_ai_audit_review_branch "$step" "$SELECTED_FEATURE_ID"
   mkdir -p "$(dirname "$prompt_out")"
-  "${prompt_cmd[@]}"
+  write_ai_audit_skill_prompt "$step" "$SELECTED_FEATURE_ID" "$branch_name" "$latest_plan" "$design_file" "$prompt_out"
   local prompt_arg
   prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$prompt_out")"
   local review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
@@ -2336,6 +2410,9 @@ run_phase() {
 commit_selected_source_plan_update_if_needed() {
   local step="$1"
   local plan_rel=""
+  local raised_questions_dir=""
+  local raised_questions_rel=""
+  local has_changes=0
   local err=""
   local commit_message=""
 
@@ -2354,12 +2431,35 @@ commit_selected_source_plan_update_if_needed() {
     return 1
   fi
 
-  if git -C "$BOUND_PROJECT_PATH" diff --cached --quiet -- "$plan_rel"; then
+  raised_questions_dir="$(dirname "$SELECTED_SOURCE_PLAN_PATH")/raised_questions"
+  if raised_questions_rel="$(bound_project_repo_relpath "$raised_questions_dir" 2>/dev/null)"; then
+    if [[ -d "$raised_questions_dir" ]] || git -C "$BOUND_PROJECT_PATH" ls-tree -d --name-only HEAD -- "$raised_questions_rel" >/dev/null 2>&1; then
+      if ! err="$(git -C "$BOUND_PROJECT_PATH" add -- "$raised_questions_rel" 2>&1)"; then
+        echo "Global implementation-plan sync failed while staging raised questions at $raised_questions_dir in $BOUND_PROJECT_PATH." >&2
+        printf '%s\n' "$err" >&2
+        return 1
+      fi
+    fi
+  fi
+
+  if ! git -C "$BOUND_PROJECT_PATH" diff --cached --quiet -- "$plan_rel"; then
+    has_changes=1
+  fi
+  if [[ -n "$raised_questions_rel" ]] && ! git -C "$BOUND_PROJECT_PATH" diff --cached --quiet -- "$raised_questions_rel"; then
+    has_changes=1
+  fi
+  if [[ "$has_changes" -eq 0 ]]; then
     return 2
   fi
 
   commit_message="ASDLC plan sync: ${SELECTED_FEATURE_ID:-selected-feature} step $step"
-  if ! err="$(git -C "$BOUND_PROJECT_PATH" commit -m "$commit_message" -- "$plan_rel" 2>&1)"; then
+  if [[ -n "$raised_questions_rel" ]]; then
+    if ! err="$(git -C "$BOUND_PROJECT_PATH" commit -m "$commit_message" -- "$plan_rel" "$raised_questions_rel" 2>&1)"; then
+      echo "Global implementation-plan sync failed while creating an ASDLC sync commit for $SELECTED_SOURCE_PLAN_PATH." >&2
+      printf '%s\n' "$err" >&2
+      return 1
+    fi
+  elif ! err="$(git -C "$BOUND_PROJECT_PATH" commit -m "$commit_message" -- "$plan_rel" 2>&1)"; then
     echo "Global implementation-plan sync failed while creating an ASDLC sync commit for $SELECTED_SOURCE_PLAN_PATH." >&2
     printf '%s\n' "$err" >&2
     return 1
@@ -2481,7 +2581,7 @@ run_global_plan_sync_before_post_review() {
     return 0
   fi
 
-  echo "orchestrator: work for step '$step' is finished, the implementation plan is updated, and orchestrator is trying to sync it with the global implementation plan." >&2
+  echo "orchestrator: work for step '$step' is finished, and orchestrator is trying to sync implementation-plan/raised-questions updates with the bound ASDLC repo." >&2
   while true; do
     if run_global_plan_sync_attempt "$step"; then
       return 0
@@ -2742,7 +2842,7 @@ evaluate_ai_audit_phase() {
     return 0
   fi
 
-  phase_eval_set "ai_audit" "complete" "review artifact present (disposition semantics enforced by ai_audit/post_review helper)"
+  phase_eval_set "ai_audit" "complete" "review artifact present (disposition semantics enforced by ai_audit skill/post_review gate)"
 }
 
 evaluate_post_review_phase() {

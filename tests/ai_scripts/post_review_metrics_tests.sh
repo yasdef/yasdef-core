@@ -3,7 +3,6 @@ set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 POST_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/post_review.sh"
-AI_AUDIT_DISPOSITION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 
 TMP_ROOT="$(mktemp -d)"
@@ -53,8 +52,7 @@ setup_post_review_repo() {
 
   cp "$POST_REVIEW_SRC" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
-  cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
-  chmod +x "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
+  chmod +x "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/step_plans/step-1.1.md" <<'EOF'
 # Step Plan: 1.1 - Demo
@@ -69,11 +67,12 @@ Est. step total: 5 SP
 EOF
 
   cat >"$repo_dir/ai/step_review_results/review_result-1.1.md" <<'EOF'
-## High
-- Demo issue.
-
-## Disposition (per issue)
-- **Accepted**: Demo resolution.
+### F-01
+- Severity: High
+- Disposition state:
+  - [x] follow_up_created: 1.1a
+  - [ ] raised_to_coordinator:
+  - [ ] rejected:
 EOF
 
   if [[ "$include_seed_python_class" == "1" ]]; then

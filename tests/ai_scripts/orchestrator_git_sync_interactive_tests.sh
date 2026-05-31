@@ -7,6 +7,7 @@ RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 PLAN_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan"
 IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
 USER_REVIEW_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review"
+AI_AUDIT_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-ai-audit"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -49,6 +50,7 @@ setup_worker_repo() {
   cp -R "$PLAN_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-plan"
   cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
   cp -R "$USER_REVIEW_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-user-review"
+  cp -R "$AI_AUDIT_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-ai-audit"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
   cat >"$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" <<'EOF'
@@ -69,7 +71,7 @@ EOF
     "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
-ai_audit | echo | mock-model
+ai_audit | .asdlc_worker/scripts/ai_audit.sh | mock-model
 EOF
   cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-a.md" <<'EOF'
 # Step Plan: 1.1 - Demo
@@ -103,6 +105,8 @@ EOF
     echo "seed" >README.md
     git add README.md .asdlc_worker ai overmind
     git commit -qm "seed"
+    git checkout -qb step-1.1-feature-a-user-review
+    git checkout -q master
   )
 }
 
@@ -248,7 +252,7 @@ EOF
   chmod +x "$source_dir/.git/hooks/pre-commit"
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
-ai_audit | echo | mock-model
+ai_audit | .asdlc_worker/scripts/ai_audit.sh | mock-model
 post_review | echo | mock-model
 EOF
 
@@ -282,7 +286,7 @@ EOF
   chmod +x "$remote_dir/hooks/pre-receive"
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
-ai_audit | echo | mock-model
+ai_audit | .asdlc_worker/scripts/ai_audit.sh | mock-model
 post_review | echo | mock-model
 EOF
 

@@ -7,6 +7,7 @@ RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 PLAN_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan"
 IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
 USER_REVIEW_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review"
+AI_AUDIT_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-ai-audit"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -109,6 +110,7 @@ setup_worker_repo() {
   cp -R "$PLAN_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-plan"
   cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
   cp -R "$USER_REVIEW_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-user-review"
+  cp -R "$AI_AUDIT_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-ai-audit"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
   cat >"$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" <<'EOF'
@@ -129,7 +131,7 @@ EOF
     "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
 
   cat >"$repo_dir/ai/setup/models.md" <<'EOF'
-ai_audit | echo | mock-model
+ai_audit | .asdlc_worker/scripts/ai_audit.sh | mock-model
 EOF
   cat >"$repo_dir/.asdlc_worker/step_plans/step-1.1-feature-a.md" <<'EOF'
 # Step Plan: 1.1 - Demo
@@ -163,6 +165,8 @@ EOF
     echo "seed" >README.md
     git add README.md .asdlc_worker ai overmind
     git commit -qm "seed"
+    git checkout -qb step-1.1-feature-a-user-review
+    git checkout -q master
   )
 }
 
@@ -347,7 +351,7 @@ test_outbound_sync_runs_before_post_review_and_pushes_plan() {
   write_binding "$repo_dir" "$source_dir" "$project_id" "$worker_uuid"
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh 2>&1)"
-  assert_contains "$out" "orchestrator: work for step '1.1' is finished, the implementation plan is updated, and orchestrator is trying to sync it with the global implementation plan."
+  assert_contains "$out" "orchestrator: work for step '1.1' is finished, and orchestrator is trying to sync implementation-plan/raised-questions updates with the bound ASDLC repo."
   assert_order "$out" "ai_audit" "orchestrator: work for step '1.1' is finished" "post_review"
   assert_file_contains "$source_dir/feature-a/implementation_plan.md" "# synced-after-ai-audit"
   assert_contains "$(git -C "$source_dir" show origin/master:feature-a/implementation_plan.md)" "# synced-after-ai-audit"

@@ -11,7 +11,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 
 ## Git safety (local workflow)
 - Never commit directly on `main`/`master`. All commits happen on a local topic branch.
-- Branch setup is handled by scripts: the orchestrator planning/design phases use `step-<step>-plan`, the orchestrator implementation phase uses `step-<step>-implementation`, the orchestrator user_review phase uses `step-<step>-user-review` from implementation, and `ai/scripts/ai_audit.sh` (phase key `ai_audit`) creates/switches `step-<step>-review` from user-review when available (otherwise from implementation).
+- Branch setup is handled by scripts: the orchestrator planning/design phases use `step-<step>-plan`, the orchestrator implementation phase uses `step-<step>-implementation`, the orchestrator user_review phase uses `step-<step>-user-review` from implementation, and the orchestrator `ai_audit` phase creates/switches `step-<step>-review` strictly from `step-<step>-user-review`.
 - Local workflow: create a local branch before starting a step implementation phase, commit only after tests pass and the user approves, do not push. Any merge to `main`/`master` is a separate explicit follow-up action, not part of step completion.
 - Never introduce or commit unrelated changes. If unrelated changes are discovered, stop and ask the user how to proceed.
 
@@ -111,72 +111,12 @@ Before step planning:
 - Do not run Section 6 in the user_review phase; Section 6 is executed separately in the `ai_audit` phase after user review is complete.
 
 ### 6) Post-step ai_audit/review (required before moving to the next step)
-
-#### 6.0) Entry proof-check against implementation_plan target bullets (required first gate)
-- Before deeper audit analysis, run explicit bullet-by-bullet proof-check against current-step target bullets in `overmind/implementation_plan.md` (non-review implementation bullets for the step).
-- Allowed outcomes per target bullet:
-  - `PROVEN`: concrete implementation evidence exists.
-  - `NOT_PROVEN`: implementation evidence is missing/incomplete/uncertain.
-- Required proof for `PROVEN`:
-  1 - Code implementation references exist: specific changed file path(s) and key symbols with core logic.
-  2 - Behavioral reachability is shown from concrete entrypoints first (controller/handler/job/UI/CLI), then supporting flow as needed.
-  3 - Test evidence exists: new/updated tests validate behavior, or there is explicit credible mapping to existing coverage.
-- Evidence Reasoning Summary output (required at ai_audit entry):
-  1 - Keep it compact and scannable.
-  2 - Include each in-scope target bullet exactly once with `PROVEN` or `NOT_PROVEN`.
-  3 - For every `PROVEN` bullet, include code refs, reachability, and test evidence/mapping.
-  4 - No guesses: missing/uncertain evidence requires `NOT_PROVEN`.
-- If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis. Continue 6.1-6.3 only after the entry proof-check passes.
-
-#### 6.1) Analyse TODOs and convert them to findings (required second gate)
-- After Section 6.0 passes, scan the in-scope changed files for TODO markers: `//TODO <reason>`.
-- Convert every valid TODO marker into an explicit audit finding before continuing to deeper review.
-- All TODO-derived findings are then processed via Sections 6.2 and 6.3 like any other finding.
-
-#### 6.2) Audit review and findings
-- Entry precondition for this phase: Section 5 (User review) is already complete. Do not ask the user to reconfirm Section 5 during post-step audit.
-- Do not start the next implementation step in this phase.
-- Start by identifying current uncommitted step changes (for example, `git status --short` and `git diff --name-status`) and inspecting changed files.
-- Post-step audit is analysis-only. Do not change runtime code, do not implement fixes, and do not run tests in this phase.
-- Allowed changes in this phase are planning/audit artifacts only (for example: `overmind/implementation_plan.md`, `ai/blocker_log.md`, `ai/open_questions.md`, `ai/decisions.md`, `ai/step_review_results/*`).
-- If recording new decisions or blockers in this phase, use `ai/templates/decisions_TEMPLATE.md` + `ai/golden_examples/decisions_GOLDEN_EXAMPLE.md` and `ai/templates/blocker_log_TEMPLATE.md` + `ai/golden_examples/blocker_log_GOLDEN_EXAMPLE.md`.
-- Re-check for newly introduced blockers/technical debt:
-  - If it blocks the next bullet in the current step: add it to `ai/blocker_log.md`.
-  - Otherwise: add it as a new future bullet in `overmind/implementation_plan.md`.
-- Review all changes produced during the current step (typically on `step-<step>-review`), focusing on correctness and regression risk.
-  - Perform an analysis-heavy review: cross-check against `AGENTS.md` rules (idempotency, validation, transaction boundaries, ledger/projection consistency, stream routing, guard rules), `overmind/reqirements_ears.md` acceptance criteria, and updated docs/tests.
-  - Produce a detailed review in the response: list findings (if any) with severity (Critical/High/Medium/Low) and file references. If no findings, state that explicitly and mention any residual risks or testing gaps.
-  - If issues are found, execute Section 6.3 for each finding. After each finding is dispositioned, return to Section 6.2 and continue the audit.
-- Treat Section 6 as a closure loop, not a single pass: after every user decision and every artifact update, re-check the ai_audit completion gates and keep iterating until they pass. Do not stop because the user approved the latest bullet changes if any current-step bullet in `overmind/implementation_plan.md` is still not `[x]` or Section 6.4 still fails.
-- Mark all current-step bullets in `overmind/implementation_plan.md` as `[x]` only once the post-step audit write-up is complete, every finding has an explicit disposition recorded (**Accepted** or **Rejected**), and any accepted items are captured as follow-up work (typically as a new step/bullet in `overmind/implementation_plan.md`, or as an item in `ai/open_questions.md`/`ai/blocker_log.md` if still unclear).
-- **Commit gate**: only when there are **no accepted unresolved findings** and the user confirms completion, commit all step changes on the current step/review branch and propose the commit commands. If any accepted follow-up work remains, do **not** propose commit commands in this phase. Do not merge to `main`/`master` in this phase.
-- Completion-line gate (ai_audit phase): output the exact ai_audit completion line (`ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`) only after post-step audit write-up is complete, every finding has an explicit disposition (**Accepted** or **Rejected**) with accepted items captured as follow-up work, all current-step bullets in `overmind/implementation_plan.md` are `[x]`, and the AI Audit Disposition Gate (Section 6.4) passes.
-
-#### 6.3) Per-finding issue disposition workflow
-- Run this subsection separately for each finding identified in Section 6.2.
-1. Create or update `ai/step_review_results/review_result-<current_step>.md` using `ai/templates/audit_result_TEMPLATE.md` and follow the formatting from `ai/golden_examples/audit_result_GOLDEN_EXAMPLE.md`.
-2. Ask the user to accept/reject the current issue (confirm severity and whether it should be addressed now).
-3. Based on the user’s decision:
-   - If rejected: mark it as rejected/closed in `review_result-<current_step>.md` (brief rationale).
-   - If accepted for resolution: analyze `overmind/implementation_plan.md` and add it as follow-up work in the appropriate place:
-     - Prefer adding a follow-up step immediately after the current step using letter suffixes (e.g., `1.6` → `1.6a`, `1.6a` → `1.6b`, etc.) when it is directly related and should not block earlier steps.
-     - Otherwise, add it as a new later step (e.g., `1.6` → `1.12`) if it’s larger or should be scheduled separately.
-     - If the “what to do” is still unclear, add it as an item in `ai/open_questions.md` for an already-created step (so it is reviewed during that step’s planning bullet).
-4. Return to Section 6.2 and continue the audit. Repeat Section 6.3 for the next finding until all findings have explicit disposition.
-
-#### 6.4) AI Audit Disposition Gate (required before completion and before post_review)
-- Before emitting the ai_audit completion line, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <current_step>`.
-- The helper is the canonical validation for ai_audit completion readiness:
-  - `ai/step_review_results/review_result-<current_step>.md` must exist.
-  - `## Disposition (per issue)` must exist.
-  - Count issues only from `## Critical`, `## High`, `## Medium`, and `## Low`, excluding `- (none)`.
-  - There must be at least one `- **Accepted**:` or `- **Rejected**:` entry for each counted issue.
-  - All bullets in the current step section of `overmind/implementation_plan.md` must be checklist bullets and marked `[x]` (including `Review step implementation`).
-- If the helper fails:
-  - Do not output the ai_audit completion line.
-  - Return to the Section 6 audit loop, finish the missing per-issue dispositions and/or close remaining current-step bullets in `overmind/implementation_plan.md`, and rerun the helper.
-- `post_review` must run the same helper before history consolidation or other post-review output updates.
-- If the helper fails in `post_review`, stop immediately, report that ai_audit dispositions are incomplete, and rerun post_review only after the review artifact passes the helper.
+- Detailed ai_audit workflow, entry gate, context assembly, two-phase discovery/disposition model, and closure validation now live in the installed Codex skill at `.codex/skills/yasdef-worker-ai-audit/SKILL.md`.
+- The orchestrator invokes Codex with a compact prompt that calls `yasdef-worker-ai-audit` for the selected step.
+- ai_audit remains analysis-only: do not modify runtime code and do not run tests in this phase.
+- ai_audit uses the step design artifact as the single context source and writes findings to `.asdlc_worker/step_review_results/review_result-<step>-<feature-id>.md`.
+- Each finding must reach exactly one terminal state: `follow_up_created`, `raised_to_coordinator`, or `rejected`.
+- ai_audit may update ASDLC planning artifacts (`implementation_plan.md`, `raised_questions/`) as disposition outputs; those ASDLC changes are synced by orchestrator/post_review handoff routines.
 
 ## Estimation Gates (required)
 - **Scale**: use SP values `{1, 2, 3, 5, 8}`. Keep estimates rough.

@@ -7,6 +7,7 @@ RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
 PLAN_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan"
 IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
 USER_REVIEW_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review"
+AI_AUDIT_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-ai-audit"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -99,6 +100,7 @@ setup_repo() {
   cp -R "$PLAN_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-plan"
   cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
   cp -R "$USER_REVIEW_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-user-review"
+  cp -R "$AI_AUDIT_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-ai-audit"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
 
   cat >"$repo_dir/.asdlc_worker/scripts/ai_user_review.sh" <<'EOF'
@@ -551,7 +553,7 @@ test_resume_starts_at_post_review_when_disposition_section_is_missing() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "ai_audit: complete (review artifact present (disposition semantics enforced by ai_audit/post_review helper))"
+  assert_contains "$out" "ai_audit: complete (review artifact present (disposition semantics enforced by ai_audit skill/post_review gate))"
   assert_contains "$out" "post_review: incomplete (review gate 'Review step implementation' is not [x])"
   assert_contains "$out" "Selected start phase: post_review"
   assert_contains "$out" "Executed phases: post_review"
@@ -569,7 +571,7 @@ test_resume_starts_at_post_review_when_disposition_count_is_insufficient() {
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "ai_audit: complete (review artifact present (disposition semantics enforced by ai_audit/post_review helper))"
+  assert_contains "$out" "ai_audit: complete (review artifact present (disposition semantics enforced by ai_audit skill/post_review gate))"
   assert_contains "$out" "post_review: incomplete (review gate 'Review step implementation' is not [x])"
   assert_contains "$out" "Selected start phase: post_review"
   assert_contains "$out" "Executed phases: post_review"

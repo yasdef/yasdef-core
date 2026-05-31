@@ -7,7 +7,6 @@ asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
 ROOT="$WORKER_REPO_ROOT"
 PROJECT="$(basename "$ROOT")"
 HISTORY_FILE="$ASDLC_HISTORY_FILE"
-AI_AUDIT_DISPOSITION_HELPER="$ASDLC_HELPERS_DIR/check_ai_audit_disposition_readiness.sh"
 OVERMIND_BRANCH="overmind"
 IMPLEMENTATION_PLAN_REL_PATH=".asdlc_worker/overmind/implementation_plan.md"  # standalone mode only
 
@@ -34,7 +33,7 @@ Defaults:
   - --review-branch defaults to step-<step>-review.
   - --implementation-branch defaults to step-<step>-implementation.
   - --history-out defaults to .asdlc_worker/history.md.
-  - Hard gate before history consolidation: `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh <step> [feature-id]` must pass.
+  - Hard gate before history consolidation: review artifact must exist and every finding must have exactly one terminal state.
   - Captures post-review metrics before any auto-commit, including pending local changes via a temporary working-tree snapshot.
   - If uncommitted review changes exist, commits them as a review-completion guard before history update.
   - Then writes post-review history and commits remaining uncommitted changes on the current branch.
@@ -48,21 +47,56 @@ EOF
 }
 
 enforce_ai_audit_disposition_readiness() {
-  local helper_output=""
-  if [[ ! -r "$AI_AUDIT_DISPOSITION_HELPER" ]]; then
+  local review_file=""
+  local check_output=""
+
+  if [[ -n "$FEATURE_ID" ]]; then
+    review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP-$FEATURE_ID.md"
+  else
+    review_file="$ASDLC_STEP_REVIEW_RESULTS_DIR/review_result-$STEP.md"
+  fi
+  if [[ ! -f "$review_file" ]]; then
     echo "Post-review readiness failed for step $STEP." >&2
-    echo "AI audit disposition helper is missing or not readable: $AI_AUDIT_DISPOSITION_HELPER" >&2
+    echo "Review artifact not found: $review_file" >&2
+    echo "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review." >&2
     exit 1
   fi
 
-  if helper_output="$(bash "$AI_AUDIT_DISPOSITION_HELPER" "$STEP" ${FEATURE_ID:+"$FEATURE_ID"} 2>&1)"; then
-    return 0
+  if ! check_output="$(awk '
+    BEGIN { in_finding=0; findings=0; errors=0; fid=""; follow=0; raised=0; rejected=0 }
+    /^### F-[0-9]+/ {
+      if (in_finding) {
+        checked = follow + raised + rejected
+        if (checked == 0) { print fid ": missing disposition state"; errors++ }
+        else if (checked > 1) { print fid ": conflicting disposition states"; errors++ }
+      }
+      in_finding=1
+      findings++
+      fid=$2
+      follow=0; raised=0; rejected=0
+      next
+    }
+    in_finding && /^[[:space:]]*-[[:space:]]+\[[xX]\][[:space:]]+follow_up_created([[:space:]:]|$)/ { follow=1; next }
+    in_finding && /^[[:space:]]*-[[:space:]]+\[[xX]\][[:space:]]+raised_to_coordinator([[:space:]:]|$)/ { raised=1; next }
+    in_finding && /^[[:space:]]*-[[:space:]]+\[[xX]\][[:space:]]+rejected([[:space:]:]|$)/ { rejected=1; next }
+    END {
+      if (in_finding) {
+        checked = follow + raised + rejected
+        if (checked == 0) { print fid ": missing disposition state"; errors++ }
+        else if (checked > 1) { print fid ": conflicting disposition states"; errors++ }
+      }
+      if (findings == 0) {
+        print "No findings found in review artifact (expected `### F-NN` blocks)."
+        errors++
+      }
+      if (errors > 0) exit 1
+    }
+  ' "$review_file")"; then
+    echo "Post-review readiness failed for step $STEP." >&2
+    printf '%s\n' "$check_output" >&2
+    echo "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review." >&2
+    exit 1
   fi
-
-  echo "Post-review readiness failed for step $STEP." >&2
-  printf '%s\n' "$helper_output" >&2
-  echo "ai_audit dispositions were not finished correctly. Complete the review artifact and rerun post_review." >&2
-  exit 1
 }
 
 require_option_arg() {

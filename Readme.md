@@ -129,7 +129,7 @@ Each artifact below serves a specific role in the AI-dev process:
 - **open_questions.md**: Non-blocking questions tracked per step, reviewed at step planning start. Removed once answered.
 - **decisions.md**: Durable technical decisions (Architecture Decision Records) recorded during planning and implementation. Includes decision context, alternatives considered, and rationale. Used to avoid rehashing settled choices.
 - **user_review.md**: Rule-based review insights, generalizable feedback patterns, and references to accepted implementations. Evolves as design patterns stabilize.
-- **step_review_results/**: Post-step audit findings (`review_result-<N>-<feature-id>.md`), organized by severity (Critical/High/Medium/Low). Each finding has an explicit disposition (Accepted/Rejected) and follow-up work assignment.
+- **step_review_results/**: Post-step audit findings (`review_result-<N>-<feature-id>.md`), organized by severity (Critical/High/Medium/Low). Each finding has exactly one terminal disposition state: `follow_up_created`, `raised_to_coordinator`, or `rejected`.
 - **history.md**: Optional step completion log tracking dates, effort, surprises, and key decisions per step.
 
 ## Phases inputs and outputs
@@ -160,9 +160,9 @@ Each artifact below serves a specific role in the AI-dev process:
 - Gate: Entry precheck requires all `## Plan (ordered)` checklist items `[x]` and all translated functional requirement checklist items `[x]` before model execution.
 
 **Phase 5: Post-Step Audit & Review (AI)**
-- Input: Implemented + user-review changes, step plan, design, and user feedback outcomes.
-- Output: `.asdlc_worker/step_review_results/review_result-<N>-<feature-id>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-<feature-id>-review`). No push or merge to `main`/`master`.
-- Gate: Every finding must have an explicit disposition; all accepted work must be captured as follow-up steps or questions.
+- Input: Implemented + user-review changes, step design artifact (single audit context source), and `AGENTS.md`.
+- Output: `.asdlc_worker/step_review_results/review_result-<N>-<feature-id>.md`, updated `implementation_plan.md`, optional `raised_questions/` files, commit on review branch (`step-<N>-<feature-id>-review`). No push or merge to `main`/`master`.
+- Gate: Every finding must have exactly one terminal disposition state and required disposition artifacts must exist.
 
 **Phase 6: Post-Review**
 - Input: `.asdlc_worker/step_review_results/review_result-<N>-<feature-id>.md`, updated plan artifacts, review branch state.
