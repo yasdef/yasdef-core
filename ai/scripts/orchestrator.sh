@@ -2251,14 +2251,22 @@ commit_selected_source_plan_update_if_needed() {
   fi
 
   raised_questions_dir="$(dirname "$SELECTED_SOURCE_PLAN_PATH")/raised_questions"
-  if raised_questions_rel="$(bound_project_repo_relpath "$raised_questions_dir" 2>/dev/null)"; then
-    if [[ -d "$raised_questions_dir" ]] || git -C "$BOUND_PROJECT_PATH" ls-tree -d --name-only HEAD -- "$raised_questions_rel" >/dev/null 2>&1; then
-      if ! err="$(git -C "$BOUND_PROJECT_PATH" add -- "$raised_questions_rel" 2>&1)"; then
-        echo "Global implementation-plan sync failed while staging raised questions at $raised_questions_dir in $BOUND_PROJECT_PATH." >&2
-        printf '%s\n' "$err" >&2
-        return 1
-      fi
+  if [[ -d "$raised_questions_dir" ]] \
+     && raised_questions_rel="$(bound_project_repo_relpath "$raised_questions_dir" 2>/dev/null)"; then
+    # raised_questions/ is optional — the audit skill creates it only when a
+    # finding is raised to coordinator. Stage it only when it actually exists
+    # on disk; the previous `git ls-tree HEAD -- <path>` check always exited 0
+    # (even on a missing pathspec), so `git add` ran every time and failed
+    # with "pathspec did not match any files" when no findings were raised.
+    if ! err="$(git -C "$BOUND_PROJECT_PATH" add -- "$raised_questions_rel" 2>&1)"; then
+      echo "Global implementation-plan sync failed while staging raised questions at $raised_questions_dir in $BOUND_PROJECT_PATH." >&2
+      printf '%s\n' "$err" >&2
+      return 1
     fi
+  else
+    # No raised_questions/ this round — make sure later diff and commit
+    # paths don't reference a relpath that never got staged.
+    raised_questions_rel=""
   fi
 
   if ! git -C "$BOUND_PROJECT_PATH" diff --cached --quiet -- "$plan_rel"; then
