@@ -63,7 +63,17 @@ If any input is missing, inconsistent, or points to a missing required file, do 
    ```
 3. Apply the chosen disposition:
    - reject: mark `[x] rejected` (optional short rationale after `:`)
-   - create follow-up step: append `### Step N.Na` in `implementation_plan.md` right after current step section with `#### Assigned: <worker-id>`, then mark `[x] follow_up_created: <new-step-id>`
+   - create follow-up step: do **not** edit `implementation_plan.md` by hand. Run the helper, which writes the canonical block (heading, `#### Assigned:` / `#### Repo:` / `#### Depends on:` headings, `- [ ] Plan and discuss the step.` first bullet, your action bullets, `- [ ] Review step implementation.` last bullet) and prints the new step id on stdout:
+     ```bash
+     uv run python .codex/skills/yasdef-worker-ai-audit/scripts/append_follow_up_step.py \
+       --runtime-plan <runtime-plan> \
+       --parent-step <current-step-id> \
+       --worker-id <worker-id> \
+       --title "<follow-up step title>" \
+       --bullet "<first action bullet>" \
+       [--bullet "<additional action bullet>" ...]
+     ```
+     The helper auto-picks the next free single-letter suffix (a..z) and copies `#### Repo:` from the parent step. Pass **only the action bullets** as `--bullet` — the helper adds the bookends. Then mark `[x] follow_up_created: <new-step-id>` in the finding's state block using the id printed by the helper.
    - raise to coordinator: create `projects/<project>/<feature>/raised_questions/<step>-<worker-id>-F<NN>.md` and mark `[x] raised_to_coordinator: <relative-path>`
 4. Continue until all findings are dispositioned.
 

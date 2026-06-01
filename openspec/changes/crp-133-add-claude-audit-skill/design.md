@@ -34,7 +34,7 @@ Drift between Codex and Claude script copies is a bug, not a feature; future syn
 
 **Decision 2: SKILL.md is allowed to diverge; scripts and assets are not**
 
-Claude Code skill conventions may differ from Codex (frontmatter shape, in-skill cross-references, asset references using a different syntax). The Claude `SKILL.md` is free to follow Claude conventions. The workflow contract — 7 inputs, 9 workflow steps, 6 closure error categories, the exact sentinel completion line, the analysis-only / commit-boundary / read-target rules — is fixed across both versions because all of that is what the Python helpers and the orchestrator enforce.
+Claude Code skill conventions may differ from Codex (frontmatter shape, in-skill cross-references, asset references using a different syntax). The Claude `SKILL.md` is free to follow Claude conventions. The workflow contract — 7 inputs, 9 workflow steps, 5 closure error categories, the audit-created follow-up step authored exclusively by `append_follow_up_step.py` (which owns the canonical block shape: `#### Assigned:` / `#### Repo:` / `#### Depends on:` headings plus `- [ ] Plan and discuss the step.` / `- [ ] Review step implementation.` bookend bullets around the model-supplied action bullets), the exact sentinel completion line, the analysis-only / commit-boundary / read-target rules — is fixed across both versions because all of that is what the Python helpers and the orchestrator enforce.
 
 Scripts and assets stay byte-identical because they're contract-bearing artifacts that must produce identical output regardless of which skill host invokes them.
 
@@ -60,7 +60,7 @@ The four other phases (design, plan, implementation, user-review) are not Claude
 - **Script drift between Codex and Claude trees** → Real risk over time. Mitigation: a sync-check (lint or CI assertion that the two `scripts/*.py` files are byte-identical) is recommended as a follow-up but not required for this CRP. Until it exists, code review owns drift detection.
 - **Doubled disk footprint of the skill in target repos** → Accepted. Each skill is < 30 KB; doubling is negligible.
 - **Slash-command ergonomics** → Accepted. Operators invoking `/yasdef:audit` manually must supply 7 inputs. The natural invocation path is still the orchestrator; the slash command is a manual fallback.
-- **Skill content evolution synchronization** → If a future change updates the Codex skill's Python helpers (e.g. adds a 7th closure error category), the Claude tree must be updated in lockstep. The two-list install pattern in `init_asdlc_worker.sh` makes the touchpoints obvious in code review.
+- **Skill content evolution synchronization** → If a future change updates the Codex skill's Python helpers (e.g. adds a 6th closure error category or extends `append_follow_up_step.py`'s contract), the Claude tree must be updated in lockstep. The two-list install pattern in `init_asdlc_worker.sh` makes the touchpoints obvious in code review.
 
 ## Migration Plan
 

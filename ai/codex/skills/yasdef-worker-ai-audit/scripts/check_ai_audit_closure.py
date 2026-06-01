@@ -27,7 +27,6 @@ DISPOSITION_LINE_RE = re.compile(
 )
 FINDING_HEADING_RE = re.compile(r"(?m)^###\s+(F-\d+)\b.*$")
 STEP_HEADING_RE = re.compile(r"^###\s+Step\s+(\S+)\b", re.IGNORECASE)
-ASSIGNED_LINE_RE = re.compile(r"^####\s+Assigned:\s*(.+?)\s*$")
 BULLET_LINE_RE = re.compile(r"^\s*-\s+\[(?P<mark>[ xX])\]\s+(?P<text>.+?)\s*$")
 
 
@@ -48,7 +47,6 @@ class Finding:
 @dataclass
 class StepBlock:
     step_id: str
-    assigned: str
     unchecked_bullets: list[str]
 
 
@@ -116,7 +114,6 @@ def iter_step_blocks(plan_text: str) -> list[tuple[str, str]]:
 
 
 def parse_step_block(block_text: str) -> StepBlock:
-    assigned = ""
     unchecked: list[str] = []
     step_id = ""
     for index, line in enumerate(block_text.splitlines()):
@@ -125,16 +122,12 @@ def parse_step_block(block_text: str) -> StepBlock:
             if heading:
                 step_id = heading.group(1)
             continue
-        assignment = ASSIGNED_LINE_RE.match(line.strip())
-        if assignment:
-            assigned = assignment.group(1).strip()
-            continue
         bullet = BULLET_LINE_RE.match(line)
         if bullet and bullet.group("mark").lower() != "x":
             text = bullet.group("text").strip()
             snippet = text if len(text) <= 80 else text[:80] + "..."
             unchecked.append(snippet)
-    return StepBlock(step_id=step_id, assigned=assigned, unchecked_bullets=unchecked)
+    return StepBlock(step_id=step_id, unchecked_bullets=unchecked)
 
 
 def index_steps_by_id(plan_text: str) -> dict[str, StepBlock]:
@@ -164,7 +157,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def evaluate_findings(
     findings: list[Finding],
     steps_by_id: dict[str, StepBlock],
-    worker_id: str,
     asdlc_root: Path,
 ) -> dict[str, list[str]]:
     """Return error category → list of detail strings."""
@@ -172,7 +164,6 @@ def evaluate_findings(
         "missing_disposition": [],
         "conflicting_disposition": [],
         "missing_follow_up": [],
-        "misassigned_follow_up": [],
         "missing_raised": [],
     }
 
@@ -188,15 +179,9 @@ def evaluate_findings(
         state = checked[0]
         ref = finding.states[state]
         if state is Disposition.FOLLOW_UP_CREATED:
-            follow_up = steps_by_id.get(ref)
-            if follow_up is None:
+            if ref not in steps_by_id:
                 categories["missing_follow_up"].append(
                     f"{finding.finding_id} (expected: ### Step {ref})"
-                )
-            elif follow_up.assigned != worker_id:
-                categories["misassigned_follow_up"].append(
-                    f"{finding.finding_id} ({ref} #### Assigned: "
-                    f"{follow_up.assigned or '<missing>'}, expected {worker_id})"
                 )
         elif state is Disposition.RAISED_TO_COORDINATOR:
             expected_path = (asdlc_root / ref).resolve()
@@ -233,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     steps_by_id = index_steps_by_id(plan_text)
-    categories = evaluate_findings(findings, steps_by_id, args.worker_id, asdlc_root)
+    categories = evaluate_findings(findings, steps_by_id, asdlc_root)
     current_step = steps_by_id.get(args.step)
 
     had_errors = False
@@ -265,17 +250,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Findings marked [x] follow_up_created but no matching step heading in "
                 "implementation_plan.md: " + "; ".join(categories["missing_follow_up"])
             ],
-            "insert the step block after the current step section.",
-        )
-    if categories["misassigned_follow_up"]:
-        had_errors = True
-        emit_error_block(
-            "Follow-up step mis-assigned",
-            [
-                "Findings whose follow-up step is assigned to a different worker: "
-                + "; ".join(categories["misassigned_follow_up"])
-            ],
-            "re-assign the follow-up step to the current worker.",
+            "run append_follow_up_step.py to create the missing block.",
         )
     if categories["missing_raised"]:
         had_errors = True

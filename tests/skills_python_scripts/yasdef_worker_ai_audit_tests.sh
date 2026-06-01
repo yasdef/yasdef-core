@@ -6,6 +6,7 @@ SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-ai-audit"
 ENTRY_SCRIPT="$SKILL_DIR/scripts/check_ai_audit_entry.py"
 BUILD_CONTEXT="$SKILL_DIR/scripts/build_ai_audit_context.py"
 CHECK_CLOSURE="$SKILL_DIR/scripts/check_ai_audit_closure.py"
+APPEND_FOLLOW_UP="$SKILL_DIR/scripts/append_follow_up_step.py"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -106,6 +107,23 @@ seed_asdlc_repo() {
 # Plan
 
 ### Step $STEP Demo [REQ-1]
+#### Assigned: $WORKER_ID
+- [ ] do thing one
+- [ ] do thing two
+EOF
+  printf '%s\n' "$feature_dir/implementation_plan.md"
+}
+
+seed_asdlc_repo_with_repo_heading() {
+  # Variant for append_follow_up_step tests: parent step carries #### Repo:.
+  local repo_dir="$1" repo_value="${2:-backend}"
+  local feature_dir="$repo_dir/asdlc-side/projects/proj-a/$FEATURE_ID"
+  mkdir -p "$feature_dir"
+  cat >"$feature_dir/implementation_plan.md" <<EOF
+# Plan
+
+### Step $STEP Demo [REQ-1]
+#### Repo: $repo_value
 #### Assigned: $WORKER_ID
 - [ ] do thing one
 - [ ] do thing two
@@ -386,28 +404,6 @@ test_closure_missing_follow_up_step() {
   assert_contains "$out" "expected: ### Step ${STEP}a"
 }
 
-test_closure_misassigned_follow_up_step() {
-  local repo_dir plan_path
-  repo_dir="$(new_repo closure_misassigned)"
-  plan_path="$(seed_asdlc_repo "$repo_dir")"
-  mark_step_bullets_x "$plan_path"
-  cat >>"$plan_path" <<EOF
-
-### Step ${STEP}a Follow-up
-#### Assigned: someone-else
-- [ ] later work
-EOF
-  seed_review_result "$repo_dir" "$(closure_review_body_with_finding "$(printf "  - [ ] rejected:\n  - [x] follow_up_created: %sa\n  - [ ] raised_to_coordinator:" "$STEP")")" >/dev/null
-
-  local out status
-  out="$(cd "$repo_dir" && uv run python "$CHECK_CLOSURE" \
-    --step "$STEP" --feature-id "$FEATURE_ID" \
-    --runtime-plan "$plan_path" --worker-id "$WORKER_ID" 2>&1)" && status=$? || status=$?
-  assert_status 1 "$status"
-  assert_contains "$out" "ERROR: Follow-up step mis-assigned"
-  assert_contains "$out" "expected $WORKER_ID"
-}
-
 test_closure_missing_raised_question_file() {
   local repo_dir plan_path
   repo_dir="$(new_repo closure_no_raised)"
@@ -500,6 +496,144 @@ test_closure_errors_go_to_stderr() {
   assert_contains "$stderr_only" "ERROR: Disposition phase needed"
 }
 
+# ─── append_follow_up_step tests ───────────────────────────────────────────
+
+test_append_follow_up_happy_path() {
+  local repo_dir plan_path
+  repo_dir="$(new_repo append_happy)"
+  plan_path="$(seed_asdlc_repo_with_repo_heading "$repo_dir" "backend")"
+
+  local out status
+  out="$(cd "$repo_dir" && uv run python "$APPEND_FOLLOW_UP" \
+    --runtime-plan "$plan_path" --parent-step "$STEP" \
+    --worker-id "$WORKER_ID" \
+    --title "Remove unapproved Lombok dependency" \
+    --bullet "Replace Lombok annotations with explicit accessors" \
+    --bullet "Remove org.projectlombok:lombok from pom.xml" 2>&1)" && status=$? || status=$?
+  assert_status 0 "$status"
+  assert_contains "$out" "${STEP}a"
+
+  local plan_text
+  plan_text="$(cat "$plan_path")"
+  assert_contains "$plan_text" "### Step ${STEP}a Remove unapproved Lombok dependency"
+  assert_contains "$plan_text" "#### Assigned: $WORKER_ID"
+  assert_contains "$plan_text" "#### Repo: backend"
+  assert_contains "$plan_text" "#### Depends on: $STEP"
+  assert_contains "$plan_text" "- [ ] Plan and discuss the step."
+  assert_contains "$plan_text" "- [ ] Replace Lombok annotations with explicit accessors"
+  assert_contains "$plan_text" "- [ ] Remove org.projectlombok:lombok from pom.xml"
+  assert_contains "$plan_text" "- [ ] Review step implementation."
+}
+
+test_append_follow_up_parent_missing() {
+  local repo_dir plan_path
+  repo_dir="$(new_repo append_no_parent)"
+  plan_path="$(seed_asdlc_repo_with_repo_heading "$repo_dir" "backend")"
+
+  local out status
+  out="$(cd "$repo_dir" && uv run python "$APPEND_FOLLOW_UP" \
+    --runtime-plan "$plan_path" --parent-step "9.9" \
+    --worker-id "$WORKER_ID" \
+    --title "Anything" \
+    --bullet "Some action" 2>&1)" && status=$? || status=$?
+  assert_status 1 "$status"
+  assert_contains "$out" "parent step \`### Step 9.9\` not found"
+}
+
+test_append_follow_up_parent_missing_repo() {
+  local repo_dir plan_path
+  repo_dir="$(new_repo append_no_repo)"
+  plan_path="$(seed_asdlc_repo "$repo_dir")"  # uses fixture WITHOUT #### Repo:
+
+  local out status
+  out="$(cd "$repo_dir" && uv run python "$APPEND_FOLLOW_UP" \
+    --runtime-plan "$plan_path" --parent-step "$STEP" \
+    --worker-id "$WORKER_ID" \
+    --title "Anything" \
+    --bullet "Some action" 2>&1)" && status=$? || status=$?
+  assert_status 1 "$status"
+  assert_contains "$out" "has no \`#### Repo:\` heading"
+}
+
+test_append_follow_up_picks_next_letter() {
+  local repo_dir plan_path
+  repo_dir="$(new_repo append_next_letter)"
+  plan_path="$(seed_asdlc_repo_with_repo_heading "$repo_dir" "backend")"
+
+  # First call → expect "a"
+  local first_out
+  first_out="$(cd "$repo_dir" && uv run python "$APPEND_FOLLOW_UP" \
+    --runtime-plan "$plan_path" --parent-step "$STEP" \
+    --worker-id "$WORKER_ID" --title "First" --bullet "x")"
+  assert_contains "$first_out" "${STEP}a"
+
+  # Second call → expect "b" (a is now taken)
+  local second_out
+  second_out="$(cd "$repo_dir" && uv run python "$APPEND_FOLLOW_UP" \
+    --runtime-plan "$plan_path" --parent-step "$STEP" \
+    --worker-id "$WORKER_ID" --title "Second" --bullet "y")"
+  assert_contains "$second_out" "${STEP}b"
+
+  local plan_text
+  plan_text="$(cat "$plan_path")"
+  assert_contains "$plan_text" "### Step ${STEP}a First"
+  assert_contains "$plan_text" "### Step ${STEP}b Second"
+}
+
+test_append_follow_up_inserts_before_next_step() {
+  # Parent (Step $STEP) is followed by Step 9.9. New block must land between
+  # them, not at end of file.
+  local repo_dir plan_path
+  repo_dir="$(new_repo append_insertion)"
+  plan_path="$(seed_asdlc_repo_with_repo_heading "$repo_dir" "backend")"
+  cat >>"$plan_path" <<EOF
+
+### Step 9.9 Tail Step
+#### Repo: backend
+#### Assigned: other
+- [ ] tail bullet
+EOF
+
+  ( cd "$repo_dir" && uv run python "$APPEND_FOLLOW_UP" \
+    --runtime-plan "$plan_path" --parent-step "$STEP" \
+    --worker-id "$WORKER_ID" --title "Inserted" --bullet "do it" >/dev/null )
+
+  # Verify ordering: parent → new step → tail step.
+  local order_check
+  order_check="$(grep -nE '^### Step ' "$plan_path")"
+  assert_contains "$order_check" "### Step $STEP Demo"
+  assert_contains "$order_check" "### Step ${STEP}a Inserted"
+  assert_contains "$order_check" "### Step 9.9 Tail Step"
+
+  local parent_line new_line tail_line
+  parent_line=$(grep -n "^### Step $STEP Demo" "$plan_path" | head -1 | cut -d: -f1)
+  new_line=$(grep -n "^### Step ${STEP}a Inserted" "$plan_path" | head -1 | cut -d: -f1)
+  tail_line=$(grep -n "^### Step 9.9 Tail Step" "$plan_path" | head -1 | cut -d: -f1)
+  if ! (( parent_line < new_line && new_line < tail_line )); then
+    echo "Assertion failed: expected parent<new<tail, got $parent_line $new_line $tail_line" >&2
+    cat "$plan_path" >&2
+    exit 1
+  fi
+}
+
+test_append_follow_up_requires_bullet() {
+  local repo_dir plan_path
+  repo_dir="$(new_repo append_no_bullet)"
+  plan_path="$(seed_asdlc_repo_with_repo_heading "$repo_dir" "backend")"
+
+  local out status
+  out="$(cd "$repo_dir" && uv run python "$APPEND_FOLLOW_UP" \
+    --runtime-plan "$plan_path" --parent-step "$STEP" \
+    --worker-id "$WORKER_ID" --title "Anything" 2>&1)" && status=$? || status=$?
+  # argparse exits 2 when a required arg is missing.
+  if [[ "$status" -ne 2 ]]; then
+    echo "Assertion failed: expected exit 2 for missing --bullet, got $status" >&2
+    echo "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "--bullet"
+}
+
 # ─── Runner ────────────────────────────────────────────────────────────────
 
 run_test() {
@@ -529,12 +663,17 @@ main() {
   run_test test_closure_missing_disposition
   run_test test_closure_conflicting_disposition
   run_test test_closure_missing_follow_up_step
-  run_test test_closure_misassigned_follow_up_step
   run_test test_closure_missing_raised_question_file
   run_test test_closure_target_bullets_not_marked
   run_test test_closure_word_boundary_does_not_match_letter_suffix
   run_test test_closure_no_findings
   run_test test_closure_errors_go_to_stderr
+  run_test test_append_follow_up_happy_path
+  run_test test_append_follow_up_parent_missing
+  run_test test_append_follow_up_parent_missing_repo
+  run_test test_append_follow_up_picks_next_letter
+  run_test test_append_follow_up_inserts_before_next_step
+  run_test test_append_follow_up_requires_bullet
   echo "all yasdef-worker-ai-audit tests passed"
 }
 

@@ -5,8 +5,8 @@
 The repository SHALL provide a Claude Code skill source tree at `ai/claude/skills/yasdef-worker-ai-audit/` that is functionally identical to the Codex skill at `ai/codex/skills/yasdef-worker-ai-audit/`.
 
 The Claude skill source tree SHALL contain:
-- a `SKILL.md` file defining the same 7 inputs, 9-step workflow, six closure error categories, analysis-only / commit-boundary / read-target rules, and the same exact sentinel completion line as the Codex skill;
-- a `scripts/` subdirectory containing `check_ai_audit_entry.py`, `build_ai_audit_context.py`, and `check_ai_audit_closure.py` byte-identical to their Codex counterparts;
+- a `SKILL.md` file defining the same 7 inputs, 9-step workflow, five closure error categories, analysis-only / commit-boundary / read-target rules, and the same exact sentinel completion line as the Codex skill;
+- a `scripts/` subdirectory containing `check_ai_audit_entry.py`, `build_ai_audit_context.py`, `append_follow_up_step.py`, and `check_ai_audit_closure.py` byte-identical to their Codex counterparts;
 - an `assets/` subdirectory containing `audit_result_TEMPLATE.md`, `audit_result_GOLDEN_EXAMPLE.md`, `raised_question_TEMPLATE.md`, and `raised_question_GOLDEN_EXAMPLE.md` byte-identical to their Codex counterparts.
 
 The Claude `SKILL.md` MAY differ from the Codex `SKILL.md` in framing, frontmatter shape, asset-reference syntax, or other structural elements where Claude Code skill conventions differ from Codex, but MUST NOT change the workflow contract or input/output semantics.
@@ -21,7 +21,7 @@ The Claude `SKILL.md` MAY differ from the Codex `SKILL.md` in framing, frontmatt
 
 #### Scenario: Claude SKILL.md may diverge to match Claude Code conventions
 - **WHEN** Claude Code skill convention differs from Codex skill convention in a way that affects only framing, frontmatter, or in-skill cross-references
-- **THEN** the Claude `SKILL.md` MAY be authored to match Claude convention even if it differs textually from the Codex `SKILL.md`, provided the 7 inputs, the 9 workflow steps, the 6 closure error categories, and the exact sentinel completion line are preserved
+- **THEN** the Claude `SKILL.md` MAY be authored to match Claude convention even if it differs textually from the Codex `SKILL.md`, provided the 7 inputs, the 9 workflow steps, the 5 closure error categories, and the exact sentinel completion line are preserved
 
 ### Requirement: Claude Code slash command exposes the ai_audit skill with explicit inputs
 
