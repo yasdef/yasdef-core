@@ -29,6 +29,8 @@ GENERATED_EXCLUDE_PATHS=(
   ".codex/skills/yasdef-worker-implementation"
   ".codex/skills/yasdef-worker-user-review"
   ".codex/skills/yasdef-worker-ai-audit"
+  ".claude/skills/yasdef-worker-ai-audit"
+  ".claude/commands/yasdef"
 )
 DURABLE_COMMIT_PATHS=(
   ".codex/skills/yasdef-worker-design"
@@ -36,6 +38,8 @@ DURABLE_COMMIT_PATHS=(
   ".codex/skills/yasdef-worker-implementation"
   ".codex/skills/yasdef-worker-user-review"
   ".codex/skills/yasdef-worker-ai-audit"
+  ".claude/skills/yasdef-worker-ai-audit"
+  ".claude/commands/yasdef/audit.md"
   ".asdlc_worker/asdlc_worker.yaml"
   ".asdlc_worker/blocker_log.md"
   ".asdlc_worker/decisions.md"
@@ -47,6 +51,8 @@ DURABLE_COMMIT_PATHS=(
 SOURCE_ROOT=""
 SOURCE_AI_DIR=""
 SOURCE_CODEX_SKILLS_DIR=""
+SOURCE_CLAUDE_SKILLS_DIR=""
+SOURCE_CLAUDE_COMMANDS_DIR=""
 TARGET_INPUT=""
 TARGET_REPO_ROOT=""
 TARGET_RUNTIME_DIR=""
@@ -207,6 +213,37 @@ install_codex_skills() {
   done
 }
 
+install_claude_skills() {
+  local target_skills_dir="$TARGET_REPO_ROOT/.claude/skills"
+  local skill_name=""
+
+  mkdir -p "$target_skills_dir"
+  for skill_name in yasdef-worker-ai-audit; do
+    local source_skill_dir="$SOURCE_CLAUDE_SKILLS_DIR/$skill_name"
+    local target_skill_dir="$target_skills_dir/$skill_name"
+
+    if [[ ! -d "$source_skill_dir" ]]; then
+      die "Required Claude skill source is missing: $source_skill_dir"
+    fi
+
+    remove_generated_path "$target_skill_dir"
+    copy_dir_contents "$source_skill_dir" "$target_skill_dir"
+  done
+}
+
+install_claude_commands() {
+  local source_commands_dir="$SOURCE_CLAUDE_COMMANDS_DIR/yasdef"
+  local target_commands_dir="$TARGET_REPO_ROOT/.claude/commands/yasdef"
+
+  if [[ ! -d "$source_commands_dir" ]]; then
+    die "Required Claude commands source is missing: $source_commands_dir"
+  fi
+
+  mkdir -p "$TARGET_REPO_ROOT/.claude/commands"
+  remove_generated_path "$target_commands_dir"
+  copy_dir_contents "$source_commands_dir" "$target_commands_dir"
+}
+
 ensure_runtime_support_dirs() {
   mkdir -p \
     "$TARGET_RUNTIME_DIR/overmind" \
@@ -286,6 +323,8 @@ require_git
 SOURCE_ROOT="$(resolve_source_root)"
 SOURCE_AI_DIR="$SOURCE_ROOT/ai"
 SOURCE_CODEX_SKILLS_DIR="$SOURCE_ROOT/ai/codex/skills"
+SOURCE_CLAUDE_SKILLS_DIR="$SOURCE_ROOT/ai/claude/skills"
+SOURCE_CLAUDE_COMMANDS_DIR="$SOURCE_ROOT/ai/claude/commands"
 
 prompt_non_empty "Enter target repository path: " TARGET_INPUT
 TARGET_REPO_ROOT="$(resolve_target_repo_root "$TARGET_INPUT")"
@@ -299,6 +338,8 @@ fi
 
 install_generated_dirs
 install_codex_skills
+install_claude_skills
+install_claude_commands
 if [[ "$MODE" == "install" ]]; then
   install_root_runtime_files
 else
