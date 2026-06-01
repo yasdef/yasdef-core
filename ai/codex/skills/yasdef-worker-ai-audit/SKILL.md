@@ -53,29 +53,38 @@ If any input is missing, inconsistent, or points to a missing required file, do 
 - Initialize all three state checkboxes unchecked.
 - Do not start disposition before all findings are written.
 
-5. Phase 2 - Disposition (mechanical loop): for each finding in order:
-1. Present finding details.
-2. Ask exactly:
-   ```
-   1. reject
-   2. create follow-up step
-   3. raise to coordinator
-   ```
-3. Apply the chosen disposition:
-   - reject: mark `[x] rejected` (optional short rationale after `:`)
-   - create follow-up step: do **not** edit `implementation_plan.md` by hand. Run the helper, which writes the canonical block (heading, `#### Assigned:` / `#### Repo:` / `#### Depends on:` headings, `- [ ] Plan and discuss the step.` first bullet, your action bullets, `- [ ] Review step implementation.` last bullet) and prints the new step id on stdout:
-     ```bash
-     uv run python .codex/skills/yasdef-worker-ai-audit/scripts/append_follow_up_step.py \
-       --runtime-plan <runtime-plan> \
-       --parent-step <current-step-id> \
-       --worker-id <worker-id> \
-       --title "<follow-up step title>" \
-       --bullet "<first action bullet>" \
-       [--bullet "<additional action bullet>" ...]
-     ```
-     The helper auto-picks the next free single-letter suffix (a..z) and copies `#### Repo:` from the parent step. Pass **only the action bullets** as `--bullet` — the helper adds the bookends. Then mark `[x] follow_up_created: <new-step-id>` in the finding's state block using the id printed by the helper.
-   - raise to coordinator: create `projects/<project>/<feature>/raised_questions/<step>-<worker-id>-F<NN>.md` and mark `[x] raised_to_coordinator: <relative-path>`
-4. Continue until all findings are dispositioned.
+5. Phase 2 - Disposition (mechanical loop). For each finding in order:
+
+   5.1. Present the finding (severity, recommendation, reasoning, refs) and end the same message with exactly these three options on their own lines — do **not** print the options anywhere else in the finding presentation:
+
+        ```
+        1. reject
+        2. create follow-up step
+        3. raise to coordinator
+        ```
+
+        Then stop and wait for the user's choice. Do not re-print the options in a follow-up prompt; one listing per finding only.
+
+   5.2. Apply the chosen disposition:
+
+        - reject: mark `[x] rejected` (optional short rationale after `:`).
+        - create follow-up step: do **not** edit `implementation_plan.md` by hand. Run the helper, which writes the canonical block (heading, `#### Assigned:` / `#### Repo:` / `#### Depends on:` headings, `- [ ] Plan and discuss the step.` first bullet, your action bullets, `- [ ] Review step implementation.` last bullet) and prints the new step id on stdout:
+
+          ```bash
+          uv run python .codex/skills/yasdef-worker-ai-audit/scripts/append_follow_up_step.py \
+            --runtime-plan <runtime-plan> \
+            --parent-step <current-step-id> \
+            --worker-id <worker-id> \
+            --title "<follow-up step title>" \
+            --bullet "<first action bullet>" \
+            [--bullet "<additional action bullet>" ...]
+          ```
+
+          The helper auto-picks the next free single-letter suffix (a..z) and copies `#### Repo:` from the parent step. Pass **only the action bullets** as `--bullet` — the helper adds the bookends. Then mark `[x] follow_up_created: <new-step-id>` in the finding's state block using the id printed by the helper.
+
+        - raise to coordinator: create `projects/<project>/<feature>/raised_questions/<step>-<worker-id>-F<NN>.md` and mark `[x] raised_to_coordinator: <relative-path>`.
+
+   5.3. Continue until all findings are dispositioned.
 
 6. Mark all current-step target bullets `[x]` in the ASDLC `implementation_plan.md` in one batch, only after every finding has reached a terminal state. Every target bullet is audit-finalized at this point — directly proven (no finding), proven (finding rejected as false positive), or routed (follow_up_created / raised_to_coordinator). Leave the edit uncommitted; post_review handles the ASDLC repo commit.
 
