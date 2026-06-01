@@ -20,8 +20,9 @@ Codex and Claude Code CLIs differ in shape:
 |---|---|---|
 | Model flag | `-m <id>` | `--model <id>` |
 | Reasoning effort | `--config model_reasoning_effort='high'` | no CLI equivalent (Claude Opus 4.7 has thinking on by default) |
-| Prompt delivery | positional arg | `-p "<text>"` flag |
-| Tool-permission gate | none | `--permission-mode acceptEdits` required for headless runs (otherwise blocks on first tool prompt) |
+| Prompt delivery | positional arg | positional arg (same as `claude "explain this"` from a terminal) |
+| Tool-permission gate | none | claude's interactive UI prompts per tool; `--allowed-tools` skips approvals for a named tool list |
+| TTY requirement | optional | required for interactive UI (otherwise claude switches to `--print` mode and refuses positional prompt) |
 
 ## Goals / Non-Goals
 
@@ -42,22 +43,27 @@ Codex and Claude Code CLIs differ in shape:
 
 ## Decisions
 
-**Decision 1: Hardcode-and-ignore-extras for the Claude branch**
+**Decision 1: Pass extras through verbatim; only the model flag is structurally different**
 
-`build_claude_cmd` ignores `MODEL_ARGS` entirely and hardcodes `--permission-mode acceptEdits`. A `models.md` row for Claude is conceptually just `cmd | model`; any trailing fields are silently dropped.
+`build_claude_cmd` and `build_codex_cmd` both pass `MODEL_ARGS` through verbatim. The only branch-level difference is the model-selection flag: codex uses `-m <model>`, claude uses `--model <model>`. The prompt is positional in both cases.
 
-Alternatives considered:
-- *Pass-through extras* — let operators write `ai_audit | claude | claude-opus-4-7 | --max-turns | 20`. Rejected: today's `models.md` only has Codex-specific extras (`--config model_reasoning_effort='high'`), and silently mixing Codex flags into a Claude invocation breaks the call. Pass-through gives no parser-level protection against this.
-- *Per-runner extras column* — add a `claude_extras` column. Rejected: format change for one knob that isn't yet needed. Claude Code has no `--reasoning-effort` equivalent (thinking is implicit), so there's no concrete second flag to motivate the column today.
+Pass-through-not-hardcode was chosen after smoke testing revealed that any hardcoded permission flag has skill-specific implications the orchestrator shouldn't bake in. Claude Code's `--allowed-tools` is the natural per-phase knob, and it belongs in `models.md` so the operator can adjust it without a code change. The default `ai_audit | claude | ...` row may carry `--allowed-tools <list>` to skip in-UI tool-approval prompts for the specific tools the ai_audit skill calls.
 
-When a concrete second Claude flag does emerge (e.g., `--max-turns`), the cheapest path is to add it to the hardcoded list in `build_claude_cmd` — one line of code, no format change.
-
-**Decision 2: Same inline prompt for both runners**
-
-The orchestrator continues to build the existing 7-input prompt body in `run_ai_audit_phase`; `build_phase_cmd` just changes how it's handed off to the CLI (positional vs `-p`). Claude finds the skill via its `SKILL.md` `name:` field exactly as Codex does today.
+The risk that pass-through was rejected to avoid in earlier drafts — operator pastes a codex-style `--config model_reasoning_effort='high'` into a claude row — turns into a loud `claude` CLI error at exec time, not silent breakage. Loud failures are better than silent ones; the original "hardcode-and-ignore" rule was solving the wrong problem.
 
 Alternative considered:
-- *Route Claude runs through `/yasdef:audit`* — would exercise the slash command we just built. Rejected: maintaining two prompt shapes for the same orchestrator path doubles the surface area for prompt-drift bugs. The slash command stays as a manual operator affordance.
+- *Per-runner extras column* — add a `claude_extras` column. Rejected: format change with no offsetting benefit once pass-through is the default.
+
+**Decision 2: Same inline prompt for both runners; same TTY handling**
+
+The orchestrator continues to build the existing 7-input prompt body in `run_ai_audit_phase`; `build_phase_cmd` hands it to the CLI as a positional arg for both runners. Claude finds the skill via its `SKILL.md` `name:` field exactly as Codex does today.
+
+`run_with_output_log` already had a `script -q <log>` branch that allocated a pseudo-TTY for codex when stdout was a terminal — letting codex run interactively while still capturing a log. This CRP extends that branch's condition to also match `claude`. Result: claude opens its interactive UI, the operator approves tool calls in-UI, the run is still captured to the per-phase audit log. No per-phase if/else in the orchestrator, no `-p` headless mode, no lost logging.
+
+Alternatives considered:
+- *Hardcode `-p` and rely on `--allowed-tools` for unattended runs* — works but loses the in-UI inspection/approval workflow the operator wants for ai_audit.
+- *Skip `run_with_output_log` entirely for claude* — gives interactive UI but drops the audit log. Worse than extending the existing `script -q` branch.
+- *Route Claude runs through `/yasdef:audit`* — would exercise the slash command. Rejected: maintaining two prompt shapes for the same orchestrator path doubles the surface area for prompt-drift bugs. The slash command stays as a manual operator affordance.
 
 **Decision 3: One shared `build_phase_cmd "$prompt"` helper, dispatch on `$MODEL_CMD`**
 
@@ -85,8 +91,8 @@ Add `tests/ai_scripts/model_runner_tests.sh` that sources `orchestrator.sh` (or 
 
 ## Risks / Trade-offs
 
-- **Operator writes a Claude row with Codex extras** → `models.md` is permissive; an operator could put `ai_audit | claude | claude-opus-4-7 | --config | model_reasoning_effort='high'`. Mitigation: hardcode-and-ignore drops them silently, so the call still works correctly. The risk is "operator thinks the flag is being honored when it isn't." Mitigation: document the rule in `models.md`'s header comment and in the runner-choice doc.
-- **Headless Claude invocation hangs without `--permission-mode acceptEdits`** → Hardcoded by `build_claude_cmd`, so a bare `claude | claude-opus-4-7` row can't accidentally produce a blocking command.
+- **Operator writes a Claude row with Codex extras** → `models.md` is permissive; pass-through means `--config model_reasoning_effort='high'` in a claude row reaches the `claude` CLI, which rejects it with a clear error and exits non-zero. Failure is loud, immediate, and self-correcting (operator removes the bad flag).
+- **`script -q` not available in the operator's environment** → `run_with_output_log` falls back to the `tee` path, which pipes claude's stdout; claude then sees non-TTY and refuses to accept a positional prompt (`"Input must be provided either through stdin or as a prompt argument when using --print"`). Mitigation: `script` is a BSD/POSIX utility shipped on every macOS and almost every Linux distribution. If it's truly missing, the operator can install `bsdmainutils` (Linux) or its equivalent.
 - **Sourcing `orchestrator.sh` from tests pulls in side effects** → Mitigation: the helper functions are pure (read globals, write `BUILD_PHASE_CMD`); the test sets the globals before calling and doesn't trigger the orchestrator's top-level execution. If side-effect contamination becomes a problem, extract the helpers into `ai/scripts/helpers/build_phase_cmd.sh` and source only that.
 - **`--permission-mode acceptEdits` is broader than `ai_audit` needs** → ai_audit is analysis-only; it shouldn't be writing files outside `step_review_results/` and the runtime plan. Still, `acceptEdits` is the standard headless-Claude posture. If tighter scoping is ever needed, `--allowed-tools` is the next knob to add — explicitly out of scope here.
 - **Codex behavior drift** → `build_codex_cmd` must produce the same argv as today; if anything diverges, all five phases regress at once. Mitigation: test in step 1 asserts the codex argv matches the current shape literally; the refactor lands before the Claude branch is implemented.

@@ -562,9 +562,9 @@ EOF
 
   local out
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
-  assert_contains "$out" "claude --model claude-opus-4-7 --permission-mode acceptEdits -p"
+  assert_contains "$out" "run yasdef-worker-ai-audit for step 1.1: claude --model claude-opus-4-7"
   assert_not_contains "$out" "run yasdef-worker-ai-audit for step 1.1: claude -m"
-  assert_not_contains "$out" "run yasdef-worker-ai-audit for step 1.1: claude claude-opus-4-7 --config"
+  assert_not_contains "$out" " -p "
 }
 
 test_resume_starts_at_post_review_when_disposition_section_is_missing() {

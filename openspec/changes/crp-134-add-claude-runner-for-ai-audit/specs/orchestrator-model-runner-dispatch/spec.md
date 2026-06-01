@@ -13,40 +13,39 @@ The orchestrator SHALL provide a shared helper `build_phase_cmd "<prompt>"` that
 
 #### Scenario: cmd=claude builds the Claude-Code-correct invocation
 - **WHEN** `models.md` carries the row `ai_audit | claude | claude-opus-4-7 |  |` and `build_phase_cmd "<prompt>"` is called for the `ai_audit` phase
-- **THEN** `BUILD_PHASE_CMD` equals `(claude --model claude-opus-4-7 --permission-mode acceptEdits -p "<prompt>")` element-by-element
+- **THEN** `BUILD_PHASE_CMD` equals `(claude --model claude-opus-4-7 "<prompt>")` element-by-element
 
-#### Scenario: cmd=claude with trailing args silently drops them
-- **WHEN** `models.md` carries the row `ai_audit | claude | claude-opus-4-7 | --config | model_reasoning_effort='high'` and `build_phase_cmd "<prompt>"` is called for the `ai_audit` phase
-- **THEN** `BUILD_PHASE_CMD` equals `(claude --model claude-opus-4-7 --permission-mode acceptEdits -p "<prompt>")` element-by-element
-- **THEN** neither `--config` nor `model_reasoning_effort='high'` appear anywhere in `BUILD_PHASE_CMD`
+#### Scenario: cmd=claude passes models.md extras through verbatim
+- **WHEN** `models.md` carries the row `ai_audit | claude | claude-opus-4-7 | --allowed-tools | Bash,Read,Write,Edit,Grep,Glob` and `build_phase_cmd "<prompt>"` is called for the `ai_audit` phase
+- **THEN** `BUILD_PHASE_CMD` equals `(claude --model claude-opus-4-7 --allowed-tools Bash,Read,Write,Edit,Grep,Glob "<prompt>")` element-by-element
 
 #### Scenario: cmd is a non-claude value (codex-shape fallback)
 - **WHEN** `models.md` carries the row `ai_audit | .asdlc_worker/scripts/fake_model.sh | mock-model |  |` and `build_phase_cmd "<prompt>"` is called for the `ai_audit` phase
 - **THEN** `BUILD_PHASE_CMD` equals `(.asdlc_worker/scripts/fake_model.sh -m mock-model "<prompt>")` element-by-element
-- **THEN** no `--model`, `--permission-mode`, or `-p` flag appears in `BUILD_PHASE_CMD`
+- **THEN** no `--model` or `-p` flag appears in `BUILD_PHASE_CMD`
 
 #### Scenario: Phase functions no longer construct model argv inline
 - **WHEN** the orchestrator runs any of the five phases (design, planning, implementation, user_review, ai_audit)
 - **THEN** the phase function calls `build_phase_cmd "<prompt>"` exactly once
 - **THEN** the phase function does NOT contain an inlined `cmd=("$MODEL_CMD" -m "$MODEL_MODEL" ...)` array literal
 
-### Requirement: Claude runner invocation has fixed shape and ignores models.md extras
+### Requirement: Claude runner invocation differs from Codex only in the model flag
 
-When `cmd` is `claude`, the orchestrator SHALL apply exactly these four transforms relative to the Codex shape:
+When `cmd` is `claude`, the orchestrator SHALL apply exactly one structural transform relative to the Codex shape: replace `-m <model>` with `--model <model>`. The prompt SHALL be delivered as a trailing positional argument (the same shape as `claude "explain this"` from a terminal), and all entries from `MODEL_ARGS` SHALL pass through verbatim between `--model <model>` and the prompt.
 
-1. Replace `-m <model>` with `--model <model>`.
-2. Add `--permission-mode acceptEdits` after the model flag.
-3. Drop every entry from `MODEL_ARGS` (the parsed extras column from `models.md`).
-4. Deliver the prompt via `-p "<prompt>"` instead of as a positional argument.
+The orchestrator's `run_with_output_log` SHALL preserve a TTY for both `codex` and `claude` invocations (via `script -q <log>`) when stdout is a terminal, so claude opens its interactive UI for tool approvals while the run is still captured to the audit log.
 
-The orchestrator SHALL NOT read any other Claude-specific configuration from `models.md`. New Claude flags (e.g., `--max-turns`, `--allowed-tools`, `--output-format`) SHALL require a code change to `build_claude_cmd`, not a `models.md` change.
-
-#### Scenario: Claude argv contains the four hardcoded transforms
+#### Scenario: Claude argv differs from Codex only in the model-flag spelling
 - **WHEN** any phase with `cmd=claude` is dispatched
 - **THEN** the resulting argv contains `--model <model-id>` (not `-m <model-id>`)
-- **THEN** the resulting argv contains `--permission-mode acceptEdits`
-- **THEN** the prompt appears as the value following a `-p` flag, not as a trailing positional argument
-- **THEN** no element from `MODEL_ARGS` appears in the argv
+- **THEN** the prompt appears as the trailing positional argument
+- **THEN** every element from `MODEL_ARGS` appears in the argv between `--model <model-id>` and the prompt, in the original order
+- **THEN** the resulting argv does NOT contain `-p`
+
+#### Scenario: Claude runs interactively under run_with_output_log
+- **WHEN** any phase with `cmd=claude` is launched via `run_with_output_log` and stdout is a TTY
+- **THEN** the launch wraps the claude argv in `script -q <log-path>` so claude inherits a pseudo-TTY
+- **THEN** the run is also captured to `<log-path>` for the audit trail
 
 #### Scenario: Same inline prompt body is used for both runners
 - **WHEN** the same phase function builds its prompt string and dispatches via `build_phase_cmd`
@@ -55,9 +54,9 @@ The orchestrator SHALL NOT read any other Claude-specific configuration from `mo
 
 ### Requirement: models.md documents the two-runner choice
 
-The header comment of `ai/setup/models.md` SHALL document that the `cmd` column accepts `codex` and `claude` as values, and SHALL state that `claude` rows ignore the trailing extras columns.
+The header comment of `ai/setup/models.md` SHALL document that the `cmd` column accepts `codex` and `claude` as values, name the structural difference (`-m` vs `--model`, both positional prompt), and note that extras pass through verbatim for both runners.
 
 #### Scenario: Header comment lists both runners
 - **WHEN** an operator reads `ai/setup/models.md`
 - **THEN** the header comment names both `codex` and `claude` as accepted `cmd` values
-- **THEN** the header comment states that for `claude` rows, the trailing extras (`--config ...` etc.) are ignored
+- **THEN** the header comment shows the resulting argv shape for each runner

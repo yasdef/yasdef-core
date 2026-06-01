@@ -349,8 +349,8 @@ run_with_output_log() {
 
   local status=0
   set +e
-  if [[ "${1:-}" == "codex" ]] && [[ -t 1 ]] && command -v script >/dev/null 2>&1; then
-    # Preserve a TTY for interactive Codex while still capturing a log.
+  if [[ "${1:-}" == "codex" || "${1:-}" == "claude" ]] && [[ -t 1 ]] && command -v script >/dev/null 2>&1; then
+    # Preserve a TTY for interactive Codex/Claude while still capturing a log.
     script -q "$log_path" "$@"
     status=$?
   else

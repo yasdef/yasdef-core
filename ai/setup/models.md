@@ -3,8 +3,11 @@
 #
 # Command column accepts:
 #   codex  - invoked as: codex -m <model> <extras...> "<prompt>"
-#   claude - invoked as: claude --model <model> --permission-mode acceptEdits -p "<prompt>"
-#            Trailing extras are IGNORED for claude rows (the four flags above are hardcoded).
+#   claude - invoked as: claude --model <model> <extras...> "<prompt>"
+#            Both runners get an interactive TTY via run_with_output_log's
+#            `script -q` wrapper, so claude opens its UI for tool approvals.
+#            Extras pass through verbatim — operator may add e.g. `--allowed-tools`
+#            to skip approval prompts for specific tools.
 #            Example: ai_audit | claude | claude-opus-4-7 | |
 #
 # Any other Command value falls back to the codex argv shape (test fixtures rely on this

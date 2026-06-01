@@ -8,7 +8,7 @@ Scope: this file defines the AI-assisted development process and is intended to 
 - Do not ask the user whether to change/switch the model. Use the current configured model by default.
 - Only discuss or change the model when the user explicitly requests it or when a step plan explicitly mandates a different model/session for a specific sub-task (e.g., planning).
 - If a different model/session is used, record it in the relevant step plan, but do not prompt the user about model choice.
-- The per-phase model runner is configured in `ai/setup/models.md`. The `Command` column accepts `codex` (today's default) or `claude` (Claude Code headless). For `claude` rows the orchestrator hardcodes `--model <model> --permission-mode acceptEdits -p "<prompt>"` and ignores any trailing extras columns; the four other phases (design/planning/implementation/user_review) currently only have Codex-side skills installed, so `claude` is meaningful for the `ai_audit` row only.
+- The per-phase model runner is configured in `ai/setup/models.md`. The `Command` column accepts `codex` (today's default) or `claude` (Claude Code).
 
 ## Git safety (local workflow)
 - Never commit directly on `main`/`master`. All commits happen on a local topic branch.

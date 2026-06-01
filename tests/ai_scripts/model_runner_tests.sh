@@ -66,19 +66,19 @@ test_build_claude_cmd_minimal() {
   build_phase_cmd "SAMPLE PROMPT"
 
   assert_array_equal "claude_minimal" \
-    claude --model claude-opus-4-7 --permission-mode acceptEdits -p "SAMPLE PROMPT" \
+    claude --model claude-opus-4-7 "SAMPLE PROMPT" \
     -- "${BUILD_PHASE_CMD[@]}"
 }
 
-test_build_claude_cmd_drops_extras() {
+test_build_claude_cmd_passes_extras_through() {
   MODEL_CMD="claude"
   MODEL_MODEL="claude-opus-4-7"
-  MODEL_ARGS=(--config "model_reasoning_effort='high'")
+  MODEL_ARGS=(--allowed-tools "Bash,Read,Write,Edit,Grep,Glob")
 
   build_phase_cmd "SAMPLE PROMPT"
 
-  assert_array_equal "claude_drops_extras" \
-    claude --model claude-opus-4-7 --permission-mode acceptEdits -p "SAMPLE PROMPT" \
+  assert_array_equal "claude_extras" \
+    claude --model claude-opus-4-7 --allowed-tools "Bash,Read,Write,Edit,Grep,Glob" "SAMPLE PROMPT" \
     -- "${BUILD_PHASE_CMD[@]}"
 }
 
@@ -97,7 +97,7 @@ test_build_phase_cmd_non_claude_falls_back_to_codex_shape() {
 test_build_codex_cmd_with_extras
 test_build_codex_cmd_no_extras
 test_build_claude_cmd_minimal
-test_build_claude_cmd_drops_extras
+test_build_claude_cmd_passes_extras_through
 test_build_phase_cmd_non_claude_falls_back_to_codex_shape
 
 echo "model_runner_tests: PASS"
