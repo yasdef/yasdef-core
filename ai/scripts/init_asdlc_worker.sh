@@ -7,7 +7,6 @@ GENERATED_DIRS=(
   "setup"
   "templates"
   "logs"
-  "prompts"
 )
 ROOT_RUNTIME_FILES=(
   "AI_DEVELOPMENT_PROCESS.md"
@@ -24,7 +23,6 @@ GENERATED_EXCLUDE_PATHS=(
   ".asdlc_worker/setup"
   ".asdlc_worker/templates"
   ".asdlc_worker/logs"
-  ".asdlc_worker/prompts"
   ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
   ".asdlc_worker/feature_meta_sync.yaml"
   ".codex/skills/yasdef-worker-plan"

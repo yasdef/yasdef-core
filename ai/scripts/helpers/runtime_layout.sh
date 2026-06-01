@@ -62,7 +62,6 @@ asdlc_worker_require_runtime_layout() {
   export ASDLC_TEMPLATES_DIR="$ASDLC_WORKER_HOME/templates"
   export ASDLC_GOLDEN_EXAMPLES_DIR="$ASDLC_WORKER_HOME/golden_examples"
   export ASDLC_LOGS_DIR="$ASDLC_WORKER_HOME/logs"
-  export ASDLC_PROMPTS_DIR="$ASDLC_WORKER_HOME/prompts"
   export ASDLC_STEP_DESIGNS_DIR="$ASDLC_WORKER_HOME/step_designs"
   export ASDLC_STEP_PLANS_DIR="$ASDLC_WORKER_HOME/step_plans"
   export ASDLC_STEP_OPEN_QUESTIONS_DIR="$ASDLC_WORKER_HOME/step_open_questions"

@@ -75,12 +75,12 @@ Default behavior:
   - design invokes Codex with a prompt that calls the yasdef-worker-design skill and generates/updates a feature-design artifact.
   - planning invokes Codex with a prompt that calls the yasdef-worker-plan skill and repeats until readiness plus per-step ledgers are clean.
   - implementation invokes Codex with a prompt that calls the yasdef-worker-implementation skill for the latest step plan.
-  - user_review runs an orchestrator-owned implementation-readiness gate, creates/switches the user-review branch from implementation, writes a prompt for yasdef-worker-user-review, then runs the user_review model command once.
-  - ai_audit creates/switches the review branch from user_review, writes a prompt for yasdef-worker-ai-audit, then runs the ai_audit model command once.
+  - user_review runs an orchestrator-owned implementation-readiness gate, creates/switches the user-review branch from implementation, then invokes the user_review model command once with an inline yasdef-worker-user-review prompt.
+  - ai_audit creates/switches the review branch from user_review, then invokes the ai_audit model command once with an inline yasdef-worker-ai-audit prompt.
   - post_review runs .asdlc_worker/scripts/post_review.sh for the latest step plan and appends post-review metrics to .asdlc_worker/history.md.
   - --resume <step> evaluates phase completion for the step and runs from the first unfinished phase through post_review.
-  - --debug enables per-step/per-phase artifact files for logs and prompts.
-  - Without --debug, logs/prompts use latest-per-phase filenames and are overwritten each run.
+  - --debug enables per-step/per-phase log files.
+  - Without --debug, logs use latest-per-phase filenames and are overwritten each run.
   - When running interactively, asks for confirmation before planning/implementation/user_review/ai_audit.
   - If interactive confirmation is denied for any phase, orchestration stops immediately and does not prompt downstream phases in that run.
   - Writes per-phase logs to .asdlc_worker/logs/<project>-<phase>-latest-log (or step-specific names with --debug).
@@ -176,11 +176,6 @@ ensure_ai_context_files() {
   ensure_dir_writable "$ASDLC_STEP_PLANS_DIR"
   ensure_dir_writable "$ASDLC_STEP_REVIEW_RESULTS_DIR"
   ensure_dir_writable "$ASDLC_LOGS_DIR"
-  ensure_dir_writable "$ASDLC_PROMPTS_DIR/design_prompts"
-  ensure_dir_writable "$ASDLC_PROMPTS_DIR/plan_prompts"
-  ensure_dir_writable "$ASDLC_PROMPTS_DIR/impl_prompts"
-  ensure_dir_writable "$ASDLC_PROMPTS_DIR/user_review_prompts"
-  ensure_dir_writable "$ASDLC_PROMPTS_DIR/ai_audit_prompts"
 
   # Skip file creation when the step plan branch already exists and we are not
   # on it — those files are tracked there, and creating them as untracked here
@@ -335,71 +330,6 @@ resolve_log_path() {
   else
     printf '%s/.asdlc_worker/logs/%s-%s-latest-log' "$ROOT" "$PROJECT" "$phase_token"
   fi
-}
-
-resolve_prompt_output_path() {
-  local phase="$1"
-  local step="${2:-}"
-  local base_dir=""
-  local file_name=""
-
-  phase="$(canonicalize_phase_name "$phase")"
-
-  case "$phase" in
-    design)
-      base_dir="$ASDLC_PROMPTS_DIR/design_prompts"
-      if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        if [[ -n "$step" ]]; then
-          file_name="${PROJECT}-step-$step.design.prompt.txt"
-        else
-          file_name="${PROJECT}.design.prompt.txt"
-        fi
-      else
-        file_name="${PROJECT}-latest-design-prompt.txt"
-      fi
-      ;;
-    planning)
-      base_dir="$ASDLC_PROMPTS_DIR/plan_prompts"
-      if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        if [[ -n "$step" ]]; then
-          file_name="${PROJECT}-step-$step.planning.prompt.txt"
-        else
-          file_name="${PROJECT}.planning.prompt.txt"
-        fi
-      else
-        file_name="${PROJECT}-latest-planning-prompt.txt"
-      fi
-      ;;
-    implementation)
-      base_dir="$ASDLC_PROMPTS_DIR/impl_prompts"
-      if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        file_name="${PROJECT}-step-$step.prompt.txt"
-      else
-        file_name="${PROJECT}-latest-implementation-prompt.txt"
-      fi
-      ;;
-    user_review)
-      base_dir="$ASDLC_PROMPTS_DIR/user_review_prompts"
-      if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        file_name="${PROJECT}-step-$step.user-review.prompt.txt"
-      else
-        file_name="${PROJECT}-latest-user-review-prompt.txt"
-      fi
-      ;;
-    ai_audit)
-      base_dir="$ASDLC_PROMPTS_DIR/ai_audit_prompts"
-      if [[ "$DEBUG_MODE" -eq 1 ]]; then
-        file_name="${PROJECT}-step-$step.ai-audit.prompt.txt"
-      else
-        file_name="${PROJECT}-latest-ai-audit-prompt.txt"
-      fi
-      ;;
-    *)
-      die "Unsupported phase for prompt output path: $phase"
-      ;;
-  esac
-
-  printf '%s/%s' "$base_dir" "$file_name"
 }
 
 run_with_output_log() {
@@ -634,71 +564,6 @@ ensure_phase_branch() {
   fi
 }
 
-write_design_skill_prompt() {
-  local step="$1"
-  local design_out="$2"
-  local branch_name="$3"
-  local prompt_out="$4"
-
-  {
-    printf 'Use the `yasdef-worker-design` skill to run the ASDLC worker design phase.\n'
-    printf '\n'
-    printf 'Inputs:\n'
-    printf -- '- Step: %s\n' "$step"
-    printf -- '- Feature id: %s\n' "$SELECTED_FEATURE_ID"
-    printf -- '- Branch: %s\n' "$branch_name"
-    printf -- '- Design output: %s\n' "$design_out"
-    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
-    printf -- '- Runtime requirements EARS: %s\n' "$ASDLC_RUNTIME_EARS_PATH"
-  } >"$prompt_out"
-}
-
-write_planning_skill_prompt() {
-  local step="$1"
-  local feature_id="$2"
-  local branch_name="$3"
-  local design_file="$4"
-  local step_plan_out="$5"
-  local open_questions_file="$6"
-  local blockers_file="$7"
-  local prompt_out="$8"
-
-  {
-    printf 'Use the `yasdef-worker-plan` skill to run one ASDLC worker planning iteration.\n'
-    printf '\n'
-    printf 'Inputs:\n'
-    printf -- '- Step: %s\n' "$step"
-    printf -- '- Feature id: %s\n' "$feature_id"
-    printf -- '- Branch: %s\n' "$branch_name"
-    printf -- '- Design artifact: %s\n' "$design_file"
-    printf -- '- Step plan output: %s\n' "$step_plan_out"
-    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
-    printf -- '- Open questions ledger: %s\n' "$open_questions_file"
-    printf -- '- Blockers ledger: %s\n' "$blockers_file"
-  } >"$prompt_out"
-}
-
-write_implementation_skill_prompt() {
-  local step="$1"
-  local feature_id="$2"
-  local branch_name="$3"
-  local step_plan="$4"
-  local design_file="$5"
-  local prompt_out="$6"
-
-  {
-    printf 'Use the `yasdef-worker-implementation` skill to run the ASDLC worker implementation phase.\n'
-    printf '\n'
-    printf 'Inputs:\n'
-    printf -- '- Step: %s\n' "$step"
-    printf -- '- Feature id: %s\n' "$feature_id"
-    printf -- '- Branch: %s\n' "$branch_name"
-    printf -- '- Step plan: %s\n' "$step_plan"
-    printf -- '- Design artifact: %s\n' "$design_file"
-    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
-  } >"$prompt_out"
-}
-
 ensure_user_review_branch() {
   local step="$1"
   local feature_id="$2"
@@ -743,27 +608,6 @@ ensure_user_review_branch() {
   fi
 }
 
-write_user_review_skill_prompt() {
-  local step="$1"
-  local feature_id="$2"
-  local branch_name="$3"
-  local step_plan="$4"
-  local design_file="$5"
-  local prompt_out="$6"
-
-  {
-    printf 'Use the `yasdef-worker-user-review` skill to run the ASDLC worker user review phase.\n'
-    printf '\n'
-    printf 'Inputs:\n'
-    printf -- '- Step: %s\n' "$step"
-    printf -- '- Feature id: %s\n' "$feature_id"
-    printf -- '- Branch: %s\n' "$branch_name"
-    printf -- '- Step plan: %s\n' "$step_plan"
-    printf -- '- Design artifact: %s\n' "$design_file"
-    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
-  } >"$prompt_out"
-}
-
 ensure_ai_audit_review_branch() {
   local step="$1"
   local feature_id="$2"
@@ -804,28 +648,6 @@ ensure_ai_audit_review_branch() {
   fi
 }
 
-write_ai_audit_skill_prompt() {
-  local step="$1"
-  local feature_id="$2"
-  local branch_name="$3"
-  local step_plan="$4"
-  local design_file="$5"
-  local prompt_out="$6"
-
-  {
-    printf 'Use the `yasdef-worker-ai-audit` skill to run the ASDLC worker ai_audit phase.\n'
-    printf '\n'
-    printf 'Inputs:\n'
-    printf -- '- Step: %s\n' "$step"
-    printf -- '- Feature id: %s\n' "$feature_id"
-    printf -- '- Branch: %s\n' "$branch_name"
-    printf -- '- Step plan: %s\n' "$step_plan"
-    printf -- '- Design artifact: %s\n' "$design_file"
-    printf -- '- Runtime implementation plan: %s\n' "$ASDLC_RUNTIME_PLAN_PATH"
-    printf -- '- Worker id: %s\n' "$BINDING_WORKER_UUID"
-  } >"$prompt_out"
-}
-
 planning_ledger_has_entries() {
   local path="$1"
   if [[ ! -f "$path" ]]; then
@@ -846,10 +668,9 @@ planning_ledger_has_entries() {
 run_planning_phase() {
   load_model_config "planning"
 
-  local step planning_prompt_out explicit_step
+  local step explicit_step
   step="$(resolve_step_for_phase_from_args "planning" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")" || return 1
   explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
-  planning_prompt_out="$(resolve_prompt_output_path "planning" "$step")"
   local branch_name="step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan"
   local design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
   local step_plan_out="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
@@ -869,33 +690,30 @@ run_planning_phase() {
     if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
       dry_planning_cmd+=("${MODEL_ARGS[@]}")
     fi
-    if [[ "$MODEL_CMD" == "codex" ]]; then
-      dry_planning_cmd+=("<contents of $planning_prompt_out>")
-    else
-      dry_planning_cmd+=("run $planning_prompt_out")
-    fi
-    echo "dry-run prompt: $(repo_relpath "$planning_prompt_out")"
+    dry_planning_cmd+=("<inline yasdef-worker-plan prompt>")
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "planning" "$step")")"
-    echo "write yasdef-worker-plan prompt for step $step to $(printf '%q' "$planning_prompt_out") && $(shell_join "${dry_planning_cmd[@]}")"
+    echo "run yasdef-worker-plan for step $step: $(shell_join "${dry_planning_cmd[@]}")"
     return 0
   fi
 
   ensure_phase_branch "$branch_name"
-  mkdir -p "$(dirname "$planning_prompt_out")"
   local iteration=1
   while true; do
-    write_planning_skill_prompt \
-      "$step" \
-      "$SELECTED_FEATURE_ID" \
-      "$branch_name" \
-      "$design_file" \
-      "$step_plan_out" \
-      "$open_questions_file" \
-      "$blockers_file" \
-      "$planning_prompt_out"
-
     local prompt_arg
-    prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$planning_prompt_out")"
+    prompt_arg=$(cat <<EOF
+Use the \`yasdef-worker-plan\` skill to run one ASDLC worker planning iteration.
+
+Inputs:
+- Step: $step
+- Feature id: $SELECTED_FEATURE_ID
+- Branch: $branch_name
+- Design artifact: $design_file
+- Step plan output: $step_plan_out
+- Runtime implementation plan: $ASDLC_RUNTIME_PLAN_PATH
+- Open questions ledger: $open_questions_file
+- Blockers ledger: $blockers_file
+EOF
+)
 
     local cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
     if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
@@ -953,10 +771,9 @@ run_planning_phase() {
 run_design_phase() {
   load_model_config "design"
 
-  local step design_prompt_out explicit_step
+  local step explicit_step
   step="$(resolve_step_for_phase_from_args "design" "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}")" || return 1
   explicit_step="$(find_explicit_step_arg "${PLAN_ARGS[@]+"${PLAN_ARGS[@]}"}" || true)"
-  design_prompt_out="$(resolve_prompt_output_path "design" "$step")"
 
   local design_out=""
   if [[ -z "$explicit_step" ]]; then
@@ -986,28 +803,32 @@ run_design_phase() {
   fi
   local branch_name="step-$SELECTED_STEP-$SELECTED_FEATURE_ID-plan"
 
+  local prompt_arg
+  prompt_arg=$(cat <<EOF
+Use the \`yasdef-worker-design\` skill to run the ASDLC worker design phase.
+
+Inputs:
+- Step: $step
+- Feature id: $SELECTED_FEATURE_ID
+- Branch: $branch_name
+- Design output: $design_out
+- Runtime implementation plan: $ASDLC_RUNTIME_PLAN_PATH
+- Runtime requirements EARS: $ASDLC_RUNTIME_EARS_PATH
+EOF
+)
+
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_design_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
     if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
       dry_design_cmd+=("${MODEL_ARGS[@]}")
     fi
-    if [[ "$MODEL_CMD" == "codex" ]]; then
-      dry_design_cmd+=("<contents of $design_prompt_out>")
-    else
-      dry_design_cmd+=("run $design_prompt_out")
-    fi
-    echo "dry-run prompt: $(repo_relpath "$design_prompt_out")"
+    dry_design_cmd+=("<inline yasdef-worker-design prompt>")
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "design" "$step")")"
-    echo "write yasdef-worker-design prompt for step $step to $(printf '%q' "$design_prompt_out") && $(shell_join "${dry_design_cmd[@]}")"
+    echo "run yasdef-worker-design for step $step: $(shell_join "${dry_design_cmd[@]}")"
     return 0
   fi
 
   ensure_phase_branch "$branch_name"
-  mkdir -p "$(dirname "$design_prompt_out")"
-  write_design_skill_prompt "$step" "$design_out" "$branch_name" "$design_prompt_out"
-
-  local prompt_arg
-  prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$design_prompt_out")"
 
   local cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
   if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
@@ -2070,25 +1891,10 @@ get_preferred_step_plan() {
   return 1
 }
 
-build_model_prompt_arg() {
-  local model_cmd="$1"
-  local prompt_path="$2"
-
-  if [[ "$model_cmd" == "codex" ]]; then
-    if [[ ! -f "$prompt_path" ]]; then
-      echo "Prompt file not found: $prompt_path" >&2
-      exit 1
-    fi
-    cat "$prompt_path"
-  else
-    printf 'run %s' "$prompt_path"
-  fi
-}
-
 run_implementation_phase() {
   load_model_config "implementation"
 
-  local latest_plan step prompt_out design_file branch_name implementation_context_script implementation_readiness_script
+  local latest_plan step design_file branch_name implementation_context_script implementation_readiness_script
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
     latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
@@ -2110,7 +1916,6 @@ run_implementation_phase() {
     exit 1
   fi
 
-  prompt_out="$(resolve_prompt_output_path "implementation" "$step")"
   design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
   branch_name="step-$step-$SELECTED_FEATURE_ID-implementation"
   implementation_context_script="$ROOT/.codex/skills/yasdef-worker-implementation/scripts/build_implementation_context.py"
@@ -2126,27 +1931,32 @@ run_implementation_phase() {
     die "Implementation requires the installed readiness script: $(repo_relpath "$implementation_readiness_script")"
   fi
 
+  local prompt_arg
+  prompt_arg=$(cat <<EOF
+Use the \`yasdef-worker-implementation\` skill to run the ASDLC worker implementation phase.
+
+Inputs:
+- Step: $step
+- Feature id: $SELECTED_FEATURE_ID
+- Branch: $branch_name
+- Step plan: $latest_plan
+- Design artifact: $design_file
+- Runtime implementation plan: $ASDLC_RUNTIME_PLAN_PATH
+EOF
+)
+
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
     if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
       dry_impl_cmd+=("${MODEL_ARGS[@]}")
     fi
-    if [[ "$MODEL_CMD" == "codex" ]]; then
-      dry_impl_cmd+=("<contents of $prompt_out>")
-    else
-      dry_impl_cmd+=("run $prompt_out")
-    fi
-    echo "dry-run prompt: $(repo_relpath "$prompt_out")"
+    dry_impl_cmd+=("<inline yasdef-worker-implementation prompt>")
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "implementation" "$step")")"
-    echo "write yasdef-worker-implementation prompt for step $step to $(printf '%q' "$prompt_out") && $(shell_join "${dry_impl_cmd[@]}")"
+    echo "run yasdef-worker-implementation for step $step: $(shell_join "${dry_impl_cmd[@]}")"
     return 0
   fi
 
   ensure_phase_branch "$branch_name"
-  mkdir -p "$(dirname "$prompt_out")"
-  write_implementation_skill_prompt "$step" "$SELECTED_FEATURE_ID" "$branch_name" "$latest_plan" "$design_file" "$prompt_out"
-  local prompt_arg
-  prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$prompt_out")"
   local impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
   if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
     impl_cmd+=("${MODEL_ARGS[@]}")
@@ -2165,7 +1975,7 @@ run_implementation_phase() {
 run_user_review_phase() {
   load_model_config "user_review"
 
-  local latest_plan step prompt_out design_file branch_name user_review_skill
+  local latest_plan step design_file branch_name user_review_skill
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
     latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
@@ -2190,7 +2000,6 @@ run_user_review_phase() {
   design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
   branch_name="step-$step-$SELECTED_FEATURE_ID-user-review"
   user_review_skill="$ROOT/.codex/skills/yasdef-worker-user-review/SKILL.md"
-  prompt_out="$(resolve_prompt_output_path "user_review" "$step")"
 
   if [[ ! -f "$design_file" ]]; then
     die "User review requires the design artifact to exist first: $(repo_relpath "$design_file")"
@@ -2199,19 +2008,28 @@ run_user_review_phase() {
     die "User review requires the installed skill: $(repo_relpath "$user_review_skill")"
   fi
 
+  local prompt_arg
+  prompt_arg=$(cat <<EOF
+Use the \`yasdef-worker-user-review\` skill to run the ASDLC worker user review phase.
+
+Inputs:
+- Step: $step
+- Feature id: $SELECTED_FEATURE_ID
+- Branch: $branch_name
+- Step plan: $latest_plan
+- Design artifact: $design_file
+- Runtime implementation plan: $ASDLC_RUNTIME_PLAN_PATH
+EOF
+)
+
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
     if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
       dry_user_review_cmd+=("${MODEL_ARGS[@]}")
     fi
-    if [[ "$MODEL_CMD" == "codex" ]]; then
-      dry_user_review_cmd+=("<contents of $prompt_out>")
-    else
-      dry_user_review_cmd+=("run $prompt_out")
-    fi
-    echo "dry-run prompt: $(repo_relpath "$prompt_out")"
+    dry_user_review_cmd+=("<inline yasdef-worker-user-review prompt>")
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "user_review" "$step")")"
-    echo "write yasdef-worker-user-review prompt for step $step to $(printf '%q' "$prompt_out") && $(shell_join "${dry_user_review_cmd[@]}")"
+    echo "run yasdef-worker-user-review for step $step: $(shell_join "${dry_user_review_cmd[@]}")"
     return 0
   fi
 
@@ -2228,10 +2046,6 @@ run_user_review_phase() {
   fi
 
   ensure_user_review_branch "$step" "$SELECTED_FEATURE_ID"
-  mkdir -p "$(dirname "$prompt_out")"
-  write_user_review_skill_prompt "$step" "$SELECTED_FEATURE_ID" "$branch_name" "$latest_plan" "$design_file" "$prompt_out"
-  local prompt_arg
-  prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$prompt_out")"
   local user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
   if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
     user_review_cmd+=("${MODEL_ARGS[@]}")
@@ -2250,7 +2064,7 @@ run_user_review_phase() {
 run_ai_audit_phase() {
   load_model_config "ai_audit"
 
-  local latest_plan step prompt_out design_file branch_name
+  local latest_plan step design_file branch_name
   if [[ -n "$RESUME_STEP" ]]; then
     step="$RESUME_STEP"
     latest_plan="$ASDLC_STEP_PLANS_DIR/step-$step-$SELECTED_FEATURE_ID.md"
@@ -2280,7 +2094,6 @@ run_ai_audit_phase() {
 
   design_file="$ASDLC_STEP_DESIGNS_DIR/step-$step-$SELECTED_FEATURE_ID-design.md"
   branch_name="step-$step-$SELECTED_FEATURE_ID-review"
-  prompt_out="$(resolve_prompt_output_path "ai_audit" "$step")"
   local audit_skill="$ROOT/.codex/skills/yasdef-worker-ai-audit/SKILL.md"
   local audit_entry_script="$ROOT/.codex/skills/yasdef-worker-ai-audit/scripts/check_ai_audit_entry.py"
   local audit_context_script="$ROOT/.codex/skills/yasdef-worker-ai-audit/scripts/build_ai_audit_context.py"
@@ -2293,27 +2106,33 @@ run_ai_audit_phase() {
     die "ai_audit requires the installed yasdef-worker-ai-audit skill and scripts under .codex/skills/yasdef-worker-ai-audit/"
   fi
 
+  local prompt_arg
+  prompt_arg=$(cat <<EOF
+Use the \`yasdef-worker-ai-audit\` skill to run the ASDLC worker ai_audit phase.
+
+Inputs:
+- Step: $step
+- Feature id: $SELECTED_FEATURE_ID
+- Branch: $branch_name
+- Step plan: $latest_plan
+- Design artifact: $design_file
+- Runtime implementation plan: $ASDLC_RUNTIME_PLAN_PATH
+- Worker id: $BINDING_WORKER_UUID
+EOF
+)
+
   if [[ "$DRY_RUN" -eq 1 ]]; then
     local dry_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
     if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
       dry_review_cmd+=("${MODEL_ARGS[@]}")
     fi
-    if [[ "$MODEL_CMD" == "codex" ]]; then
-      dry_review_cmd+=("<contents of $prompt_out>")
-    else
-      dry_review_cmd+=("run $prompt_out")
-    fi
-    echo "dry-run prompt: $(repo_relpath "$prompt_out")"
+    dry_review_cmd+=("<inline yasdef-worker-ai-audit prompt>")
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "ai_audit" "$step")")"
-    echo "write yasdef-worker-ai-audit prompt for step $step to $(printf '%q' "$prompt_out") && $(shell_join "${dry_review_cmd[@]}")"
+    echo "run yasdef-worker-ai-audit for step $step: $(shell_join "${dry_review_cmd[@]}")"
     return 0
   fi
 
   ensure_ai_audit_review_branch "$step" "$SELECTED_FEATURE_ID"
-  mkdir -p "$(dirname "$prompt_out")"
-  write_ai_audit_skill_prompt "$step" "$SELECTED_FEATURE_ID" "$branch_name" "$latest_plan" "$design_file" "$prompt_out"
-  local prompt_arg
-  prompt_arg="$(build_model_prompt_arg "$MODEL_CMD" "$prompt_out")"
   local review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
   if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
     review_cmd+=("${MODEL_ARGS[@]}")

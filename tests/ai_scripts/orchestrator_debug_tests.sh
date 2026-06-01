@@ -74,7 +74,7 @@ setup_repo() {
   local source_dir="$TMP_ROOT/source-debug-${repo_dir##*/}"
   local remote_dir="${source_dir}-remote.git"
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/setup" "$repo_dir/.asdlc_worker/step_designs" \
-    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" "$repo_dir/.asdlc_worker/prompts" \
+    "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_review_results" \
     "$repo_dir/.asdlc_worker/overmind" "$repo_dir/.codex/skills"
   ln -s .asdlc_worker "$repo_dir/ai"
   ln -s .asdlc_worker/overmind "$repo_dir/overmind"
@@ -205,7 +205,7 @@ $phase | .asdlc_worker/scripts/fake_model.sh | mock-model
 EOF
 }
 
-run_non_debug_design_writes_latest_only() {
+run_non_debug_design_writes_latest_log_only() {
   local repo_dir="$TMP_ROOT/repo-non-debug"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
@@ -216,16 +216,12 @@ run_non_debug_design_writes_latest_only() {
     PROMPT_MARKER=first MODEL_MARKER=first .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
-  local latest_prompt="$repo_dir/.asdlc_worker/prompts/design_prompts/repo-non-debug-latest-design-prompt.txt"
   local latest_log="$repo_dir/.asdlc_worker/logs/repo-non-debug-design-latest-log"
-  assert_file_exists "$latest_prompt"
   assert_file_exists "$latest_log"
-  assert_contains_file "$latest_prompt" "yasdef-worker-design"
-  assert_contains_file "$latest_prompt" "step-1.1-feature-one-design.md"
   assert_contains_file "$latest_log" "MODEL_MARKER=first"
 }
 
-run_debug_design_writes_step_specific() {
+run_debug_design_writes_step_specific_log() {
   local repo_dir="$TMP_ROOT/repo-debug"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
@@ -236,12 +232,8 @@ run_debug_design_writes_step_specific() {
     PROMPT_MARKER=debug MODEL_MARKER=debug .asdlc_worker/scripts/orchestrator.sh --debug -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
-  local step_prompt="$repo_dir/.asdlc_worker/prompts/design_prompts/repo-debug-step-1.1.design.prompt.txt"
   local step_log="$repo_dir/.asdlc_worker/logs/repo-debug-design-1-1-log"
-  assert_file_exists "$step_prompt"
   assert_file_exists "$step_log"
-  assert_contains_file "$step_prompt" "Use the \`yasdef-worker-design\` skill"
-  assert_contains_file "$step_prompt" "Step: 1.1"
   assert_contains_file "$step_log" "MODEL_MARKER=debug"
 }
 
@@ -265,7 +257,7 @@ run_orchestrator_fails_when_uv_missing() {
   assert_contains "$out" "ERROR: ASDLC orchestrator requires 'uv' to be installed and available in PATH."
 }
 
-run_latest_overwrite_and_legacy_preserved() {
+run_latest_log_overwrite_and_legacy_preserved() {
   local repo_dir="$TMP_ROOT/repo-overwrite"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
@@ -276,9 +268,9 @@ run_latest_overwrite_and_legacy_preserved() {
     PROMPT_MARKER=seed MODEL_MARKER=seed .asdlc_worker/scripts/orchestrator.sh --debug -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
-  local step_prompt="$repo_dir/.asdlc_worker/prompts/design_prompts/repo-overwrite-step-1.1.design.prompt.txt"
-  local step_before
-  step_before="$(cat "$step_prompt")"
+  local step_log="$repo_dir/.asdlc_worker/logs/repo-overwrite-design-1-1-log"
+  local step_log_before
+  step_log_before="$(cat "$step_log")"
 
   (
     cd "$repo_dir"
@@ -287,19 +279,16 @@ run_latest_overwrite_and_legacy_preserved() {
     PROMPT_MARKER=second MODEL_MARKER=second .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/orch-test.out 2>/tmp/orch-test.err
   )
 
-  local latest_prompt="$repo_dir/.asdlc_worker/prompts/design_prompts/repo-overwrite-latest-design-prompt.txt"
   local latest_log="$repo_dir/.asdlc_worker/logs/repo-overwrite-design-latest-log"
-  assert_file_exists "$latest_prompt"
   assert_file_exists "$latest_log"
-  assert_contains_file "$latest_prompt" "yasdef-worker-design"
   assert_contains_file "$latest_log" "MODEL_MARKER=second"
 
-  local step_after
-  step_after="$(cat "$step_prompt")"
-  assert_equal "$step_before" "$step_after"
+  local step_log_after
+  step_log_after="$(cat "$step_log")"
+  assert_equal "$step_log_before" "$step_log_after"
 }
 
-run_user_review_dry_run_reports_prompt_and_log_paths() {
+run_user_review_dry_run_reports_log_path() {
   local repo_dir="$TMP_ROOT/repo-user-review-latest"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
@@ -311,13 +300,11 @@ run_user_review_dry_run_reports_prompt_and_log_paths() {
     PROMPT_MARKER=ur MODEL_MARKER=ur .asdlc_worker/scripts/orchestrator.sh --dry-run
   )"
 
-  local latest_prompt="$repo_dir/.asdlc_worker/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
-  assert_contains "$out" "dry-run prompt: .asdlc_worker/prompts/user_review_prompts/repo-user-review-latest-latest-user-review-prompt.txt"
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-user-review-latest-user-review-latest-log"
-  assert_contains "$out" "$latest_prompt"
+  assert_contains "$out" "run yasdef-worker-user-review for step"
 }
 
-run_ai_audit_dry_run_reports_prompt_and_log_paths() {
+run_ai_audit_dry_run_reports_log_path() {
   local repo_dir="$TMP_ROOT/repo-ai-audit-latest"
   mkdir -p "$repo_dir"
   setup_repo "$repo_dir"
@@ -329,10 +316,8 @@ run_ai_audit_dry_run_reports_prompt_and_log_paths() {
     PROMPT_MARKER=audit MODEL_MARKER=audit .asdlc_worker/scripts/orchestrator.sh --dry-run
   )"
 
-  local latest_prompt="$repo_dir/.asdlc_worker/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
-  assert_contains "$out" "dry-run prompt: .asdlc_worker/prompts/ai_audit_prompts/repo-ai-audit-latest-latest-ai-audit-prompt.txt"
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-ai-audit-latest-ai-audit-latest-log"
-  assert_contains "$out" "$latest_prompt"
+  assert_contains "$out" "run yasdef-worker-ai-audit for step"
 }
 
 run_source_includes_user_review_interactive_confirmation() {
@@ -344,12 +329,12 @@ run_source_includes_user_review_interactive_confirmation() {
   assert_contains "$out" "planning|implementation|user_review|ai_audit"
 }
 
-run_non_debug_design_writes_latest_only
-run_debug_design_writes_step_specific
+run_non_debug_design_writes_latest_log_only
+run_debug_design_writes_step_specific_log
 run_orchestrator_fails_when_uv_missing
-run_latest_overwrite_and_legacy_preserved
-run_user_review_dry_run_reports_prompt_and_log_paths
-run_ai_audit_dry_run_reports_prompt_and_log_paths
+run_latest_log_overwrite_and_legacy_preserved
+run_user_review_dry_run_reports_log_path
+run_ai_audit_dry_run_reports_log_path
 run_source_includes_user_review_interactive_confirmation
 
 echo "All orchestrator debug tests passed."

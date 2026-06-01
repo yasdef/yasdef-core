@@ -1,11 +1,11 @@
 ## Context
 
-The orchestrator builds a prompt string for each phase (design, planning, implementation, user_review), writes it to a `.txt` file under `.asdlc_worker/prompts/`, reads it back via `build_model_prompt_arg()`, and passes the content as a CLI argument to the model. The file is never read again after that call. The write-then-read roundtrip is pure overhead.
+The orchestrator builds a prompt string for each phase (design, planning, implementation, user_review, ai_audit), writes it to a `.txt` file under `.asdlc_worker/prompts/`, reads it back via `build_model_prompt_arg()`, and passes the content as a CLI argument to the model. The file is never read again after that call. The write-then-read roundtrip is pure overhead.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Remove the prompt file write/read cycle for all four phase runners
+- Remove the prompt file write/read cycle for all five phase runners
 - Pass prompt content inline to the model CLI call
 - Simplify orchestrator by removing prompt directory scaffolding and related helpers
 

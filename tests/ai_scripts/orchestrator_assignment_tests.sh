@@ -290,7 +290,7 @@ test_bound_project_single_feature_auto_selected() {
   assert_contains "$out" "orchestrator: selected feature 'feature-a' (mode=auto_single, project=project-alpha, step=2.2)."
   assert_contains "$out" "orchestrator: resolved routed step '2.2' for design skill prompt."
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-single-feature-design-2-2-log"
-  assert_contains "$out" "write yasdef-worker-design prompt for step 2.2"
+  assert_contains "$out" "run yasdef-worker-design for step 2.2"
   assert_contains "$out" "yasdef-worker-design"
   assert_not_contains "$out" "design-1-1-log"
   assert_equal "overmind" "$(git -C "$repo_dir" branch --show-current)"
@@ -559,8 +559,7 @@ EOF
   set_single_phase_model "$repo_dir" "planning"
 
   out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --dry-run 2>&1)"
-  assert_contains "$out" "write yasdef-worker-plan prompt for step 3.4"
-  assert_contains "$out" "dry-run prompt: .asdlc_worker/prompts/plan_prompts/repo-planning-step-injection-latest-planning-prompt.txt"
+  assert_contains "$out" "run yasdef-worker-plan for step 3.4"
   assert_contains "$out" "dry-run log: .asdlc_worker/logs/repo-planning-step-injection-planning-latest-log"
 }
 

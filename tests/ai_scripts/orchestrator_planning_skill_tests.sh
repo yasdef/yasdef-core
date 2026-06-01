@@ -55,7 +55,6 @@ setup_repo() {
     "$repo_dir/.asdlc_worker/step_open_questions" \
     "$repo_dir/.asdlc_worker/step_blockers" \
     "$repo_dir/.asdlc_worker/step_review_results" \
-    "$repo_dir/.asdlc_worker/prompts" \
     "$repo_dir/.asdlc_worker/logs" \
     "$repo_dir/.asdlc_worker/overmind" \
     "$repo_dir/.codex/skills"
@@ -357,7 +356,7 @@ test_orchestrator_interactive_handoff_to_implementation_skips_second_prompt() {
 
   [[ "$status" -ne 0 ]] || exit 1
   assert_contains "$out" "we are ready to start next phase: implementation"
-  assert_contains "$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/repo-clean-first-interactive-handoff-latest-implementation-prompt.txt")" "yasdef-worker-implementation"
+  assert_contains "$(cat "$repo_dir/.asdlc_worker/logs/repo-clean-first-interactive-handoff-implementation-latest-log")" "yasdef-worker-implementation"
   assert_not_contains "$out" "I am going to run next stage: implementation"
   assert_equal "1" "$(cat "$repo_dir/.asdlc_worker/logs/planning-counter.txt")"
 }

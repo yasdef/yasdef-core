@@ -264,7 +264,7 @@ EOF
   )
 
   local prompt
-  prompt="$(cat "$repo_dir/.asdlc_worker/prompts/impl_prompts/repo-orch-impl-gate-pass-latest-implementation-prompt.txt")"
+  prompt="$(cat "$repo_dir/.asdlc_worker/logs/repo-orch-impl-gate-pass-implementation-latest-log")"
   assert_contains "$prompt" 'Use the `yasdef-worker-implementation` skill to run the ASDLC worker implementation phase.'
   assert_contains "$prompt" "- Step: 1.1"
   assert_contains "$prompt" "- Feature id: feature-one"

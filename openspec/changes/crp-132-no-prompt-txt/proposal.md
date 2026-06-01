@@ -4,7 +4,7 @@ The orchestrator currently writes a prompt to a `.txt` file on disk, then immedi
 
 ## What Changes
 
-- Remove `write_*_skill_prompt()` functions for all four phases (design, planning, implementation, user_review)
+- Remove `write_*_skill_prompt()` functions for all five phases (design, planning, implementation, user_review, ai_audit)
 - Remove `resolve_prompt_output_path()` and prompt directory scaffolding
 - Remove `build_model_prompt_arg()` helper
 - Pass prompt content directly as a CLI argument when invoking the model
@@ -22,6 +22,6 @@ The orchestrator currently writes a prompt to a `.txt` file on disk, then immedi
 
 ## Impact
 
-- `ai/scripts/orchestrator.sh`: significant simplification — prompt write/read plumbing removed from all four phase runners
+- `ai/scripts/orchestrator.sh`: significant simplification — prompt write/read plumbing removed from all five phase runners
 - `.asdlc_worker/prompts/` directory will no longer be populated at runtime
 - Tests asserting on prompt file existence/content will need updating

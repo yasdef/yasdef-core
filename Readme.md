@@ -100,9 +100,9 @@ This approach can be expressed in a few sentences:
   - Startup proceed-or-change prompt: in default (non-resume) interactive mode, when a valid runnable current feature is confirmed via `feature_meta_sync.yaml`, orchestrator prompts `1. Proceed with current feature` / `2. Change feature` before starting work. Choosing 1 continues with the current feature; choosing 2 runs slow-path candidate discovery, placing the prior feature first in the picker with a `(CURRENT)` label so it is easy to re-select or explicitly skip. Non-interactive stdin (CI/automation) auto-proceeds without the prompt. `--resume` invocations skip the prompt entirely as the step flag is already an explicit continuation signal.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
-  - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`.asdlc_worker/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
-  - Default mode (without `--debug`): orchestrator writes only latest-per-phase artifacts (`.asdlc_worker/logs/<project>-<phase>-latest-log` and `.asdlc_worker/prompts/<phase>_prompts/<project>-latest-<phase>-prompt.txt`), overwriting those latest files each run.
-  - Non-debug safeguard: previously generated step-specific prompt files are not modified when `--debug` is off.
+  - Debug mode: `--debug` switches log retention to step-specific files (`.asdlc_worker/logs/<project>-<phase>-<step>-log`).
+  - Default mode (without `--debug`): orchestrator writes only latest-per-phase log artifacts (`.asdlc_worker/logs/<project>-<phase>-latest-log`), overwriting the latest file each run.
+  - Non-debug safeguard: previously generated step-specific log files are not modified when `--debug` is off.
 
 ## AI-dev process main rules
 

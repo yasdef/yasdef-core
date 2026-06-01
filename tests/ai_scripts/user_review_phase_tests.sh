@@ -280,7 +280,6 @@ EOF
   cat >"$repo_dir/.gitignore" <<'EOF'
 .asdlc_worker/feature_meta_sync.yaml
 .asdlc_worker/logs/
-.asdlc_worker/prompts/
 model-ran.flag
 EOF
 
@@ -297,11 +296,6 @@ EOF
 
   init_project_repo "$source_dir" "$project_id" "$WORKER_UUID"
   create_feature "$source_dir" "$feature_id" "$plan_body" "$ears_body"
-}
-
-latest_user_review_prompt() {
-  local repo_dir="$1"
-  find "$repo_dir/.asdlc_worker/prompts/user_review_prompts" -type f | sort | tail -n1
 }
 
 test_user_review_fails_fast_when_ordered_plan_unchecked() {
@@ -390,33 +384,6 @@ test_user_review_branch_handoff_fails_on_unsafe_dirty_state() {
   assert_file_not_exists "$repo_dir/model-ran.flag"
 }
 
-test_user_review_writes_compact_skill_prompt() {
-  local repo_dir="$TMP_ROOT/repo-user-review-skill-prompt"
-  local source_dir="$TMP_ROOT/source-user-review-skill-prompt"
-  setup_repo "$repo_dir" 1 checked "$source_dir" "project-prompt" "feature-demo"
-
-  (
-    cd "$repo_dir"
-    .asdlc_worker/scripts/orchestrator.sh -- --step 1.1 >/tmp/user-review-skill-prompt.out 2>/tmp/user-review-skill-prompt.err
-  )
-
-  local prompt_file prompt
-  prompt_file="$(latest_user_review_prompt "$repo_dir")"
-  assert_file_exists "$prompt_file"
-  prompt="$(cat "$prompt_file")"
-
-  assert_contains "$prompt" 'Use the `yasdef-worker-user-review` skill to run the ASDLC worker user review phase.'
-  assert_contains "$prompt" "- Step: 1.1"
-  assert_contains "$prompt" "- Feature id: feature-demo"
-  assert_contains "$prompt" "- Branch: step-1.1-feature-demo-user-review"
-  assert_contains "$prompt" "step-1.1-feature-demo.md"
-  assert_contains "$prompt" "step-1.1-feature-demo-design.md"
-  assert_contains "$prompt" "feature-demo/implementation_plan.md"
-  assert_not_contains "$prompt" "Context pack"
-  assert_not_contains "$prompt" "Entry gate already verified by script"
-  assert_not_contains "$prompt" "This design detail must not be in the compact prompt."
-}
-
 test_user_review_blocks_when_step_plan_missing() {
   local repo_dir="$TMP_ROOT/repo-missing-step-plan"
   local source_dir="$TMP_ROOT/source-missing-step-plan"
@@ -503,7 +470,6 @@ test_user_review_fails_fast_when_ordered_plan_unchecked
 test_user_review_normalizes_plain_ordered_bullets_to_unchecked
 test_user_review_runs_model_when_ordered_plan_checked_even_if_impl_unchecked
 test_user_review_branch_handoff_fails_on_unsafe_dirty_state
-test_user_review_writes_compact_skill_prompt
 test_user_review_blocks_when_step_plan_missing
 test_user_review_blocks_when_design_missing
 test_user_review_does_not_block_on_invalid_user_review_update
