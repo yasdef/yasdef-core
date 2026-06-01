@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 . "$SCRIPT_DIR/helpers/runtime_layout.sh"
+. "$SCRIPT_DIR/helpers/build_phase_cmd.sh"
 asdlc_worker_require_runtime_layout "${BASH_SOURCE[0]}"
 ROOT="$WORKER_REPO_ROOT"
 PROJECT="$(basename "$ROOT")"
@@ -686,13 +687,9 @@ run_planning_phase() {
   fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    local dry_planning_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-      dry_planning_cmd+=("${MODEL_ARGS[@]}")
-    fi
-    dry_planning_cmd+=("<inline yasdef-worker-plan prompt>")
+    build_phase_cmd "<inline yasdef-worker-plan prompt>"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "planning" "$step")")"
-    echo "run yasdef-worker-plan for step $step: $(shell_join "${dry_planning_cmd[@]}")"
+    echo "run yasdef-worker-plan for step $step: $(shell_join "${BUILD_PHASE_CMD[@]}")"
     return 0
   fi
 
@@ -715,14 +712,10 @@ Inputs:
 EOF
 )
 
-    local cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-      cmd+=("${MODEL_ARGS[@]}")
-    fi
-    cmd+=("$prompt_arg")
+    build_phase_cmd "$prompt_arg"
 
     local status=0
-    if run_with_output_log "planning" "$step" "${cmd[@]}"; then
+    if run_with_output_log "planning" "$step" "${BUILD_PHASE_CMD[@]}"; then
       status=0
     else
       status=$?
@@ -818,26 +811,18 @@ EOF
 )
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    local dry_design_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-      dry_design_cmd+=("${MODEL_ARGS[@]}")
-    fi
-    dry_design_cmd+=("<inline yasdef-worker-design prompt>")
+    build_phase_cmd "<inline yasdef-worker-design prompt>"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "design" "$step")")"
-    echo "run yasdef-worker-design for step $step: $(shell_join "${dry_design_cmd[@]}")"
+    echo "run yasdef-worker-design for step $step: $(shell_join "${BUILD_PHASE_CMD[@]}")"
     return 0
   fi
 
   ensure_phase_branch "$branch_name"
 
-  local cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-    cmd+=("${MODEL_ARGS[@]}")
-  fi
-  cmd+=("$prompt_arg")
+  build_phase_cmd "$prompt_arg"
 
   local status=0
-  if run_with_output_log "design" "$step" "${cmd[@]}"; then
+  if run_with_output_log "design" "$step" "${BUILD_PHASE_CMD[@]}"; then
     status=0
   else
     status=$?
@@ -1946,24 +1931,16 @@ EOF
 )
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    local dry_impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-      dry_impl_cmd+=("${MODEL_ARGS[@]}")
-    fi
-    dry_impl_cmd+=("<inline yasdef-worker-implementation prompt>")
+    build_phase_cmd "<inline yasdef-worker-implementation prompt>"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "implementation" "$step")")"
-    echo "run yasdef-worker-implementation for step $step: $(shell_join "${dry_impl_cmd[@]}")"
+    echo "run yasdef-worker-implementation for step $step: $(shell_join "${BUILD_PHASE_CMD[@]}")"
     return 0
   fi
 
   ensure_phase_branch "$branch_name"
-  local impl_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-    impl_cmd+=("${MODEL_ARGS[@]}")
-  fi
-  impl_cmd+=("$prompt_arg")
+  build_phase_cmd "$prompt_arg"
   local status=0
-  if run_with_output_log "implementation" "$step" "${impl_cmd[@]}"; then
+  if run_with_output_log "implementation" "$step" "${BUILD_PHASE_CMD[@]}"; then
     status=0
   else
     status=$?
@@ -2023,13 +2000,9 @@ EOF
 )
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    local dry_user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-      dry_user_review_cmd+=("${MODEL_ARGS[@]}")
-    fi
-    dry_user_review_cmd+=("<inline yasdef-worker-user-review prompt>")
+    build_phase_cmd "<inline yasdef-worker-user-review prompt>"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "user_review" "$step")")"
-    echo "run yasdef-worker-user-review for step $step: $(shell_join "${dry_user_review_cmd[@]}")"
+    echo "run yasdef-worker-user-review for step $step: $(shell_join "${BUILD_PHASE_CMD[@]}")"
     return 0
   fi
 
@@ -2046,13 +2019,9 @@ EOF
   fi
 
   ensure_user_review_branch "$step" "$SELECTED_FEATURE_ID"
-  local user_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-    user_review_cmd+=("${MODEL_ARGS[@]}")
-  fi
-  user_review_cmd+=("$prompt_arg")
+  build_phase_cmd "$prompt_arg"
   local status=0
-  if run_with_output_log "user_review" "$step" "${user_review_cmd[@]}"; then
+  if run_with_output_log "user_review" "$step" "${BUILD_PHASE_CMD[@]}"; then
     status=0
   else
     status=$?
@@ -2122,24 +2091,16 @@ EOF
 )
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    local dry_review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-    if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-      dry_review_cmd+=("${MODEL_ARGS[@]}")
-    fi
-    dry_review_cmd+=("<inline yasdef-worker-ai-audit prompt>")
+    build_phase_cmd "<inline yasdef-worker-ai-audit prompt>"
     echo "dry-run log: $(repo_relpath "$(resolve_log_path "ai_audit" "$step")")"
-    echo "run yasdef-worker-ai-audit for step $step: $(shell_join "${dry_review_cmd[@]}")"
+    echo "run yasdef-worker-ai-audit for step $step: $(shell_join "${BUILD_PHASE_CMD[@]}")"
     return 0
   fi
 
   ensure_ai_audit_review_branch "$step" "$SELECTED_FEATURE_ID"
-  local review_cmd=("$MODEL_CMD" -m "$MODEL_MODEL")
-  if [[ ${#MODEL_ARGS[@]} -gt 0 ]]; then
-    review_cmd+=("${MODEL_ARGS[@]}")
-  fi
-  review_cmd+=("$prompt_arg")
+  build_phase_cmd "$prompt_arg"
   local status=0
-  if run_with_output_log "ai_audit" "$step" "${review_cmd[@]}"; then
+  if run_with_output_log "ai_audit" "$step" "${BUILD_PHASE_CMD[@]}"; then
     status=0
   else
     status=$?

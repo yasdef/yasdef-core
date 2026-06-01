@@ -4,6 +4,7 @@ set -euo pipefail
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
+BUILD_PHASE_CMD_SRC="$SOURCE_ROOT/ai/scripts/helpers/build_phase_cmd.sh"
 PLAN_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan"
 IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
 USER_REVIEW_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review"
@@ -97,6 +98,7 @@ setup_repo() {
 
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$BUILD_PHASE_CMD_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/build_phase_cmd.sh"
   cp -R "$PLAN_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-plan"
   cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
   cp -R "$USER_REVIEW_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-user-review"
@@ -542,6 +544,29 @@ test_resume_starts_at_ai_audit_with_prefixed_gates() {
   assert_contains "$out" "Executed phases: ai_audit post_review"
 }
 
+test_dry_run_ai_audit_with_claude_runner_emits_claude_argv() {
+  local repo_dir="$TMP_ROOT/repo-ai-audit-claude"
+  mkdir -p "$repo_dir"
+  setup_repo "$repo_dir"
+  write_design_and_plan_artifacts "$repo_dir" "1.1"
+  write_impl_plan "$repo_dir" 1 1 1 0
+  create_user_review_branch_marker "$repo_dir" "1.1"
+
+  cat >"$repo_dir/ai/setup/models.md" <<'EOF'
+design | echo | mock-model
+planning | echo | mock-model
+implementation | echo | mock-model
+user_review | echo | mock-model
+ai_audit | claude | claude-opus-4-7
+EOF
+
+  local out
+  out="$(cd "$repo_dir" && .asdlc_worker/scripts/orchestrator.sh --resume 1.1 --dry-run)"
+  assert_contains "$out" "claude --model claude-opus-4-7 --permission-mode acceptEdits -p"
+  assert_not_contains "$out" "run yasdef-worker-ai-audit for step 1.1: claude -m"
+  assert_not_contains "$out" "run yasdef-worker-ai-audit for step 1.1: claude claude-opus-4-7 --config"
+}
+
 test_resume_starts_at_post_review_when_disposition_section_is_missing() {
   local repo_dir="$TMP_ROOT/repo-post-review-missing-disposition-section"
   mkdir -p "$repo_dir"
@@ -926,6 +951,7 @@ test_partial_markers_rerun_implementation
 test_resume_starts_at_user_review
 test_resume_starts_at_ai_audit_after_user_review_complete
 test_resume_starts_at_ai_audit_with_prefixed_gates
+test_dry_run_ai_audit_with_claude_runner_emits_claude_argv
 test_resume_starts_at_post_review_when_disposition_section_is_missing
 test_resume_starts_at_post_review_when_disposition_count_is_insufficient
 test_resume_does_not_require_evidence_before_ai_audit

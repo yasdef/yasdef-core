@@ -9,6 +9,7 @@ AI_AUDIT_DISPOSITION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_ai_audit_
 POST_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/post_review.sh"
 ORCH_SRC="$SOURCE_ROOT/ai/scripts/orchestrator.sh"
 RUNTIME_LAYOUT_SRC="$SOURCE_ROOT/ai/scripts/helpers/runtime_layout.sh"
+BUILD_PHASE_CMD_SRC="$SOURCE_ROOT/ai/scripts/helpers/build_phase_cmd.sh"
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -76,6 +77,7 @@ setup_orchestrator_repo() {
   ln -s .asdlc_worker/overmind "$repo_dir/overmind"
   cp "$ORCH_SRC" "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$BUILD_PHASE_CMD_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/build_phase_cmd.sh"
   cp -R "$PLAN_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-plan"
   cp -R "$IMPLEMENTATION_SKILL_DIR" "$repo_dir/.codex/skills/yasdef-worker-implementation"
   chmod +x "$repo_dir/.asdlc_worker/scripts/orchestrator.sh"
@@ -342,6 +344,7 @@ setup_ai_audit_prompt_repo() {
 
   cp "$AI_AUDIT_SRC" "$repo_dir/.asdlc_worker/scripts/ai_audit.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$BUILD_PHASE_CMD_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/build_phase_cmd.sh"
   cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
   chmod +x "$repo_dir/.asdlc_worker/scripts/ai_audit.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
@@ -512,6 +515,7 @@ setup_post_review_repo() {
 
   cp "$POST_REVIEW_SRC" "$repo_dir/.asdlc_worker/scripts/post_review.sh"
   cp "$RUNTIME_LAYOUT_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/runtime_layout.sh"
+  cp "$BUILD_PHASE_CMD_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/build_phase_cmd.sh"
   cp "$AI_AUDIT_DISPOSITION_HELPER_SRC" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
   chmod +x "$repo_dir/.asdlc_worker/scripts/post_review.sh" "$repo_dir/.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 
