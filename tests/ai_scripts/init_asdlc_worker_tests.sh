@@ -250,6 +250,13 @@ test_init_bootstraps_existing_git_root() {
   assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-implementation/scripts/build_implementation_context.py"
   assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
   assert_file_exists "$repo_dir/.claude/commands/yasdef/implementation.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-user-review/SKILL.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-user-review/scripts/build_user_review_context.py"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-user-review/assets/review_brief_TEMPLATE.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-user-review/assets/review_brief_GOLDEN_EXAMPLE.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-user-review/assets/user_review_TEMPLATE.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-user-review/assets/user_review_GOLDEN_EXAMPLE.md"
+  assert_file_exists "$repo_dir/.claude/commands/yasdef/user-review.md"
   if [[ -e "$repo_dir/.claude/skills/yasdef-worker-implementation/assets" ]]; then
     echo "Assertion failed: Claude implementation skill must not have an assets directory: $repo_dir/.claude/skills/yasdef-worker-implementation/assets" >&2
     exit 1
@@ -277,6 +284,7 @@ test_init_bootstraps_existing_git_root() {
   assert_line_count "1" ".claude/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".claude/skills/yasdef-worker-plan" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".claude/skills/yasdef-worker-implementation" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".claude/skills/yasdef-worker-user-review" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".claude/commands/yasdef" "$repo_dir/.git/info/exclude"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/SKILL.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/build_design_context.py"
@@ -333,12 +341,25 @@ test_init_bootstraps_existing_git_root() {
   assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-implementation/scripts/build_implementation_context.py"
   assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
   assert_file_tracked_at_head "$repo_dir" ".claude/commands/yasdef/implementation.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-user-review/SKILL.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-user-review/scripts/build_user_review_context.py"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-user-review/assets/review_brief_TEMPLATE.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-user-review/assets/review_brief_GOLDEN_EXAMPLE.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-user-review/assets/user_review_TEMPLATE.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-user-review/assets/user_review_GOLDEN_EXAMPLE.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/commands/yasdef/user-review.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/blocker_log.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/decisions.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/history.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/open_questions.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/user_review.md"
+  for _skill_dir in yasdef-worker-ai-audit yasdef-worker-design yasdef-worker-plan yasdef-worker-implementation yasdef-worker-user-review; do
+    assert_file_exists "$repo_dir/.claude/skills/$_skill_dir/SKILL.md"
+  done
+  for _cmd_file in audit.md design.md plan.md implementation.md user-review.md; do
+    assert_file_exists "$repo_dir/.claude/commands/yasdef/$_cmd_file"
+  done
   assert_equal "asdlc worker added" "$(git -C "$repo_dir" log -1 --pretty=%s)"
   assert_git_status_clean "$repo_dir"
 }
