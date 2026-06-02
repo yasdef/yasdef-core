@@ -20,7 +20,7 @@
 # ai_audit |  codex | gpt-5.4 | --config | model_reasoning_effort='high'
 
 design | claude | claude-sonnet-4-6 | | 
-planning | claude | claude-sonnet-4-6 | | 
+planning | claude | claude-opus-4-7 | | 
 implementation | claude | claude-sonnet-4-6 | | 
 user_review | claude | claude-sonnet-4-6 | | 
 ai_audit | claude | claude-opus-4-7 | | 

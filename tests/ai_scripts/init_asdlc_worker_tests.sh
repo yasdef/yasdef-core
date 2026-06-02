@@ -246,6 +246,14 @@ test_init_bootstraps_existing_git_root() {
   assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
   assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
   assert_file_exists "$repo_dir/.claude/commands/yasdef/plan.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-implementation/SKILL.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-implementation/scripts/build_implementation_context.py"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
+  assert_file_exists "$repo_dir/.claude/commands/yasdef/implementation.md"
+  if [[ -e "$repo_dir/.claude/skills/yasdef-worker-implementation/assets" ]]; then
+    echo "Assertion failed: Claude implementation skill must not have an assets directory: $repo_dir/.claude/skills/yasdef-worker-implementation/assets" >&2
+    exit 1
+  fi
   if [[ -e "$runtime_dir/scripts/ai_design.sh" ]]; then
     echo "Assertion failed: legacy design prompt script should not be installed: $runtime_dir/scripts/ai_design.sh" >&2
     exit 1
@@ -268,6 +276,7 @@ test_init_bootstraps_existing_git_root() {
   assert_line_count "1" ".claude/skills/yasdef-worker-ai-audit" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".claude/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".claude/skills/yasdef-worker-plan" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".claude/skills/yasdef-worker-implementation" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".claude/commands/yasdef" "$repo_dir/.git/info/exclude"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/SKILL.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/build_design_context.py"
@@ -320,6 +329,10 @@ test_init_bootstraps_existing_git_root() {
   assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
   assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
   assert_file_tracked_at_head "$repo_dir" ".claude/commands/yasdef/plan.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-implementation/SKILL.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-implementation/scripts/build_implementation_context.py"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py"
+  assert_file_tracked_at_head "$repo_dir" ".claude/commands/yasdef/implementation.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/blocker_log.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/decisions.md"
