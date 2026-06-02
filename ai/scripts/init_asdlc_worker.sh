@@ -31,6 +31,7 @@ GENERATED_EXCLUDE_PATHS=(
   ".codex/skills/yasdef-worker-ai-audit"
   ".claude/skills/yasdef-worker-ai-audit"
   ".claude/skills/yasdef-worker-design"
+  ".claude/skills/yasdef-worker-plan"
   ".claude/commands/yasdef"
 )
 DURABLE_COMMIT_PATHS=(
@@ -41,8 +42,10 @@ DURABLE_COMMIT_PATHS=(
   ".codex/skills/yasdef-worker-ai-audit"
   ".claude/skills/yasdef-worker-ai-audit"
   ".claude/skills/yasdef-worker-design"
+  ".claude/skills/yasdef-worker-plan"
   ".claude/commands/yasdef/audit.md"
   ".claude/commands/yasdef/design.md"
+  ".claude/commands/yasdef/plan.md"
   ".asdlc_worker/asdlc_worker.yaml"
   ".asdlc_worker/blocker_log.md"
   ".asdlc_worker/decisions.md"
@@ -221,7 +224,7 @@ install_claude_skills() {
   local skill_name=""
 
   mkdir -p "$target_skills_dir"
-  for skill_name in yasdef-worker-ai-audit yasdef-worker-design; do
+  for skill_name in yasdef-worker-ai-audit yasdef-worker-design yasdef-worker-plan; do
     local source_skill_dir="$SOURCE_CLAUDE_SKILLS_DIR/$skill_name"
     local target_skill_dir="$target_skills_dir/$skill_name"
 
