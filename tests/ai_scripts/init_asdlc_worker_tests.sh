@@ -233,6 +233,12 @@ test_init_bootstraps_existing_git_root() {
   assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-ai-audit/assets/raised_question_TEMPLATE.md"
   assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-ai-audit/assets/raised_question_GOLDEN_EXAMPLE.md"
   assert_file_exists "$repo_dir/.claude/commands/yasdef/audit.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-design/SKILL.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-design/scripts/build_design_context.py"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-design/scripts/check_design_readiness.py"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-design/assets/feature_design_TEMPLATE.md"
+  assert_file_exists "$repo_dir/.claude/skills/yasdef-worker-design/assets/feature_design_GOLDEN_EXAMPLE.md"
+  assert_file_exists "$repo_dir/.claude/commands/yasdef/design.md"
   if [[ -e "$runtime_dir/scripts/ai_design.sh" ]]; then
     echo "Assertion failed: legacy design prompt script should not be installed: $runtime_dir/scripts/ai_design.sh" >&2
     exit 1
@@ -253,6 +259,7 @@ test_init_bootstraps_existing_git_root() {
   assert_line_count "1" ".codex/skills/yasdef-worker-user-review" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".codex/skills/yasdef-worker-ai-audit" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".claude/skills/yasdef-worker-ai-audit" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".claude/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".claude/commands/yasdef" "$repo_dir/.git/info/exclude"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/SKILL.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/build_design_context.py"
@@ -292,6 +299,12 @@ test_init_bootstraps_existing_git_root() {
   assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-ai-audit/assets/raised_question_TEMPLATE.md"
   assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-ai-audit/assets/raised_question_GOLDEN_EXAMPLE.md"
   assert_file_tracked_at_head "$repo_dir" ".claude/commands/yasdef/audit.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-design/SKILL.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-design/scripts/build_design_context.py"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-design/scripts/check_design_readiness.py"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-design/assets/feature_design_TEMPLATE.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/skills/yasdef-worker-design/assets/feature_design_GOLDEN_EXAMPLE.md"
+  assert_file_tracked_at_head "$repo_dir" ".claude/commands/yasdef/design.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/asdlc_worker.yaml"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/blocker_log.md"
   assert_file_tracked_at_head "$repo_dir" ".asdlc_worker/decisions.md"
