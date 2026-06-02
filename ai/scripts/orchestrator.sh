@@ -342,15 +342,29 @@ run_with_output_log() {
   log_dir="$ASDLC_LOGS_DIR"
   ensure_dir_writable "$log_dir"
   log_path="$(resolve_log_path "$phase" "$step")"
+
+  local status=0
+  set +e
+  if [[ "${1:-}" == "claude" ]]; then
+    # Claude renders an interactive TUI; its log capture is ANSI noise that post_review
+    # cannot summarize. Skip log capture entirely and clear any stale codex-era log for
+    # this phase so post_review doesn't pull yesterday's numbers — claude phase contributes
+    # 0 to the token sum.
+    rm -f "$log_path"
+    "$@"
+    status=$?
+    LAST_RUN_LOG=""
+    set -e
+    return "$status"
+  fi
+
   local err=""
   if ! err="$( ( : >"$log_path" ) 2>&1 )"; then
     die "Failed to write log file: $(repo_relpath "$log_path"): ${err:-unknown error}"
   fi
 
-  local status=0
-  set +e
-  if [[ "${1:-}" == "codex" || "${1:-}" == "claude" ]] && [[ -t 1 ]] && command -v script >/dev/null 2>&1; then
-    # Preserve a TTY for interactive Codex/Claude while still capturing a log.
+  if [[ "${1:-}" == "codex" ]] && [[ -t 1 ]] && command -v script >/dev/null 2>&1; then
+    # Preserve a TTY for interactive Codex while still capturing a log.
     script -q "$log_path" "$@"
     status=$?
   else
