@@ -35,7 +35,7 @@ Execution model/session (intended): gpt-5.3-codex (executor), session=<fill>
 - Resource -> Service (`@Transactional`) -> Validator (side-effect free) -> Ledger append + projection update (same transaction).
 
 ## Implementation Notes / Constraints
-- Must follow `AGENTS.md` and `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.
+- Must follow `AGENTS.md`.
 - Keep diffs minimal; no formatting-only changes.
 
 ## Tests

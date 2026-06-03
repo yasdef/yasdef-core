@@ -24,7 +24,7 @@ This approach can be expressed in a few sentences:
 2. Make the bash scripts in `.asdlc_worker/scripts` executable:
   `chmod -R +x .asdlc_worker/scripts`
 
-3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
+3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules defined in the per-phase worker skills (`.claude/skills/yasdef-worker-*`, also installed under `.codex/`, `.github/`, `.devin/`).
 
 4. Run `bash .asdlc_worker/scripts/register_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
    The script prompts for:
@@ -84,7 +84,7 @@ This approach can be expressed in a few sentences:
 
 - **Worker:** (/ai) Workers are the actual code implementers. They take the implementation plan as input and split it into reasonable steps. Each step is implemented following a strict AI-dev process. The main goal is to guarantee high code quality while reducing manual coding burden for the operator. This shifts the human operator's role from coding to making complex technical decisions and ensuring architectural quality.
 
-- **AI-dev process:** The AI_DEVELOPMENT_PROCESS.md is a set of rules for Workers and a strict sequence of gates that involve the human operator in some loops. The process flow is: design -> plan -> implementation -> user_review -> ai_audit (post-step audit/review, AI) -> post-review (non-AI). We do not share ai-context between model-driven phases. We run phase-scripts to create a stable, comprehensive prompt from the process artifacts and pass it to the chosen model.
+- **AI-dev process:** The per-phase worker skills (`.claude/skills/yasdef-worker-*`) define the rules for Workers and a strict sequence of gates that involve the human operator in some loops. The process flow is: design -> plan -> implementation -> user_review -> ai_audit (post-step audit/review, AI) -> post-review (non-AI). We do not share ai-context between model-driven phases. We run phase-scripts to create a stable, comprehensive prompt from the process artifacts and pass it to the chosen model.
 
 - **Phase-script behavior:** A phase-script managed by orchestrator, creates prompt, then model (via pipe orchestrator -> cli) consumes the script's result as a prompt. Specifically, orchestrator runs a coding agent (cli) with parameters like model, reasoning effort, and a request to run a script. Script-driven prompt generation make input prompt stable and guaranty it fils up context with correct set of system files. 
 
@@ -106,11 +106,11 @@ This approach can be expressed in a few sentences:
 
 ## AI-dev process main rules
 
-- **Single source of truth for workflow rules**: Behavioral and process rules for AI execution live in `AI_DEVELOPMENT_PROCESS.md`. Scripts stay minimal and phase-scoped. All rules are defined once and referenced; they are never duplicated across phase scripts.
+- **Single source of truth for workflow rules**: Behavioral and process rules for AI execution live in the per-phase worker skills (`.claude/skills/yasdef-worker-*`, also installed under `.codex/`, `.github/`, `.devin/`). Scripts stay minimal and phase-scoped. All rules are defined once in the relevant skill and referenced; they are never duplicated across phase scripts.
 - **Clean separation of concerns**:
-  - `AI_DEVELOPMENT_PROCESS.md` defines the generic workflow (phases, gates, artifacts, per-step loop). It is project-agnostic and never includes project-specific details.
+  - The worker skills define the generic workflow (phases, gates, artifacts, per-step loop). They are project-agnostic and never include project-specific details.
   - `AGENTS.md` defines project-specific constraints: build commands, test runners, API specs, validation rules, branch strategy, tool paths, idempotency expectations. It never discusses the AI-dev process itself.
-  - Both files are required; they are kept independent so that workflow improvements do not leak into project configuration, and vice versa.
+  - Both the skills and `AGENTS.md` are required; they are kept independent so that workflow improvements do not leak into project configuration, and vice versa.
 - **Phase isolation**: Each model-driven phase (design, planning, implementation, user review, ai_audit/post-step audit) is executed in a separate AI-agent session with a distinct prompt. Context is never shared between phases (e.g., planning artifacts are frozen when implementation starts). Post-review is a non-AI phase. This ensures each phase uses the most suitable model and reasoning effort.
 - **Determinism over speed**: Every decision, blocker, and new finding is recorded in durable artifacts (`decisions.md`, `blocker_log.md`, `open_questions.md`, `step_review_results/`). This enables reproducibility and allows the project to continue without AI assistance at any point. Since technical decisions records in structured format to further retro with team or/and with AI
 - **Human in the loop**: Complex technical decisions and architectural choices are not made by the Worker. Workers must explicitly ask the user for decisions before proceeding; user feedback during the dedicated user review phase is incorporated as generalizable rules in `user_review.md` to improve future iterations. 

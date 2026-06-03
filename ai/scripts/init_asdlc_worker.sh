@@ -29,7 +29,6 @@ GENERATED_DIRS=(
   "logs"
 )
 ROOT_RUNTIME_FILES=(
-  "AI_DEVELOPMENT_PROCESS.md"
   "blocker_log.md"
   "decisions.md"
   "history.md"
@@ -266,7 +265,6 @@ build_generated_exclude_paths() {
     ".asdlc_worker/setup"
     ".asdlc_worker/templates"
     ".asdlc_worker/logs"
-    ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
     ".asdlc_worker/feature_meta_sync.yaml"
   )
   for prefix in "${SKILL_TARGET_PREFIXES[@]}"; do
@@ -378,8 +376,6 @@ done
 install_claude_commands
 if [[ "$MODE" == "install" ]]; then
   install_root_runtime_files
-else
-  cp "$SOURCE_AI_DIR/AI_DEVELOPMENT_PROCESS.md" "$TARGET_RUNTIME_DIR/AI_DEVELOPMENT_PROCESS.md"
 fi
 ensure_runtime_support_dirs
 write_worker_root_binding

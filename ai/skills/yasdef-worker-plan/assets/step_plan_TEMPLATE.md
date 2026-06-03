@@ -38,7 +38,7 @@ Execution model/session (intended): <fill>
 - <overview of helper/service design and call flow>
 
 ## Implementation Notes / Constraints
-- Must follow `AGENTS.md` and `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md`.
+- Must follow `AGENTS.md`.
 - <constraints specific to this step>
 
 ## Tests

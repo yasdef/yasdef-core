@@ -49,7 +49,6 @@ asdlc_worker_require_runtime_layout() {
   export WORKER_REPO_ROOT="$worker_repo_root"
   export ASDLC_SCRIPTS_DIR="$scripts_dir"
   export ASDLC_HELPERS_DIR="$scripts_dir/helpers"
-  export ASDLC_PROCESS_FILE="$ASDLC_WORKER_HOME/AI_DEVELOPMENT_PROCESS.md"
   export ASDLC_MODELS_FILE="$ASDLC_WORKER_HOME/setup/models.md"
   export ASDLC_DECISIONS_FILE="$ASDLC_WORKER_HOME/decisions.md"
   export ASDLC_BLOCKER_LOG_FILE="$ASDLC_WORKER_HOME/blocker_log.md"
