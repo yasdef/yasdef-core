@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SKILL_NAMES=(
+  yasdef-worker-design
+  yasdef-worker-plan
+  yasdef-worker-implementation
+  yasdef-worker-user-review
+  yasdef-worker-ai-audit
+)
+SKILL_TARGET_PREFIXES=(
+  .claude
+  .codex
+  .github
+  .devin
+)
+COMMAND_NAMES=(
+  audit.md
+  design.md
+  plan.md
+  implementation.md
+  user-review.md
+)
 GENERATED_DIRS=(
   "scripts"
   "golden_examples"
@@ -16,55 +36,11 @@ ROOT_RUNTIME_FILES=(
   "open_questions.md"
   "user_review.md"
 )
-GENERATED_EXCLUDE_PATHS=(
-  ".asdlc_worker/scripts"
-  ".asdlc_worker/scripts/helpers"
-  ".asdlc_worker/golden_examples"
-  ".asdlc_worker/setup"
-  ".asdlc_worker/templates"
-  ".asdlc_worker/logs"
-  ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
-  ".asdlc_worker/feature_meta_sync.yaml"
-  ".codex/skills/yasdef-worker-plan"
-  ".codex/skills/yasdef-worker-implementation"
-  ".codex/skills/yasdef-worker-user-review"
-  ".codex/skills/yasdef-worker-ai-audit"
-  ".claude/skills/yasdef-worker-ai-audit"
-  ".claude/skills/yasdef-worker-design"
-  ".claude/skills/yasdef-worker-plan"
-  ".claude/skills/yasdef-worker-implementation"
-  ".claude/skills/yasdef-worker-user-review"
-  ".claude/commands/yasdef"
-)
-DURABLE_COMMIT_PATHS=(
-  ".codex/skills/yasdef-worker-design"
-  ".codex/skills/yasdef-worker-plan"
-  ".codex/skills/yasdef-worker-implementation"
-  ".codex/skills/yasdef-worker-user-review"
-  ".codex/skills/yasdef-worker-ai-audit"
-  ".claude/skills/yasdef-worker-ai-audit"
-  ".claude/skills/yasdef-worker-design"
-  ".claude/skills/yasdef-worker-plan"
-  ".claude/skills/yasdef-worker-implementation"
-  ".claude/skills/yasdef-worker-user-review"
-  ".claude/commands/yasdef/audit.md"
-  ".claude/commands/yasdef/design.md"
-  ".claude/commands/yasdef/plan.md"
-  ".claude/commands/yasdef/implementation.md"
-  ".claude/commands/yasdef/user-review.md"
-  ".asdlc_worker/asdlc_worker.yaml"
-  ".asdlc_worker/blocker_log.md"
-  ".asdlc_worker/decisions.md"
-  ".asdlc_worker/history.md"
-  ".asdlc_worker/open_questions.md"
-  ".asdlc_worker/user_review.md"
-)
 
 SOURCE_ROOT=""
 SOURCE_AI_DIR=""
-SOURCE_CODEX_SKILLS_DIR=""
-SOURCE_CLAUDE_SKILLS_DIR=""
-SOURCE_CLAUDE_COMMANDS_DIR=""
+SOURCE_SKILLS_DIR=""
+SOURCE_COMMANDS_DIR=""
 TARGET_INPUT=""
 TARGET_REPO_ROOT=""
 TARGET_RUNTIME_DIR=""
@@ -186,6 +162,21 @@ copy_dir_contents() {
   cp -R "$source_dir/." "$target_dir/"
 }
 
+rewrite_skill_paths_in_dir() {
+  local skill_dir="$1"
+  local prefix="$2"
+  local file=""
+
+  if [[ "$prefix" == ".claude" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r -d '' file; do
+    sed -i.bak "s|\.claude/skills/|${prefix}/skills/|g" "$file"
+    rm -f "${file}.bak"
+  done < <(find "$skill_dir" -type f -name 'SKILL.md' -print0)
+}
+
 install_root_runtime_files() {
   local file=""
   for file in "${ROOT_RUNTIME_FILES[@]}"; do
@@ -207,44 +198,28 @@ install_generated_dirs() {
   remove_generated_path "$TARGET_RUNTIME_DIR/scripts/ai_plan.sh"
 }
 
-install_codex_skills() {
-  local target_skills_dir="$TARGET_REPO_ROOT/.codex/skills"
+install_skills_to() {
+  local prefix="$1"
+  local target_skills_dir="$TARGET_REPO_ROOT/$prefix/skills"
   local skill_name=""
 
   mkdir -p "$target_skills_dir"
-  for skill_name in yasdef-worker-design yasdef-worker-plan yasdef-worker-implementation yasdef-worker-user-review yasdef-worker-ai-audit; do
-    local source_skill_dir="$SOURCE_CODEX_SKILLS_DIR/$skill_name"
+  for skill_name in "${SKILL_NAMES[@]}"; do
+    local source_skill_dir="$SOURCE_SKILLS_DIR/$skill_name"
     local target_skill_dir="$target_skills_dir/$skill_name"
 
     if [[ ! -d "$source_skill_dir" ]]; then
-      die "Required Codex skill source is missing: $source_skill_dir"
+      die "Required skill source is missing: $source_skill_dir"
     fi
 
     remove_generated_path "$target_skill_dir"
     copy_dir_contents "$source_skill_dir" "$target_skill_dir"
-  done
-}
-
-install_claude_skills() {
-  local target_skills_dir="$TARGET_REPO_ROOT/.claude/skills"
-  local skill_name=""
-
-  mkdir -p "$target_skills_dir"
-  for skill_name in yasdef-worker-ai-audit yasdef-worker-design yasdef-worker-plan yasdef-worker-implementation yasdef-worker-user-review; do
-    local source_skill_dir="$SOURCE_CLAUDE_SKILLS_DIR/$skill_name"
-    local target_skill_dir="$target_skills_dir/$skill_name"
-
-    if [[ ! -d "$source_skill_dir" ]]; then
-      die "Required Claude skill source is missing: $source_skill_dir"
-    fi
-
-    remove_generated_path "$target_skill_dir"
-    copy_dir_contents "$source_skill_dir" "$target_skill_dir"
+    rewrite_skill_paths_in_dir "$target_skill_dir" "$prefix"
   done
 }
 
 install_claude_commands() {
-  local source_commands_dir="$SOURCE_CLAUDE_COMMANDS_DIR/yasdef"
+  local source_commands_dir="$SOURCE_COMMANDS_DIR/yasdef"
   local target_commands_dir="$TARGET_REPO_ROOT/.claude/commands/yasdef"
 
   if [[ ! -d "$source_commands_dir" ]]; then
@@ -278,6 +253,52 @@ write_worker_root_binding() {
     printf "worker_repo_root: '%s'\n" "$(yaml_quote_single "$TARGET_REPO_ROOT")"
   } >"$tmp_file"
   mv "$tmp_file" "$binding_file"
+}
+
+build_generated_exclude_paths() {
+  local prefix=""
+  local skill_name=""
+
+  GENERATED_EXCLUDE_PATHS=(
+    ".asdlc_worker/scripts"
+    ".asdlc_worker/scripts/helpers"
+    ".asdlc_worker/golden_examples"
+    ".asdlc_worker/setup"
+    ".asdlc_worker/templates"
+    ".asdlc_worker/logs"
+    ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md"
+    ".asdlc_worker/feature_meta_sync.yaml"
+  )
+  for prefix in "${SKILL_TARGET_PREFIXES[@]}"; do
+    for skill_name in "${SKILL_NAMES[@]}"; do
+      GENERATED_EXCLUDE_PATHS+=("$prefix/skills/$skill_name")
+    done
+  done
+  GENERATED_EXCLUDE_PATHS+=(".claude/commands/yasdef")
+}
+
+build_durable_commit_paths() {
+  local prefix=""
+  local skill_name=""
+  local command_file=""
+
+  DURABLE_COMMIT_PATHS=()
+  for prefix in "${SKILL_TARGET_PREFIXES[@]}"; do
+    for skill_name in "${SKILL_NAMES[@]}"; do
+      DURABLE_COMMIT_PATHS+=("$prefix/skills/$skill_name")
+    done
+  done
+  for command_file in "${COMMAND_NAMES[@]}"; do
+    DURABLE_COMMIT_PATHS+=(".claude/commands/yasdef/$command_file")
+  done
+  DURABLE_COMMIT_PATHS+=(
+    ".asdlc_worker/asdlc_worker.yaml"
+    ".asdlc_worker/blocker_log.md"
+    ".asdlc_worker/decisions.md"
+    ".asdlc_worker/history.md"
+    ".asdlc_worker/open_questions.md"
+    ".asdlc_worker/user_review.md"
+  )
 }
 
 ensure_exclude_entries() {
@@ -334,9 +355,8 @@ fi
 require_git
 SOURCE_ROOT="$(resolve_source_root)"
 SOURCE_AI_DIR="$SOURCE_ROOT/ai"
-SOURCE_CODEX_SKILLS_DIR="$SOURCE_ROOT/ai/codex/skills"
-SOURCE_CLAUDE_SKILLS_DIR="$SOURCE_ROOT/ai/claude/skills"
-SOURCE_CLAUDE_COMMANDS_DIR="$SOURCE_ROOT/ai/claude/commands"
+SOURCE_SKILLS_DIR="$SOURCE_ROOT/ai/skills"
+SOURCE_COMMANDS_DIR="$SOURCE_ROOT/ai/commands"
 
 prompt_non_empty "Enter target repository path: " TARGET_INPUT
 TARGET_REPO_ROOT="$(resolve_target_repo_root "$TARGET_INPUT")"
@@ -348,9 +368,13 @@ else
   mkdir -p "$TARGET_RUNTIME_DIR"
 fi
 
+build_generated_exclude_paths
+build_durable_commit_paths
+
 install_generated_dirs
-install_codex_skills
-install_claude_skills
+for prefix in "${SKILL_TARGET_PREFIXES[@]}"; do
+  install_skills_to "$prefix"
+done
 install_claude_commands
 if [[ "$MODE" == "install" ]]; then
   install_root_runtime_files

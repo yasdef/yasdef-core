@@ -275,17 +275,18 @@ test_init_bootstraps_existing_git_root() {
   assert_line_count "1" ".asdlc_worker/scripts" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/feature_meta_sync.yaml" "$repo_dir/.git/info/exclude"
-  assert_line_count "0" ".codex/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".codex/skills/yasdef-worker-plan" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".codex/skills/yasdef-worker-implementation" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".codex/skills/yasdef-worker-user-review" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".codex/skills/yasdef-worker-ai-audit" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".claude/skills/yasdef-worker-ai-audit" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".claude/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".claude/skills/yasdef-worker-plan" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".claude/skills/yasdef-worker-implementation" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".claude/skills/yasdef-worker-user-review" "$repo_dir/.git/info/exclude"
+  for _prefix in .claude .codex .github .devin; do
+    for _skill in yasdef-worker-design yasdef-worker-plan yasdef-worker-implementation yasdef-worker-user-review yasdef-worker-ai-audit; do
+      assert_line_count "1" "$_prefix/skills/$_skill" "$repo_dir/.git/info/exclude"
+    done
+  done
   assert_line_count "1" ".claude/commands/yasdef" "$repo_dir/.git/info/exclude"
+  assert_file_exists "$repo_dir/.github/skills/yasdef-worker-design/SKILL.md"
+  assert_file_exists "$repo_dir/.devin/skills/yasdef-worker-design/SKILL.md"
+  assert_contains "$(cat "$repo_dir/.codex/skills/yasdef-worker-design/SKILL.md")" ".codex/skills/yasdef-worker-design/scripts/"
+  assert_contains "$(cat "$repo_dir/.github/skills/yasdef-worker-design/SKILL.md")" ".github/skills/yasdef-worker-design/scripts/"
+  assert_contains "$(cat "$repo_dir/.devin/skills/yasdef-worker-design/SKILL.md")" ".devin/skills/yasdef-worker-design/scripts/"
+  assert_contains "$(cat "$repo_dir/.claude/skills/yasdef-worker-design/SKILL.md")" ".claude/skills/yasdef-worker-design/scripts/"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/SKILL.md"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/build_design_context.py"
   assert_file_tracked_at_head "$repo_dir" ".codex/skills/yasdef-worker-design/scripts/check_design_readiness.py"
@@ -419,7 +420,7 @@ test_update_preserves_local_state_and_is_idempotent() {
   fi
   assert_line_count "1" ".asdlc_worker/scripts" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/scripts/helpers" "$repo_dir/.git/info/exclude"
-  assert_line_count "0" ".codex/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
+  assert_line_count "1" ".codex/skills/yasdef-worker-design" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".codex/skills/yasdef-worker-plan" "$repo_dir/.git/info/exclude"
 }
 

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PLAN_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan"
-IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-implementation"
+PLAN_SKILL_DIR="$SOURCE_ROOT/ai/skills/yasdef-worker-plan"
+IMPLEMENTATION_SKILL_DIR="$SOURCE_ROOT/ai/skills/yasdef-worker-implementation"
 AI_AUDIT_SRC="$SOURCE_ROOT/ai/scripts/ai_audit.sh"
 AI_AUDIT_DISPOSITION_HELPER_SRC="$SOURCE_ROOT/ai/scripts/helpers/check_ai_audit_disposition_readiness.sh"
 POST_REVIEW_SRC="$SOURCE_ROOT/ai/scripts/post_review.sh"
@@ -301,8 +301,8 @@ EOF
 }
 
 test_step_plan_template_enforces_functional_requirement_contract() {
-  local template="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
-  local golden="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
+  local template="$SOURCE_ROOT/ai/skills/yasdef-worker-plan/assets/step_plan_TEMPLATE.md"
+  local golden="$SOURCE_ROOT/ai/skills/yasdef-worker-plan/assets/step_plan_GOLDEN_EXAMPLE.md"
   local template_content golden_content
 
   template_content="$(cat "$template")"
@@ -840,7 +840,7 @@ test_process_doc_defines_review_brief_mode() {
 }
 
 test_review_brief_golden_example_exists() {
-  local golden="$SOURCE_ROOT/ai/codex/skills/yasdef-worker-user-review/assets/review_brief_GOLDEN_EXAMPLE.md"
+  local golden="$SOURCE_ROOT/ai/skills/yasdef-worker-user-review/assets/review_brief_GOLDEN_EXAMPLE.md"
   if [[ ! -f "$golden" ]]; then
     echo "Assertion failed: missing Review Brief golden example file: $golden" >&2
     exit 1
