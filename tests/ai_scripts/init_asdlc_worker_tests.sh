@@ -269,11 +269,9 @@ test_init_bootstraps_existing_git_root() {
     echo "Assertion failed: legacy design readiness shell helper should not be installed: $runtime_dir/scripts/helpers/check_design_readiness.sh" >&2
     exit 1
   fi
-  assert_file_exists "$runtime_dir/AI_DEVELOPMENT_PROCESS.md"
   assert_file_exists "$runtime_dir/asdlc_worker.yaml"
   assert_contains "$(cat "$runtime_dir/asdlc_worker.yaml")" "worker_repo_root: '$repo_resolved'"
   assert_line_count "1" ".asdlc_worker/scripts" "$repo_dir/.git/info/exclude"
-  assert_line_count "1" ".asdlc_worker/AI_DEVELOPMENT_PROCESS.md" "$repo_dir/.git/info/exclude"
   assert_line_count "1" ".asdlc_worker/feature_meta_sync.yaml" "$repo_dir/.git/info/exclude"
   for _prefix in .claude .codex .github .agents; do
     for _skill in yasdef-worker-design yasdef-worker-plan yasdef-worker-implementation yasdef-worker-user-review yasdef-worker-ai-audit; do
@@ -382,7 +380,6 @@ test_update_preserves_local_state_and_is_idempotent() {
   local repo_dir="$TMP_ROOT/update-repo"
   local runtime_dir="$repo_dir/.asdlc_worker"
   local custom_file="$runtime_dir/custom-local-state.txt"
-  local old_process_marker="stale process"
   local out=""
 
   mkdir -p "$repo_dir"
@@ -390,7 +387,6 @@ test_update_preserves_local_state_and_is_idempotent() {
   run_init_runtime "$repo_dir" >/dev/null
 
   echo "keep me" >"$custom_file"
-  echo "$old_process_marker" >"$runtime_dir/AI_DEVELOPMENT_PROCESS.md"
   mkdir -p "$runtime_dir/logs"
   echo "stale log" >"$runtime_dir/logs/old.log"
 
@@ -398,10 +394,6 @@ test_update_preserves_local_state_and_is_idempotent() {
   assert_contains "$out" "ASDLC worker runtime update complete."
   assert_file_exists "$custom_file"
   assert_contains "$(cat "$custom_file")" "keep me"
-  if grep -Fq "$old_process_marker" "$runtime_dir/AI_DEVELOPMENT_PROCESS.md"; then
-    echo "Assertion failed: expected updated AI_DEVELOPMENT_PROCESS.md to overwrite stale content" >&2
-    exit 1
-  fi
   if [[ -e "$runtime_dir/logs/old.log" ]]; then
     echo "Assertion failed: expected generated logs directory to be overwritten during update" >&2
     exit 1

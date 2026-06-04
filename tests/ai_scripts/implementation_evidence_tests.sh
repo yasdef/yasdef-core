@@ -321,21 +321,6 @@ test_step_plan_template_enforces_functional_requirement_contract() {
   assert_contains "$golden_content" "EARS[REQ-12.1]"
 }
 
-test_process_doc_defines_evidence_reasoning_summary_gate() {
-  local process_doc="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
-  local content
-  content="$(cat "$process_doc")"
-  assert_contains "$content" "#### 6.0) Entry proof-check against implementation_plan target bullets (required first gate)"
-  assert_contains "$content" "Evidence Reasoning Summary output (required at ai_audit entry):"
-  assert_contains "$content" 'For every `PROVEN` bullet, include code refs, reachability, and test evidence/mapping.'
-  assert_contains "$content" 'If any target bullet is `NOT_PROVEN`, fail/flag ai_audit entry and stop before deeper Section 6.1 analysis.'
-  assert_contains "$content" "#### 6.1) Analyse TODOs and convert them to findings (required second gate)"
-  assert_contains "$content" "#### 6.4) AI Audit Disposition Gate (required before completion and before post_review)"
-  assert_contains "$content" 'Before emitting the ai_audit completion line, run `ai/scripts/helpers/check_ai_audit_disposition_readiness.sh <current_step>`.'
-  assert_contains "$content" 'Treat Section 6 as a closure loop, not a single pass: after every user decision and every artifact update, re-check the ai_audit completion gates and keep iterating until they pass.'
-  assert_contains "$content" 'All bullets in the current step section of `overmind/implementation_plan.md` must be checklist bullets and marked `[x]` (including `Review step implementation`).'
-}
-
 setup_ai_audit_prompt_repo() {
   local repo_dir="$1"
   mkdir -p "$repo_dir/.asdlc_worker/scripts/helpers" "$repo_dir/.asdlc_worker/step_plans" "$repo_dir/.asdlc_worker/step_designs" "$repo_dir/.asdlc_worker/overmind"
@@ -397,18 +382,6 @@ Designer model/session: preamble-should-not-leak
 - ADR-1
 ## Things to Decide (for final planning discussion)
 - none
-EOF
-
-  cat >"$repo_dir/ai/AI_DEVELOPMENT_PROCESS.md" <<'EOF'
-### 6) Post-step ai_audit/review (required before moving to the next step)
-#### 6.0) Entry proof-check against implementation_plan target bullets (required first gate)
-- gate
-#### 6.1) Analyse TODOs and convert them to findings (required second gate)
-- todos
-#### 6.2) Audit review and findings
-- review
-#### 6.3) Per-finding issue disposition workflow
-- disposition
 EOF
 
   cat >"$repo_dir/ai/blocker_log.md" <<'EOF'
@@ -565,7 +538,6 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   local prompt
   prompt="$(cat "$repo_dir/.asdlc_worker/prompts/ai_audit_prompts/test.prompt.txt")"
   assert_contains "$prompt" 'ai_audit phase for Step 1.1 - Demo'
-  assert_contains "$prompt" 'Follow `.asdlc_worker/AI_DEVELOPMENT_PROCESS.md` (Sections 6.0-6.4, Prompt governance) and `AGENTS.md` as the authoritative rules for this phase.'
   assert_contains "$prompt" 'Primary context is the inline audit context below.'
   assert_contains "$prompt" 'Read these artifacts directly from the repo:'
   assert_contains "$prompt" '- Step plan: .asdlc_worker/step_plans/step-1.1.md'
@@ -599,7 +571,6 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   assert_contains "$prompt" "== Step delta file list =="
   assert_contains "$prompt" " M .asdlc_worker/open_questions.md"
   assert_not_contains "$prompt" "## Plan (ordered)"
-  assert_not_contains "$prompt" "== .asdlc_worker/AI_DEVELOPMENT_PROCESS.md (Sections 6.0-6.4) =="
   assert_not_contains "$prompt" 'Run the ai_audit flow in this exact order: Section 6.0 proof-check, Section 6.1 TODO scan, Section 6.2 audit review, Section 6.3 per-finding disposition, Section 6.4 disposition gate.'
   assert_not_contains "$prompt" "# Feature Design: preamble should not leak"
   assert_not_contains "$prompt" "Designer model/session: preamble-should-not-leak"
@@ -830,15 +801,6 @@ EOF
   assert_not_contains "$overmind_head_files" ".asdlc_worker/history.md"
 }
 
-test_process_doc_defines_review_brief_mode() {
-  local process_doc="$SOURCE_ROOT/ai/AI_DEVELOPMENT_PROCESS.md"
-  local content
-  content="$(cat "$process_doc")"
-  assert_contains "$content" '.codex/skills/yasdef-worker-user-review/SKILL.md'
-  assert_contains "$content" '`yasdef-worker-user-review`'
-  assert_contains "$content" "ordered-plan completion state only"
-}
-
 test_review_brief_golden_example_exists() {
   local golden="$SOURCE_ROOT/ai/skills/yasdef-worker-user-review/assets/review_brief_GOLDEN_EXAMPLE.md"
   if [[ ! -f "$golden" ]]; then
@@ -934,8 +896,6 @@ test_orchestrator_does_not_gate_implementation_when_ordered_items_unchecked
 test_orchestrator_implementation_runs_when_all_ordered_items_checked
 test_orchestrator_does_not_gate_implementation_when_functional_requirements_unchecked
 test_step_plan_template_enforces_functional_requirement_contract
-test_process_doc_defines_evidence_reasoning_summary_gate
-test_process_doc_defines_review_brief_mode
 test_review_brief_golden_example_exists
 test_ai_audit_prompt_requires_entry_proof_gate
 test_ai_audit_disposition_helper_fails_when_section_missing

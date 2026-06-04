@@ -240,11 +240,6 @@ EOF
 - None.
 EOF
 
-  cat >"$repo_dir/.asdlc_worker/AI_DEVELOPMENT_PROCESS.md" <<'EOF'
-### 5) User review (required before moving to the next step)
-- Skill-driven.
-EOF
-
   cat >"$repo_dir/.asdlc_worker/blocker_log.md" <<'EOF'
 ## Step 1.1 Demo
 - none
