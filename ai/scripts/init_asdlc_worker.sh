@@ -12,7 +12,7 @@ SKILL_TARGET_PREFIXES=(
   .claude
   .codex
   .github
-  .devin
+  .agents
 )
 COMMAND_NAMES=(
   audit.md

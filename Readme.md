@@ -24,7 +24,7 @@ This approach can be expressed in a few sentences:
 2. Make the bash scripts in `.asdlc_worker/scripts` executable:
   `chmod -R +x .asdlc_worker/scripts`
 
-3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules defined in the per-phase worker skills (`.claude/skills/yasdef-worker-*`, also installed under `.codex/`, `.github/`, `.devin/`).
+3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules defined in the per-phase worker skills (`.claude/skills/yasdef-worker-*`, also installed under `.codex/`, `.github/`, `.agents/`).
 
 4. Run `bash .asdlc_worker/scripts/register_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
    The script prompts for:
@@ -106,7 +106,7 @@ This approach can be expressed in a few sentences:
 
 ## AI-dev process main rules
 
-- **Single source of truth for workflow rules**: Behavioral and process rules for AI execution live in the per-phase worker skills (`.claude/skills/yasdef-worker-*`, also installed under `.codex/`, `.github/`, `.devin/`). Scripts stay minimal and phase-scoped. All rules are defined once in the relevant skill and referenced; they are never duplicated across phase scripts.
+- **Single source of truth for workflow rules**: Behavioral and process rules for AI execution live in the per-phase worker skills (`.claude/skills/yasdef-worker-*`, also installed under `.codex/`, `.github/`, `.agents/`). Scripts stay minimal and phase-scoped. All rules are defined once in the relevant skill and referenced; they are never duplicated across phase scripts.
 - **Clean separation of concerns**:
   - The worker skills define the generic workflow (phases, gates, artifacts, per-step loop). They are project-agnostic and never include project-specific details.
   - `AGENTS.md` defines project-specific constraints: build commands, test runners, API specs, validation rules, branch strategy, tool paths, idempotency expectations. It never discusses the AI-dev process itself.
