@@ -167,23 +167,6 @@ def emit_context(args: argparse.Namespace, root: Path) -> None:
     print(f"- asdlc_repo_path: {asdlc_repo_root}")
     print()
 
-    print("## Phase Contract")
-    print("- Analysis-only: do not modify runtime code and do not run tests.")
-    print(
-        "- Audit question: for this step, are all target bullets PROVEN by the current patch; "
-        "if not, what concrete gaps remain?"
-    )
-    print("- Two-phase model: Phase 1 discovery (single pass), then Phase 2 disposition (mechanical loop).")
-    print("- Terminal states per finding: follow_up_created | raised_to_coordinator | rejected.")
-    print("- Commit boundary: commit worker review_result only; leave ASDLC edits uncommitted for post_review.")
-    print("- Completion lines (exact):")
-    print(
-        "  ai_audit phase finished. Nothing else to do now; "
-        "press Ctrl-C so orchestrator can start the next phase."
-    )
-    print("  PHASE_FINISHED_CAN_CLOSE")
-    print()
-
     for heading in REQUIRED_SECTION_HEADINGS:
         emit_section(heading, sections.get(heading, ""))
 

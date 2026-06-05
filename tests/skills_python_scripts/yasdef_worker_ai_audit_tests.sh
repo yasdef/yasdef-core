@@ -228,6 +228,9 @@ test_builder_happy_path_emits_required_sections() {
   assert_contains "$out" "Worker id: $WORKER_ID"
   assert_contains "$out" "asdlc_repo_path:"
   assert_contains "$out" "Raised questions directory (ASDLC repo): $repo_dir/asdlc-side/projects/proj-a/$FEATURE_ID/raised_questions"
+  # Workflow rules live in SKILL.md, not in the context-builder output.
+  assert_not_contains "$out" "## Phase Contract"
+  assert_not_contains "$out" "PHASE_FINISHED_CAN_CLOSE"
   # Builder must not surface design sections that are explicitly excluded.
   assert_not_contains "$out" "## Risks and Mitigations"
   assert_not_contains "$out" "## Proposal / Design Details"

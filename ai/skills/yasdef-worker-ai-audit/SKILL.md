@@ -22,6 +22,15 @@ The orchestrator prompt should provide:
 
 If any input is missing, inconsistent, or points to a missing required file, do not infer it from `.asdlc_worker/feature_meta_sync.yaml` or the runtime environment. Stop and ask the user for explicit instructions.
 
+## Phase Contract
+
+- Analysis-only: do not modify runtime code and do not run tests.
+- Audit question: for this step, are all target bullets proven by the current patch; if not, identify the concrete gaps that remain.
+- Two-phase model: Phase 1 discovery is a single pass; Phase 2 disposition is a mechanical loop over all findings.
+- Terminal states per finding: `follow_up_created`, `raised_to_coordinator`, or `rejected`.
+- Commit boundary: commit worker review-result changes only; leave ASDLC edits uncommitted for `post_review`.
+- Completion protocol: run `check_ai_audit_closure.py` before the completion lines.
+
 ## Workflow
 
 1. Run the entry gate as the first action:
