@@ -98,8 +98,9 @@ If any input is missing, inconsistent, or points to a missing required file, do 
 - Commit only worker-repo audit artifact changes on `step-<step>-<feature-id>-review`.
 - Do not commit ASDLC repo changes (`implementation_plan.md`, `raised_questions/*`); those are for post_review.
 
-9. Only after the closure gate passes and worker-repo audit changes are committed, end your final response with this exact last line:
+9. Only after the closure gate passes and worker-repo audit changes are committed, end your final response with these exact last two lines:
 `ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+`PHASE_FINISHED_CAN_CLOSE`
 
 ## Rules
 

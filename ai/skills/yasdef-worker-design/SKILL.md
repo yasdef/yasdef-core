@@ -107,4 +107,6 @@ Each decision item must be concrete, action-driving, and contain mutually exclus
 
 ## Completion
 
-Only after the design artifact is updated and `check_design_readiness.py` exits `0`, end your final response with this exact last line: `Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+Only after the design artifact is updated and `check_design_readiness.py` exits `0`, end your final response with these exact last two lines:
+`Design phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+`PHASE_FINISHED_CAN_CLOSE`

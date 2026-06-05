@@ -176,10 +176,12 @@ def emit_context(args: argparse.Namespace, root: Path) -> None:
     print("- Two-phase model: Phase 1 discovery (single pass), then Phase 2 disposition (mechanical loop).")
     print("- Terminal states per finding: follow_up_created | raised_to_coordinator | rejected.")
     print("- Commit boundary: commit worker review_result only; leave ASDLC edits uncommitted for post_review.")
+    print("- Completion lines (exact):")
     print(
-        "- Completion line (exact): ai_audit phase finished. "
-        "Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."
+        "  ai_audit phase finished. Nothing else to do now; "
+        "press Ctrl-C so orchestrator can start the next phase."
     )
+    print("  PHASE_FINISHED_CAN_CLOSE")
     print()
 
     for heading in REQUIRED_SECTION_HEADINGS:

@@ -88,4 +88,6 @@ If any input is missing, inconsistent, or points to a missing required file, do 
 
 ## Completion
 
-Only after code is implemented, ordered bullets and FRs are closed, verification has run, and `check_implementation_readiness.py` exits `0`, end your final response with this exact last line: `Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+Only after code is implemented, ordered bullets and FRs are closed, verification has run, and `check_implementation_readiness.py` exits `0`, end your final response with these exact last two lines:
+`Implementation phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+`PHASE_FINISHED_CAN_CLOSE`
