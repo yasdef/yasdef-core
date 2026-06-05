@@ -554,7 +554,7 @@ test_ai_audit_prompt_requires_entry_proof_gate() {
   assert_contains "$prompt" 'Before ending the ai_audit phase, ensure all bullets in the current step section of `.asdlc_worker/overmind/implementation_plan.md` are checklist bullets and marked `[x]`, then run `.asdlc_worker/scripts/helpers/check_ai_audit_disposition_readiness.sh 1.1 feature-one`.'
   assert_contains "$prompt" 'If that readiness check fails, keep iterating Section 6: finish dispositions and/or close remaining current-step bullets in `.asdlc_worker/overmind/implementation_plan.md`, then rerun the helper.'
   assert_contains "$prompt" 'Extended completion-line gate: output the ai_audit completion line only after all current-step bullets are `[x]` in `.asdlc_worker/overmind/implementation_plan.md`, the readiness helper passes, and the commit gate is satisfied (clean working tree).'
-  assert_contains "$prompt" 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with this exact last line: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase."'
+  assert_contains "$prompt" 'Only after the commit gate, current-step bullet closure, and readiness helper pass, end your final response with these exact last two lines: "ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase." and "PHASE_FINISHED_CAN_CLOSE"'
   assert_contains "$prompt" "== Target bullets (from .asdlc_worker/overmind/implementation_plan.md) =="
   assert_contains "$prompt" "- Implement part A (SP=2)"
   assert_contains "$prompt" "- Implement part B (SP=1)"

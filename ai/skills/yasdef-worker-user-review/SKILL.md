@@ -67,4 +67,6 @@ If any input is missing, inconsistent, or points to a missing required file, do 
 
 7. Repeat step 6 until the user explicitly confirms review completion.
 
-8. Only after the user confirms completion, run one final verification command for the step. Prefer the full `AGENTS.md` verification gate. Report the result. After final `AGENTS.md` verification passes, end your final response with this exact last line: `User review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+8. Only after the user confirms completion, run one final verification command for the step. Prefer the full `AGENTS.md` verification gate. Report the result. After final `AGENTS.md` verification passes, end your final response with these exact last two lines:
+`User review phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+`PHASE_FINISHED_CAN_CLOSE`

@@ -153,4 +153,6 @@ Only after all of the following are true:
 - the runtime implementation plan lives in the bound ASDLC repo, not the worker repo; commit that file directly on its current branch without creating a new branch — the orchestrator handles pushing that commit
 - planning artifacts are committed in the worker repo on the planning branch: include both the step plan and the design artifact; do not commit the step plan alone
 
-End your final response with this exact last line: `Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+End your final response with these exact last two lines:
+`Planning phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+`PHASE_FINISHED_CAN_CLOSE`

@@ -22,6 +22,15 @@ The orchestrator prompt should provide:
 
 If any input is missing, inconsistent, or points to a missing required file, do not infer it from `.asdlc_worker/feature_meta_sync.yaml` or the runtime environment. Stop and ask the user for explicit instructions.
 
+## Phase Contract
+
+- Analysis-only: do not modify runtime code and do not run tests.
+- Audit question: for this step, are all target bullets proven by the current patch; if not, identify the concrete gaps that remain.
+- Two-phase model: Phase 1 discovery is a single pass; Phase 2 disposition is a mechanical loop over all findings.
+- Terminal states per finding: `follow_up_created`, `raised_to_coordinator`, or `rejected`.
+- Commit boundary: commit worker review-result changes only; leave ASDLC edits uncommitted for `post_review`.
+- Completion protocol: run `check_ai_audit_closure.py` before the completion lines.
+
 ## Workflow
 
 1. Run the entry gate as the first action:
@@ -98,8 +107,9 @@ If any input is missing, inconsistent, or points to a missing required file, do 
 - Commit only worker-repo audit artifact changes on `step-<step>-<feature-id>-review`.
 - Do not commit ASDLC repo changes (`implementation_plan.md`, `raised_questions/*`); those are for post_review.
 
-9. Only after the closure gate passes and worker-repo audit changes are committed, end your final response with this exact last line:
+9. Only after the closure gate passes and worker-repo audit changes are committed, end your final response with these exact last two lines:
 `ai_audit phase finished. Nothing else to do now; press Ctrl-C so orchestrator can start the next phase.`
+`PHASE_FINISHED_CAN_CLOSE`
 
 ## Rules
 
