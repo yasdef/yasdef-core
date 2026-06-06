@@ -9,9 +9,9 @@
 #            Extras pass through verbatim — operator may add e.g. `--allowed-tools`
 #            to skip approval prompts for specific tools.
 #            Example: ai_audit | claude | claude-opus-4-7 | |
+#   echo   - test/local harness runner, invoked as: echo -m <model> <extras...> "<prompt>"
 #
-# Any other Command value falls back to the codex argv shape (test fixtures rely on this
-# to substitute `echo` or a path to a fake model script).
+# Any other Command value is rejected by the Python orchestrator.
 
 # design | claude | claude-sonnet-4-6 | | 
 # planning | claude | claude-opus-4-7 | | 
@@ -24,6 +24,5 @@ planning | codex | gpt-5.5 | --config | model_reasoning_effort='high'
 implementation | codex | gpt-5.4 | --config | model_reasoning_effort='high'
 user_review | codex | gpt-5.4 | --config | model_reasoning_effort='high'
 ai_audit |  codex | gpt-5.4 | --config | model_reasoning_effort='high'
-
 
 
