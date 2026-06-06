@@ -10,6 +10,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "hypothesis>=6.0",
     "mypy>=1.10",
     "pytest>=8.0",
     "ruff>=0.6",
@@ -30,6 +31,10 @@ testpaths = ["tests/unit"]
 [tool.mypy]
 python_version = "3.11"
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "yasdef_orchestrator.domain.*"
+strict = true
 
 [tool.ruff]
 line-length = 100
