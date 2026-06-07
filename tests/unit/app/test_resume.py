@@ -4,11 +4,11 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from yasdef_orchestrator.app.resume import analyze_resume, step_gate_counts
-from yasdef_orchestrator.domain.phase_types import PhaseStatus
-from yasdef_orchestrator.domain.plans.implementation_plan import ImplementationPlan
-from yasdef_orchestrator.infra.git_repo import GitRepo
-from yasdef_orchestrator.infra.layout import RuntimeLayout
+from yasdef_worker.app.resume import analyze_resume, step_gate_counts
+from yasdef_worker.domain.phase_types import PhaseStatus
+from yasdef_worker.domain.plans.implementation_plan import ImplementationPlan
+from yasdef_worker.infra.git_repo import GitRepo
+from yasdef_worker.infra.layout import RuntimeLayout
 
 
 @dataclass(frozen=True, slots=True)

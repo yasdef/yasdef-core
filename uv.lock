@@ -369,7 +369,7 @@ wheels = [
 ]
 
 [[package]]
-name = "yasdef-orchestrator"
+name = "yasdef-worker"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

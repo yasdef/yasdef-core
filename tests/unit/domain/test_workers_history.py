@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from yasdef_orchestrator.domain.history.records import HistoryRecord, Metrics
-from yasdef_orchestrator.domain.history.token_usage import TokenUsage, extract_token_usage_line
-from yasdef_orchestrator.domain.workers_registry import (
+from yasdef_worker.domain.history.records import HistoryRecord, Metrics
+from yasdef_worker.domain.history.token_usage import TokenUsage, extract_token_usage_line
+from yasdef_worker.domain.workers_registry import (
     WorkersRegistryError,
     find_worker_matches,
     resolve_single_worker_match,

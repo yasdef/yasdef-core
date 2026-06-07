@@ -4,9 +4,9 @@ import io
 
 import pytest
 
-from yasdef_orchestrator.infra.errors import YasdefError
-from yasdef_orchestrator.infra.prompts import Prompter
-from yasdef_orchestrator.infra.user_output import RecordingUserOutput, TerminalUserOutput
+from yasdef_worker.infra.errors import YasdefError
+from yasdef_worker.infra.prompts import Prompter
+from yasdef_worker.infra.user_output import RecordingUserOutput, TerminalUserOutput
 
 
 def test_prompter_confirm_uses_default_when_non_interactive() -> None:
@@ -46,4 +46,4 @@ def test_terminal_user_output_writes_to_stream() -> None:
 
     output.step("selected feature")
 
-    assert stream.getvalue() == "orchestrator: selected feature\n"
+    assert stream.getvalue() == "yasdef: selected feature\n"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from yasdef_orchestrator.infra.yaml_io import dump_yaml, is_valid_uuid, read_yaml_file, write_yaml_file
+from yasdef_worker.infra.yaml_io import dump_yaml, is_valid_uuid, read_yaml_file, write_yaml_file
 
 
 def test_yaml_round_trip_preserves_mapping_order(tmp_path: Path) -> None:

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from yasdef_orchestrator.app.history_writer import HistoryWriter
-from yasdef_orchestrator.app.metrics_collector import MetricsCollector
-from yasdef_orchestrator.app.post_review import (
+from yasdef_worker.app.history_writer import HistoryWriter
+from yasdef_worker.app.metrics_collector import MetricsCollector
+from yasdef_worker.app.post_review import (
     HistoryTokenUsageSource,
     LogTokenUsageSource,
     PlanSyncOperation,
@@ -16,11 +16,11 @@ from yasdef_orchestrator.app.post_review import (
     SyncResult,
     TokenUsageResolver,
 )
-from yasdef_orchestrator.domain.history.token_usage import TokenUsage
-from yasdef_orchestrator.infra.errors import GitOperationFailed, YasdefError
-from yasdef_orchestrator.infra.git_repo import GitRepo
-from yasdef_orchestrator.infra.layout import RuntimeLayout
-from yasdef_orchestrator.infra.user_output import RecordingUserOutput
+from yasdef_worker.domain.history.token_usage import TokenUsage
+from yasdef_worker.infra.errors import GitOperationFailed, YasdefError
+from yasdef_worker.infra.git_repo import GitRepo
+from yasdef_worker.infra.layout import RuntimeLayout
+from yasdef_worker.infra.user_output import RecordingUserOutput
 
 
 def test_plan_sync_operation_retries_failed_step_and_finishes() -> None:

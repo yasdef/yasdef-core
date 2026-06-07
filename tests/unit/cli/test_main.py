@@ -6,13 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from yasdef_orchestrator.cli import init as init_cmd
-from yasdef_orchestrator.cli import post_review as post_review_cmd
-from yasdef_orchestrator.cli import run as run_cmd
-from yasdef_orchestrator.cli import uninstall as uninstall_cmd
-from yasdef_orchestrator.domain.history.token_usage import TokenUsage
+from yasdef_worker.cli import init as init_cmd
+from yasdef_worker.cli import post_review as post_review_cmd
+from yasdef_worker.cli import run as run_cmd
+from yasdef_worker.cli import uninstall as uninstall_cmd
+from yasdef_worker.domain.history.token_usage import TokenUsage
 
-cli_main = importlib.import_module("yasdef_orchestrator.cli.main")
+cli_main = importlib.import_module("yasdef_worker.cli.main")
 
 
 def test_root_help_lists_subcommands() -> None:
@@ -36,7 +36,7 @@ def test_subcommand_help_exits_cleanly(command: str) -> None:
 def test_run_command_builds_orchestrator_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 
-    class FakeOrchestrator:
+    class FakeCoordinator:
         def __init__(self, **kwargs: object):
             seen["init"] = kwargs
 
@@ -44,7 +44,7 @@ def test_run_command_builds_orchestrator_options(monkeypatch: pytest.MonkeyPatch
             seen["options"] = options
             return SimpleNamespace(succeeded=True)
 
-    monkeypatch.setattr(run_cmd, "Orchestrator", FakeOrchestrator)
+    monkeypatch.setattr(run_cmd, "Coordinator", FakeCoordinator)
 
     assert (
         cli_main.main(
@@ -202,12 +202,12 @@ def test_uninstall_yes_skips_confirmation(monkeypatch: pytest.MonkeyPatch) -> No
         seen["check"] = check
         return object()
 
-    monkeypatch.setattr(uninstall_cmd, "_detect_uninstall_argv", lambda: ["uv", "tool", "uninstall", "yasdef-orchestrator"])
+    monkeypatch.setattr(uninstall_cmd, "_detect_uninstall_argv", lambda: ["uv", "tool", "uninstall", "yasdef-worker"])
     monkeypatch.setattr(uninstall_cmd, "prompter", lambda: FailingPrompter())
     monkeypatch.setattr(uninstall_cmd.subprocess, "run", fake_run)
 
     assert cli_main.main(["uninstall", "--yes"]) == 0
-    assert seen == {"argv": ["uv", "tool", "uninstall", "yasdef-orchestrator"], "check": True}
+    assert seen == {"argv": ["uv", "tool", "uninstall", "yasdef-worker"], "check": True}
 
 
 def test_uninstall_prompts_and_runs_when_confirmed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -224,14 +224,14 @@ def test_uninstall_prompts_and_runs_when_confirmed(monkeypatch: pytest.MonkeyPat
         seen["check"] = check
         return object()
 
-    monkeypatch.setattr(uninstall_cmd, "_detect_uninstall_argv", lambda: ["pipx", "uninstall", "yasdef-orchestrator"])
+    monkeypatch.setattr(uninstall_cmd, "_detect_uninstall_argv", lambda: ["pipx", "uninstall", "yasdef-worker"])
     monkeypatch.setattr(uninstall_cmd, "prompter", lambda: ConfirmingPrompter())
     monkeypatch.setattr(uninstall_cmd.subprocess, "run", fake_run)
 
     assert cli_main.main(["uninstall"]) == 0
     assert seen["default"] is False
-    assert "pipx uninstall yasdef-orchestrator" in str(seen["prompt"])
-    assert seen["argv"] == ["pipx", "uninstall", "yasdef-orchestrator"]
+    assert "pipx uninstall yasdef-worker" in str(seen["prompt"])
+    assert seen["argv"] == ["pipx", "uninstall", "yasdef-worker"]
     assert seen["check"] is True
 
 
@@ -247,7 +247,7 @@ def test_uninstall_cancel_returns_error_without_running(monkeypatch: pytest.Monk
     def fake_run(argv: list[str], *, check: bool) -> object:
         raise AssertionError("uninstall command should not run")
 
-    monkeypatch.setattr(uninstall_cmd, "_detect_uninstall_argv", lambda: ["uv", "tool", "uninstall", "yasdef-orchestrator"])
+    monkeypatch.setattr(uninstall_cmd, "_detect_uninstall_argv", lambda: ["uv", "tool", "uninstall", "yasdef-worker"])
     monkeypatch.setattr(uninstall_cmd, "prompter", lambda: DenyingPrompter())
     monkeypatch.setattr(uninstall_cmd.subprocess, "run", fake_run)
 

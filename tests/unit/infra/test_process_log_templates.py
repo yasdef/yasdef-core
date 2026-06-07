@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from yasdef_orchestrator.infra.layout import RuntimeLayout
-from yasdef_orchestrator.infra.log_capture import LogCapture
-from yasdef_orchestrator.infra.process import PHASE_CLOSE_MARKER, ProcessRunner
-from yasdef_orchestrator.infra.templates import TemplateLoader
+from yasdef_worker.infra.layout import RuntimeLayout
+from yasdef_worker.infra.log_capture import LogCapture
+from yasdef_worker.infra.process import PHASE_CLOSE_MARKER, ProcessRunner
+from yasdef_worker.infra.templates import TemplateLoader
 
 
 def test_process_runner_writes_log_and_output(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from yasdef_orchestrator.infra.files import ensure_dir_writable, ensure_file_writable_if_missing
+from yasdef_worker.infra.files import ensure_dir_writable, ensure_file_writable_if_missing
 
 
 def test_ensure_dir_writable_creates_parent(tmp_path: Path) -> None:

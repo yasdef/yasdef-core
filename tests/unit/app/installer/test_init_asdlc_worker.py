@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from yasdef_orchestrator.app.init_asdlc_worker import (
+from yasdef_worker.app.init_asdlc_worker import (
     INIT_BRANCH,
     InstallEntry,
     Installer,
@@ -13,9 +13,9 @@ from yasdef_orchestrator.app.init_asdlc_worker import (
     default_exclude_entries,
     default_install_entries,
 )
-from yasdef_orchestrator.infra.errors import InstallSafetyError, YasdefError
-from yasdef_orchestrator.infra.user_output import RecordingUserOutput
-from yasdef_orchestrator.infra.yaml_io import read_yaml_file
+from yasdef_worker.infra.errors import InstallSafetyError, YasdefError
+from yasdef_worker.infra.user_output import RecordingUserOutput
+from yasdef_worker.infra.yaml_io import read_yaml_file
 
 
 def test_installer_writes_allowed_file_and_manifest(tmp_path: Path) -> None:
@@ -259,7 +259,7 @@ def test_default_install_entries_reads_package_data(
     (command / "design.md").write_text("/design\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "yasdef_orchestrator.app.init_asdlc_worker.resources.files",
+        "yasdef_worker.app.init_asdlc_worker.resources.files",
         lambda package: package_root,
     )
 
@@ -287,7 +287,7 @@ def test_default_install_entries_refuses_symlinked_package_data(
     (data_root / "setup" / "models.md").symlink_to(source)
 
     monkeypatch.setattr(
-        "yasdef_orchestrator.app.init_asdlc_worker.resources.files",
+        "yasdef_worker.app.init_asdlc_worker.resources.files",
         lambda package: package_root,
     )
 

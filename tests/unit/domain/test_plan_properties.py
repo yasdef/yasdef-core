@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from yasdef_orchestrator.domain.plans.implementation_plan import ImplementationPlan
-from yasdef_orchestrator.domain.plans.step_sorting import sort_key
+from yasdef_worker.domain.plans.implementation_plan import ImplementationPlan
+from yasdef_worker.domain.plans.step_sorting import sort_key
 
 hypothesis = pytest.importorskip("hypothesis")
 st = pytest.importorskip("hypothesis.strategies")

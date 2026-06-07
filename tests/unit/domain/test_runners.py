@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from yasdef_orchestrator.domain.runners import (
+from yasdef_worker.domain.runners import (
     ClaudeRunner,
     CodexRunner,
     EchoRunner,

@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from yasdef_orchestrator.app.branch_manager import BranchManager
-from yasdef_orchestrator.infra.errors import PhasePreconditionError
-from yasdef_orchestrator.infra.git_repo import GitRepo
-from yasdef_orchestrator.infra.user_output import RecordingUserOutput
+from yasdef_worker.app.branch_manager import BranchManager
+from yasdef_worker.infra.errors import PhasePreconditionError
+from yasdef_worker.infra.git_repo import GitRepo
+from yasdef_worker.infra.user_output import RecordingUserOutput
 
 
 def test_branch_manager_walks_phase_sources(tmp_path: Path) -> None:
