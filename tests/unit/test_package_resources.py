@@ -4,7 +4,7 @@ from importlib import resources
 
 
 def test_packaged_resource_roots_are_readable() -> None:
-    package_root = resources.files("yasdef_orchestrator")
+    package_root = resources.files("yasdef_worker")
 
     for rel in (
         "_data/skills/yasdef-worker-design/SKILL.md",

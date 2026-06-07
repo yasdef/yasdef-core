@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from yasdef_orchestrator.app.phases import (
+from yasdef_worker.app.phases import (
     ModelConfigRunnerFactory,
     Phase,
     PhaseContext,
@@ -14,15 +14,15 @@ from yasdef_orchestrator.app.phases import (
     normalize_phase_token,
     normalize_step_token,
 )
-from yasdef_orchestrator.domain.phase_types import PhaseResult, PhaseStatus
-from yasdef_orchestrator.domain.runners import EchoRunner
-from yasdef_orchestrator.infra.git_repo import GitRepo
-from yasdef_orchestrator.infra.layout import RuntimeLayout
-from yasdef_orchestrator.infra.log_capture import LogCapture
-from yasdef_orchestrator.infra.process import ProcessRunner
-from yasdef_orchestrator.infra.prompts import Prompter
-from yasdef_orchestrator.infra.templates import TemplateLoader
-from yasdef_orchestrator.infra.user_output import RecordingUserOutput
+from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
+from yasdef_worker.domain.runners import EchoRunner
+from yasdef_worker.infra.git_repo import GitRepo
+from yasdef_worker.infra.layout import RuntimeLayout
+from yasdef_worker.infra.log_capture import LogCapture
+from yasdef_worker.infra.process import ProcessRunner
+from yasdef_worker.infra.prompts import Prompter
+from yasdef_worker.infra.templates import TemplateLoader
+from yasdef_worker.infra.user_output import RecordingUserOutput
 
 
 @dataclass(frozen=True, slots=True)

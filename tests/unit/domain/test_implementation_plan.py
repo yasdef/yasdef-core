@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from yasdef_orchestrator.domain.plans.feature_selector import (
+from yasdef_worker.domain.plans.feature_selector import (
     analyze_for_worker,
     plan_has_assigned_step_for_worker,
 )
-from yasdef_orchestrator.domain.plans.implementation_plan import (
+from yasdef_worker.domain.plans.implementation_plan import (
     ImplementationPlan,
     ImplementationPlanError,
     array_contains_ci,

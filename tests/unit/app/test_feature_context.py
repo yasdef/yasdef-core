@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from yasdef_orchestrator.app.feature_context import FeatureContextBuilder
-from yasdef_orchestrator.infra.errors import YasdefError
-from yasdef_orchestrator.infra.git_repo import GitRepo
-from yasdef_orchestrator.infra.layout import RuntimeLayout
-from yasdef_orchestrator.infra.prompts import Prompter
-from yasdef_orchestrator.infra.user_output import RecordingUserOutput
-from yasdef_orchestrator.infra.yaml_io import read_yaml_file
+from yasdef_worker.app.feature_context import FeatureContextBuilder
+from yasdef_worker.infra.errors import YasdefError
+from yasdef_worker.infra.git_repo import GitRepo
+from yasdef_worker.infra.layout import RuntimeLayout
+from yasdef_worker.infra.prompts import Prompter
+from yasdef_worker.infra.user_output import RecordingUserOutput
+from yasdef_worker.infra.yaml_io import read_yaml_file
 
 WORKER_UUID = "worker-alpha-01"
 

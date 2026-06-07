@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from yasdef_orchestrator.infra.errors import GitOperationFailed
-from yasdef_orchestrator.infra.git_repo import GitRepo
+from yasdef_worker.infra.errors import GitOperationFailed
+from yasdef_worker.infra.git_repo import GitRepo
 
 
 def init_repo(path: Path) -> GitRepo:

@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import pytest
 
-from yasdef_orchestrator.domain.branches import (
+from yasdef_worker.domain.branches import (
     ai_audit_branch_spec,
     get_step_from_branch_name,
     step_branch_name,
     user_review_branch_spec,
 )
-from yasdef_orchestrator.domain.models_config import (
+from yasdef_worker.domain.models_config import (
     ModelsConfigError,
     list_phases,
     load_model_config,
     parse_models_config,
 )
-from yasdef_orchestrator.domain.phase_types import PhaseResult, PhaseStatus
+from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
 
 
 def test_step_branch_names_and_specs() -> None:

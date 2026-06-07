@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from yasdef_orchestrator.infra.errors import YasdefError
-from yasdef_orchestrator.infra.layout import RuntimeLayout
+from yasdef_worker.infra.errors import YasdefError
+from yasdef_worker.infra.layout import RuntimeLayout
 
 
 def test_runtime_layout_from_root_populates_expected_paths(tmp_path: Path) -> None:
