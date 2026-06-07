@@ -3,7 +3,10 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from yasdef_orchestrator.app.orchestrator import Orchestrator, RunOptions
+from yasdef_orchestrator.infra.errors import YasdefError
 from yasdef_orchestrator.infra.git_repo import GitRepo
 from yasdef_orchestrator.infra.layout import RuntimeLayout
 from yasdef_orchestrator.infra.process import ProcessRunner
@@ -19,6 +22,7 @@ def test_orchestrator_builds_feature_context_and_runs_pipeline(tmp_path: Path) -
     source = tmp_path / "source"
     _seed_source(source)
     _seed_worker(layout, source)
+    repo.add(".asdlc_worker", ".codex")
     repo.commit("seed worker", paths=[".asdlc_worker", ".codex"])
 
     result = Orchestrator(
@@ -32,6 +36,42 @@ def test_orchestrator_builds_feature_context_and_runs_pipeline(tmp_path: Path) -
     assert result.succeeded is True
     assert repo.current_branch() == "step-1.1-feature-a-plan"
     assert layout.feature_sync_file.is_file()
+
+
+def test_orchestrator_rejects_design_run_from_non_mainline_branch(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "worker")
+    repo.checkout_new("feature")
+    layout = RuntimeLayout.from_root(repo.root)
+
+    with pytest.raises(YasdefError, match="must start from main or master"):
+        Orchestrator(
+            layout=layout,
+            git=repo,
+            prompts=Prompter(interactive=False),
+            process=ProcessRunner(),
+            output=RecordingUserOutput(),
+        ).run(RunOptions(phases=("design",)))
+
+
+def test_orchestrator_allows_non_design_run_from_non_mainline_branch(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "worker")
+    repo.checkout_new("feature")
+    layout = RuntimeLayout.from_root(repo.root)
+    source = tmp_path / "source"
+    _seed_source(source)
+    _seed_worker(layout, source)
+    repo.add(".asdlc_worker", ".codex")
+    repo.commit("seed worker", paths=[".asdlc_worker", ".codex"])
+
+    result = Orchestrator(
+        layout=layout,
+        git=repo,
+        prompts=Prompter(interactive=False),
+        process=ProcessRunner(),
+        output=RecordingUserOutput(),
+    ).run(RunOptions(phases=("planning",)))
+
+    assert result.succeeded is True
 
 
 def _seed_source(source: Path) -> None:
@@ -70,7 +110,10 @@ def _seed_worker(layout: RuntimeLayout, source: Path) -> None:
         encoding="utf-8",
     )
     layout.models_file.parent.mkdir(parents=True, exist_ok=True)
-    layout.models_file.write_text("design | echo | mock-model\n", encoding="utf-8")
+    layout.models_file.write_text(
+        "design | echo | mock-model\nplanning | echo | mock-model\n",
+        encoding="utf-8",
+    )
     layout.step_designs_dir.mkdir(parents=True, exist_ok=True)
     (layout.step_designs_dir / "step-1.1-feature-a-design.md").write_text(
         "# Feature Design: 1.1 - Demo\n",
@@ -83,6 +126,14 @@ def _seed_worker(layout: RuntimeLayout, source: Path) -> None:
         / "yasdef-worker-design"
         / "scripts"
         / "check_design_readiness.py"
+    )
+    _write_script(
+        layout.worker_repo_root
+        / ".codex"
+        / "skills"
+        / "yasdef-worker-plan"
+        / "scripts"
+        / "check_planning_readiness.py"
     )
 
 
@@ -104,5 +155,6 @@ def _init_repo(path: Path) -> GitRepo:
         },
     )
     (path / "README.md").write_text("hello\n", encoding="utf-8")
+    repo.add("README.md")
     repo.commit("initial", paths=["README.md"])
     return repo

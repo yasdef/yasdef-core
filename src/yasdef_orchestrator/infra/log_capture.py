@@ -18,9 +18,9 @@ class LogCapture:
         self.project = project or layout.worker_repo_root.name
 
     def path_for(self, phase: str, step: str | None = None) -> Path:
-        phase_token = _normalize_token(phase)
+        phase_token = normalize_log_token(phase)
         if self.debug:
-            step_token = _normalize_token(step or "unknown-step")
+            step_token = normalize_log_token(step or "unknown-step")
             return self.layout.logs_dir / f"{self.project}-{phase_token}-{step_token}-log"
         return self.layout.logs_dir / f"{self.project}-{phase_token}-latest-log"
 
@@ -31,7 +31,7 @@ class LogCapture:
         return SENTINEL_MARKER in content
 
 
-def _normalize_token(value: str) -> str:
+def normalize_log_token(value: str) -> str:
     token = value.strip().lower().replace("-", "_")
     token = re.sub(r"[^a-z0-9_.]+", "_", token)
     token = re.sub(r"_+", "_", token).strip("_")

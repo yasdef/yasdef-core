@@ -86,13 +86,34 @@ class GitRepo:
     def checkout_new(self, name: str) -> None:
         self._run(["checkout", "-b", name], op="checkout")
 
-    def add(self, *paths: str) -> None:
-        self._run(["add", *paths], op="add")
+    def add(self, *paths: str, force: bool = False) -> None:
+        argv = ["add"]
+        if force:
+            argv.append("-f")
+        argv.extend(paths)
+        self._run(argv, op="add")
 
     def commit(self, message: str, *, paths: list[str] | None = None) -> None:
         if paths:
-            self.add(*paths)
+            self._run(["commit", "-m", message, "--", *paths], op="commit")
+            return
         self._run(["commit", "-m", message], op="commit")
+
+    def has_staged_changes(self, *, paths: list[str] | None = None) -> bool:
+        argv = ["diff", "--cached", "--quiet"]
+        if paths:
+            argv.extend(["--", *paths])
+        result = self._run(argv, check=False)
+        if result.returncode == 0:
+            return False
+        if result.returncode == 1:
+            return True
+        raise GitOperationFailed(
+            "diff --cached --quiet",
+            ["git", "-C", str(self.root), *argv],
+            result.returncode,
+            result.stderr.strip(),
+        )
 
     def push(self) -> None:
         self._run(["push"], op="push")

@@ -18,10 +18,12 @@ def test_branch_manager_walks_phase_sources(tmp_path: Path) -> None:
     plan = manager.ensure_plan_branch(step="1.2a", feature_id="feature-demo")
     implementation = manager.ensure_implementation_branch(step="1.2a", feature_id="feature-demo")
     (tmp_path / "implementation.txt").write_text("done\n", encoding="utf-8")
+    repo.add("implementation.txt")
     repo.commit("implementation", paths=["implementation.txt"])
 
     user_review = manager.ensure_user_review_branch(step="1.2a", feature_id="feature-demo")
     (tmp_path / "review.txt").write_text("reviewed\n", encoding="utf-8")
+    repo.add("review.txt")
     repo.commit("review", paths=["review.txt"])
 
     ai_audit = manager.ensure_ai_audit_branch(step="1.2a", feature_id="feature-demo")
@@ -66,5 +68,6 @@ def _init_repo(path: Path) -> GitRepo:
         },
     )
     (path / "README.md").write_text("hello\n", encoding="utf-8")
+    repo.add("README.md")
     repo.commit("initial", paths=["README.md"])
     return repo
