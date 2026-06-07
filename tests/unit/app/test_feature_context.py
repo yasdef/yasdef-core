@@ -99,6 +99,28 @@ def test_feature_context_prompts_when_multiple_candidates_exist(tmp_path: Path) 
     assert state.step == "2.1"
 
 
+def test_feature_context_resume_step_filters_candidate_features(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "worker")
+    layout = RuntimeLayout.from_root(repo.root)
+    source = tmp_path / "source"
+    _write_project(source)
+    _write_feature(source, "feature-a", step="1.1")
+    _write_feature(source, "feature-b", step="2.1")
+    _write_binding(layout, source)
+
+    state = FeatureContextBuilder(
+        layout=layout,
+        git=repo,
+        prompts=Prompter(interactive=False),
+        output=RecordingUserOutput(),
+        resume_step="2.1",
+    ).build()
+
+    assert state.selection_mode == "auto_single"
+    assert state.feature_id == "feature-b"
+    assert state.step == "2.1"
+
+
 def test_feature_context_marks_current_feature_first_in_prompt(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "worker")
     layout = RuntimeLayout.from_root(repo.root)
@@ -275,6 +297,7 @@ def _init_repo(path: Path) -> GitRepo:
         },
     )
     (path / "README.md").write_text("hello\n", encoding="utf-8")
+    repo.add("README.md")
     repo.commit("initial", paths=["README.md"])
     return repo
 

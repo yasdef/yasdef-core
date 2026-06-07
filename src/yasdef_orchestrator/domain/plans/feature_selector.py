@@ -8,7 +8,7 @@ from .implementation_plan import ImplementationPlan, ImplementationPlanError, Pl
 @dataclass(frozen=True, slots=True)
 class FeatureAnalysis:
     assigned_any: bool
-    requested_match: bool
+    target_match: bool
     first_unchecked: str | None
     blocked_by: str | None
 
@@ -16,12 +16,12 @@ class FeatureAnalysis:
 def analyze_for_worker(
     plan: ImplementationPlan,
     worker_uuid: str,
-    requested_step: str | None = None,
+    target_step: str | None = None,
 ) -> FeatureAnalysis:
     assigned_steps = plan.steps_assigned_to(worker_uuid)
     assigned_any = bool(assigned_steps)
-    requested_match = requested_step is not None and any(
-        step.number == requested_step for step in assigned_steps
+    target_match = target_step is not None and any(
+        step.number == target_step for step in assigned_steps
     )
     blocked_by: str | None = None
 
@@ -31,11 +31,11 @@ def analyze_for_worker(
 
         blocking_step = _first_incomplete_dependency(plan, step)
         if blocking_step is None:
-            return FeatureAnalysis(assigned_any, requested_match, step.number, blocked_by)
+            return FeatureAnalysis(assigned_any, target_match, step.number, blocked_by)
         if blocked_by is None:
             blocked_by = blocking_step
 
-    return FeatureAnalysis(assigned_any, requested_match, None, blocked_by)
+    return FeatureAnalysis(assigned_any, target_match, None, blocked_by)
 
 
 def plan_has_assigned_step_for_worker(

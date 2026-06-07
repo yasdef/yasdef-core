@@ -89,5 +89,6 @@ def _init_repo(path: Path) -> GitRepo:
         },
     )
     (path / "README.md").write_text("hello\n", encoding="utf-8")
+    repo.add("README.md")
     repo.commit("initial", paths=["README.md"])
     return repo

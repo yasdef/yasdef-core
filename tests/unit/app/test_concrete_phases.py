@@ -34,6 +34,7 @@ def test_concrete_phases_run_once_with_echo_runner_and_expected_branches(tmp_pat
     repo = _init_repo(tmp_path)
     layout = RuntimeLayout.from_root(tmp_path)
     _seed_runtime(layout)
+    repo.add(".asdlc_worker", ".codex")
     repo.commit("seed runtime", paths=[".asdlc_worker", ".codex"])
 
     output = io.StringIO()
@@ -61,11 +62,13 @@ def test_concrete_phases_run_once_with_echo_runner_and_expected_branches(tmp_pat
     assert ImplementationPhase(ctx).execute().is_complete
     assert repo.current_branch() == "step-1.2a-feature-demo-implementation"
     (tmp_path / "implementation.txt").write_text("done\n", encoding="utf-8")
+    repo.add("implementation.txt")
     repo.commit("implementation", paths=["implementation.txt"])
 
     assert UserReviewPhase(ctx).execute().is_complete
     assert repo.current_branch() == "step-1.2a-feature-demo-user-review"
     (tmp_path / "review.txt").write_text("reviewed\n", encoding="utf-8")
+    repo.add("review.txt")
     repo.commit("review", paths=["review.txt"])
 
     assert AiAuditPhase(ctx).execute().is_complete
@@ -81,6 +84,7 @@ def test_planning_phase_returns_incomplete_when_ledgers_have_entries(tmp_path: P
         "- Need user answer.\n",
         encoding="utf-8",
     )
+    repo.add(".asdlc_worker", ".codex")
     repo.commit("seed runtime", paths=[".asdlc_worker", ".codex"])
 
     result = PlanningPhase(ctx).execute()
@@ -205,5 +209,6 @@ def _init_repo(path: Path) -> GitRepo:
         },
     )
     (path / "README.md").write_text("hello\n", encoding="utf-8")
+    repo.add("README.md")
     repo.commit("initial", paths=["README.md"])
     return repo

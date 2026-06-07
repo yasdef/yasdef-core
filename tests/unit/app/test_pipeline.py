@@ -28,6 +28,7 @@ def test_pipeline_runs_concrete_echo_phases_in_order(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     layout = RuntimeLayout.from_root(tmp_path)
     _seed_runtime(layout)
+    repo.add(".asdlc_worker", ".codex")
     repo.commit("seed runtime", paths=[".asdlc_worker", ".codex"])
     ctx = _ctx(layout, repo, Prompter(interactive=False), io.StringIO())
 
@@ -82,6 +83,7 @@ def test_pipeline_stops_when_user_denies_implementation_after_planning(tmp_path:
     repo = _init_repo(tmp_path)
     layout = RuntimeLayout.from_root(tmp_path)
     _seed_runtime(layout)
+    repo.add(".asdlc_worker", ".codex")
     repo.commit("seed runtime", paths=[".asdlc_worker", ".codex"])
     ctx = _ctx(
         layout,
@@ -107,6 +109,7 @@ def test_pipeline_stops_on_explicit_phase_check_failure(tmp_path: Path) -> None:
         "- Blocked.\n",
         encoding="utf-8",
     )
+    repo.add(".asdlc_worker", ".codex")
     repo.commit("seed runtime", paths=[".asdlc_worker", ".codex"])
     ctx = _ctx(layout, repo, Prompter(interactive=False), io.StringIO())
 
@@ -122,6 +125,7 @@ def test_pipeline_converts_phase_precondition_error_to_stopped_result(tmp_path: 
     layout = RuntimeLayout.from_root(tmp_path)
     _seed_runtime(layout)
     (layout.step_plans_dir / "step-1.2a-feature-demo.md").unlink()
+    repo.add(".asdlc_worker", ".codex")
     repo.commit("seed runtime", paths=[".asdlc_worker", ".codex"])
     ctx = _ctx(layout, repo, Prompter(interactive=False), io.StringIO())
 
@@ -137,6 +141,7 @@ def test_pipeline_converts_branch_precondition_error_to_stopped_result(tmp_path:
     repo = _init_repo(tmp_path)
     layout = RuntimeLayout.from_root(tmp_path)
     _seed_runtime(layout)
+    repo.add(".asdlc_worker", ".codex")
     repo.commit("seed runtime", paths=[".asdlc_worker", ".codex"])
     ctx = _ctx(layout, repo, Prompter(interactive=False), io.StringIO())
 
@@ -267,5 +272,6 @@ def _init_repo(path: Path) -> GitRepo:
         },
     )
     (path / "README.md").write_text("hello\n", encoding="utf-8")
+    repo.add("README.md")
     repo.commit("initial", paths=["README.md"])
     return repo

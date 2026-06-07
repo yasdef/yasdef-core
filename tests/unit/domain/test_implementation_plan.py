@@ -50,9 +50,9 @@ def test_implementation_plan_parses_steps_and_analyzes_first_unchecked() -> None
     assert step.unchecked_count == 1
     assert plan.steps_assigned_to(WORKER)[0].number == "1.1"
 
-    analysis = analyze_for_worker(plan, WORKER, requested_step="1.3")
+    analysis = analyze_for_worker(plan, WORKER, target_step="1.3")
     assert analysis.assigned_any is True
-    assert analysis.requested_match is True
+    assert analysis.target_match is True
     assert analysis.first_unchecked == "1.2"
     assert analysis.blocked_by is None
     assert plan_has_assigned_step_for_worker(plan, WORKER, "1.3") is True

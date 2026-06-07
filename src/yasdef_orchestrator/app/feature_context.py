@@ -64,15 +64,13 @@ class FeatureContextBuilder:
         git: GitRepo,
         prompts: Prompter,
         output: UserOutput,
-        requested_step: str | None = None,
-        resume_mode: bool = False,
+        resume_step: str | None = None,
     ):
         self.layout = layout
         self.git = git
         self.prompts = prompts
         self.output = output
-        self.requested_step = requested_step
-        self.resume_mode = resume_mode
+        self.resume_step = resume_step
         self._built = False
         self._candidate_cache: tuple[_Candidate, ...] = ()
 
@@ -83,7 +81,7 @@ class FeatureContextBuilder:
 
         binding = self._load_binding()
         reused = self._try_fast_path(binding)
-        if reused is not None and (self.resume_mode or not self.prompts.interactive):
+        if reused is not None and (self.resume_step is not None or not self.prompts.interactive):
             self._write_meta_sync(reused)
             self.output.step(
                 f"selected feature '{reused.feature_id}' "
@@ -152,8 +150,8 @@ class FeatureContextBuilder:
             return None
 
         plan = ImplementationPlan.parse(source_plan.read_text(encoding="utf-8"), source_name=str(source_plan))
-        if self.requested_step is not None:
-            step = self.requested_step
+        if self.resume_step is not None:
+            step = self.resume_step
             plan_step = plan.step(step)
             if plan_step is None or plan_step.assigned_uuid != binding.worker_uuid:
                 return None
@@ -241,19 +239,19 @@ class FeatureContextBuilder:
                 source_plan.read_text(encoding="utf-8"),
                 source_name=str(source_plan),
             )
-            analysis = analyze_for_worker(plan, binding.worker_uuid, self.requested_step)
+            analysis = analyze_for_worker(plan, binding.worker_uuid, self.resume_step)
             assigned_any = assigned_any or analysis.assigned_any
             if analysis.blocked_by is not None and blocked_by is None:
                 blocked_by = analysis.blocked_by
-            if self.requested_step is not None:
-                if analysis.requested_match:
+            if self.resume_step is not None:
+                if analysis.target_match:
                     candidates.append(
                         _Candidate(
                             feature_path.name,
                             feature_path,
                             source_plan,
                             source_ears,
-                            self.requested_step,
+                            self.resume_step,
                         )
                     )
             elif analysis.first_unchecked is not None:

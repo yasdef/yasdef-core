@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from yasdef_orchestrator.app.feature_context import FeatureContextBuilder
+from yasdef_orchestrator.app.mainline_branch_policy import require_clean_mainline_start
 from yasdef_orchestrator.app.phases import ModelConfigRunnerFactory, PhaseContext
 from yasdef_orchestrator.app.pipeline import DEFAULT_PHASES, Pipeline, PipelineResult
 from yasdef_orchestrator.domain.models_config import list_phases
@@ -17,8 +18,7 @@ from yasdef_orchestrator.infra.user_output import UserOutput
 
 @dataclass(frozen=True, slots=True)
 class RunOptions:
-    requested_step: str | None = None
-    resume: bool = False
+    resume_step: str | None = None
     phases: tuple[str, ...] = ()
     dry_run: bool = False
     debug: bool = False
@@ -41,13 +41,15 @@ class Orchestrator:
         self.output = output
 
     def run(self, options: RunOptions = RunOptions()) -> PipelineResult:
+        phases = options.phases or _configured_phases(self.layout)
+        if phases and phases[0] == "design":
+            require_clean_mainline_start(self.git, operation="yasdef run design")
         feature = FeatureContextBuilder(
             layout=self.layout,
             git=self.git,
             prompts=self.prompts,
             output=self.output,
-            requested_step=options.requested_step,
-            resume_mode=options.resume,
+            resume_step=options.resume_step,
         ).build()
         ctx = PhaseContext(
             layout=self.layout,
@@ -62,7 +64,6 @@ class Orchestrator:
             dry_run=options.dry_run,
             debug=options.debug,
         )
-        phases = options.phases or _configured_phases(self.layout)
         return Pipeline(ctx=ctx).iterate(phases)
 
 

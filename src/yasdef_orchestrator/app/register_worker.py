@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from yasdef_orchestrator.app.mainline_branch_policy import checkout_work_branch
 from yasdef_orchestrator.domain.workers_registry import WorkerMatch, resolve_single_worker_match
 from yasdef_orchestrator.infra.errors import YasdefError
 from yasdef_orchestrator.infra.git_repo import GitRepo
@@ -10,7 +11,7 @@ from yasdef_orchestrator.infra.layout import RuntimeLayout
 from yasdef_orchestrator.infra.user_output import UserOutput
 from yasdef_orchestrator.infra.yaml_io import read_yaml_file, write_yaml_file
 
-RUNTIME_BRANCH = "overmind"
+REGISTER_BRANCH = "register_yasdef_worker_in_coordinator"
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,10 +23,11 @@ class RegisterWorkerInput:
 @dataclass(frozen=True, slots=True)
 class RegisterWorkerResult:
     binding_file: Path
-    runtime_branch: str
+    register_branch: str
     project_id: str
     worker_uuid: str
     worker_match: WorkerMatch
+    start_branch: str
 
 
 class RegisterWorkerOperation:
@@ -48,32 +50,33 @@ class RegisterWorkerOperation:
         if not source_path.is_dir():
             raise YasdefError(f"overmind repo path is not a directory: {source_path}")
 
+        start_branch = self._ensure_register_branch()
         project_id = _read_project_id(source_path)
         worker_match = resolve_single_worker_match(read_yaml_file(source_path / "workers.yaml"), worker_uuid)
         self._warn_missing_agents_guidance(source_path, worker_match)
-        self._ensure_runtime_branch()
         self._write_binding(source_path, project_id, worker_uuid, worker_match)
         self._commit_binding_if_changed(worker_uuid, project_id)
         self.output.step("worker registration complete")
+        self.output.warn(
+            f"yasdef register finished on branch {REGISTER_BRANCH}; "
+            f"merge it back into {start_branch} when ready"
+        )
         return RegisterWorkerResult(
             binding_file=self.layout.binding_file,
-            runtime_branch=RUNTIME_BRANCH,
+            register_branch=REGISTER_BRANCH,
             project_id=project_id,
             worker_uuid=worker_uuid,
             worker_match=worker_match,
+            start_branch=start_branch,
         )
 
-    def _ensure_runtime_branch(self) -> None:
-        if not self.git.is_inside_worktree():
-            raise YasdefError("worker registration requires a git repository")
-        if self.git.current_branch() == RUNTIME_BRANCH:
-            return
-        if self.git.status_porcelain().strip():
-            raise YasdefError("uncommitted changes detected, commit changes and rerun")
-        if self.git.branch_exists(RUNTIME_BRANCH):
-            self.git.checkout(RUNTIME_BRANCH)
-        else:
-            self.git.checkout_new(RUNTIME_BRANCH)
+    def _ensure_register_branch(self) -> str:
+        return checkout_work_branch(
+            self.git,
+            self.output,
+            operation="yasdef register",
+            branch_name=REGISTER_BRANCH,
+        )
 
     def _write_binding(
         self,

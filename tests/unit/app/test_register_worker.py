@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from yasdef_orchestrator.app.register_worker import (
-    RUNTIME_BRANCH,
+    REGISTER_BRANCH,
     RegisterWorkerInput,
     RegisterWorkerOperation,
 )
@@ -19,21 +19,23 @@ from yasdef_orchestrator.infra.yaml_io import read_yaml_file
 WORKER_UUID = "worker-alpha-01"
 
 
-def test_register_worker_writes_binding_on_runtime_branch_and_commits(tmp_path: Path) -> None:
+def test_register_worker_writes_binding_on_register_branch_and_commits(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "worker")
     layout = RuntimeLayout.from_root(repo.root)
     source = tmp_path / "source"
     _write_project(source)
+    output = RecordingUserOutput()
 
     result = RegisterWorkerOperation(
         layout=layout,
         git=repo,
-        output=RecordingUserOutput(),
+        output=output,
     ).execute(RegisterWorkerInput(worker_uuid=WORKER_UUID, overmind_source_path=source))
 
     binding = read_yaml_file(layout.binding_file)
-    assert result.runtime_branch == RUNTIME_BRANCH
-    assert repo.current_branch() == RUNTIME_BRANCH
+    assert result.register_branch == REGISTER_BRANCH
+    assert result.start_branch == "main"
+    assert repo.current_branch() == REGISTER_BRANCH
     assert binding == {
         "overmind_source_path": str(source.resolve()),
         "project_id": "project-a",
@@ -42,6 +44,9 @@ def test_register_worker_writes_binding_on_runtime_branch_and_commits(tmp_path: 
         "status": "ready",
     }
     assert repo.diff_name_only("HEAD~1..HEAD") == [".asdlc_worker/project_overmind.yaml"]
+    assert output.events[-1].level == "warn"
+    assert REGISTER_BRANCH in output.events[-1].message
+    assert "main" in output.events[-1].message
 
 
 def test_register_worker_rejects_dirty_worktree_before_branch_switch(tmp_path: Path) -> None:
@@ -51,7 +56,22 @@ def test_register_worker_rejects_dirty_worktree_before_branch_switch(tmp_path: P
     _write_project(source)
     (repo.root / "dirty.txt").write_text("dirty\n", encoding="utf-8")
 
-    with pytest.raises(YasdefError, match="uncommitted changes"):
+    with pytest.raises(YasdefError, match="clean working tree"):
+        RegisterWorkerOperation(
+            layout=layout,
+            git=repo,
+            output=RecordingUserOutput(),
+        ).execute(RegisterWorkerInput(worker_uuid=WORKER_UUID, overmind_source_path=source))
+
+
+def test_register_worker_rejects_non_mainline_start_branch(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "worker")
+    repo.checkout_new("feature")
+    layout = RuntimeLayout.from_root(repo.root)
+    source = tmp_path / "source"
+    _write_project(source)
+
+    with pytest.raises(YasdefError, match="must start from main or master"):
         RegisterWorkerOperation(
             layout=layout,
             git=repo,
@@ -111,5 +131,6 @@ def _init_repo(path: Path) -> GitRepo:
         },
     )
     (path / "README.md").write_text("hello\n", encoding="utf-8")
+    repo.add("README.md")
     repo.commit("initial", paths=["README.md"])
     return repo

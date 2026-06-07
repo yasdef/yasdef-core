@@ -3,6 +3,9 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
+from yasdef_orchestrator.infra.errors import GitOperationFailed
 from yasdef_orchestrator.infra.git_repo import GitRepo
 
 
@@ -18,6 +21,7 @@ def init_repo(path: Path) -> GitRepo:
         },
     )
     (path / "README.md").write_text("hello\n", encoding="utf-8")
+    repo.add("README.md")
     repo.commit("initial", paths=["README.md"])
     return repo
 
@@ -47,6 +51,44 @@ def test_git_repo_diff_helpers(tmp_path: Path) -> None:
     assert rows[0].added == 2
     assert rows[0].path == "new.txt"
     assert names == ["new.txt"]
+
+
+def test_git_repo_force_add_and_commit_pathspec_only(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    (tmp_path / ".git/info/exclude").write_text("ignored.txt\n", encoding="utf-8")
+    (tmp_path / "ignored.txt").write_text("ignored\n", encoding="utf-8")
+    (tmp_path / "other.txt").write_text("other\n", encoding="utf-8")
+
+    repo.add("other.txt")
+    repo.add("ignored.txt", force=True)
+    assert repo.has_staged_changes(paths=["ignored.txt"]) is True
+
+    repo.commit("commit ignored only", paths=["ignored.txt"])
+
+    committed = subprocess.run(
+        ["git", "-C", str(tmp_path), "ls-tree", "-r", "--name-only", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert "ignored.txt" in committed
+    assert "other.txt" not in committed
+    assert repo.diff_name_only(cached=True) == ["other.txt"]
+
+
+def test_git_repo_commit_pathspec_does_not_stage_untracked_files(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    (tmp_path / "new.txt").write_text("new\n", encoding="utf-8")
+
+    with pytest.raises(GitOperationFailed, match="git commit failed"):
+        repo.commit("should not stage", paths=["new.txt"])
+
+
+def test_git_repo_has_staged_changes_raises_on_git_error(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+
+    with pytest.raises(GitOperationFailed, match="diff --cached --quiet"):
+        repo.has_staged_changes(paths=[":(badmagic)"])
 
 
 def test_git_repo_snapshot_index_does_not_touch_real_index(tmp_path: Path) -> None:
