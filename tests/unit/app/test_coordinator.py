@@ -31,7 +31,7 @@ def test_orchestrator_builds_feature_context_and_runs_pipeline(tmp_path: Path) -
         prompts=Prompter(interactive=False),
         process=ProcessRunner(),
         output=RecordingUserOutput(),
-    ).run(RunOptions(phases=("design",)))
+    ).run(RunOptions())
 
     assert result.succeeded is True
     assert repo.current_branch() == "step-1.1-feature-a-plan"
@@ -42,6 +42,8 @@ def test_orchestrator_rejects_design_run_from_non_mainline_branch(tmp_path: Path
     repo = _init_repo(tmp_path / "worker")
     repo.checkout_new("feature")
     layout = RuntimeLayout.from_root(repo.root)
+    layout.models_file.parent.mkdir(parents=True, exist_ok=True)
+    layout.models_file.write_text("design | echo | mock-model\n", encoding="utf-8")
 
     with pytest.raises(YasdefError, match="must start from main or master"):
         Coordinator(
@@ -50,7 +52,7 @@ def test_orchestrator_rejects_design_run_from_non_mainline_branch(tmp_path: Path
             prompts=Prompter(interactive=False),
             process=ProcessRunner(),
             output=RecordingUserOutput(),
-        ).run(RunOptions(phases=("design",)))
+        ).run(RunOptions())
 
 
 def test_orchestrator_allows_non_design_run_from_non_mainline_branch(tmp_path: Path) -> None:
@@ -60,6 +62,7 @@ def test_orchestrator_allows_non_design_run_from_non_mainline_branch(tmp_path: P
     source = tmp_path / "source"
     _seed_source(source)
     _seed_worker(layout, source)
+    layout.models_file.write_text("planning | echo | mock-model\n", encoding="utf-8")
     repo.add(".asdlc_worker", ".codex")
     repo.commit("seed worker", paths=[".asdlc_worker", ".codex"])
 
@@ -69,7 +72,7 @@ def test_orchestrator_allows_non_design_run_from_non_mainline_branch(tmp_path: P
         prompts=Prompter(interactive=False),
         process=ProcessRunner(),
         output=RecordingUserOutput(),
-    ).run(RunOptions(phases=("planning",)))
+    ).run(RunOptions())
 
     assert result.succeeded is True
 

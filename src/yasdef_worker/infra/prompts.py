@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Sequence
 from typing import TextIO
@@ -17,7 +18,15 @@ class Prompter:
     ):
         self.stdin = stdin if stdin is not None else sys.stdin
         self.stderr = stderr if stderr is not None else sys.stderr
-        self.interactive = self.stdin.isatty() if interactive is None else interactive
+        if interactive is None:
+            env_flag = os.environ.get("YASDEF_INTERACTIVE", "")
+            if env_flag == "1":
+                interactive = True
+            elif env_flag == "0":
+                interactive = False
+            else:
+                interactive = self.stdin.isatty()
+        self.interactive = interactive
 
     def confirm(self, prompt: str, *, default: bool | None = None) -> bool:
         if not self.interactive:
@@ -32,6 +41,17 @@ class Prompter:
         if not value and default is not None:
             return default
         return value in {"y", "yes"}
+
+    def prompt_non_empty(self, prompt: str) -> str:
+        if not self.interactive:
+            raise YasdefError(f"cannot prompt in non-interactive mode: {prompt}")
+
+        self.stderr.write(prompt)
+        self.stderr.flush()
+        value = self.stdin.readline().strip()
+        if not value:
+            raise YasdefError("Input cannot be empty.")
+        return value
 
     def choose_numbered(self, prompt: str, options: Sequence[str]) -> int:
         if not options:

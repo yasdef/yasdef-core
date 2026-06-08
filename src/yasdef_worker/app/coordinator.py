@@ -19,7 +19,6 @@ from yasdef_worker.infra.user_output import UserOutput
 @dataclass(frozen=True, slots=True)
 class RunOptions:
     resume_step: str | None = None
-    phases: tuple[str, ...] = ()
     dry_run: bool = False
     debug: bool = False
 
@@ -41,7 +40,7 @@ class Coordinator:
         self.output = output
 
     def run(self, options: RunOptions = RunOptions()) -> PipelineResult:
-        phases = options.phases or _configured_phases(self.layout)
+        phases = _configured_phases(self.layout)
         if phases and phases[0] == "design":
             require_clean_mainline_start(self.git, operation="yasdef run design")
         feature = FeatureContextBuilder(

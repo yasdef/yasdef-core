@@ -54,10 +54,6 @@ def test_run_command_builds_orchestrator_options(monkeypatch: pytest.MonkeyPatch
                 str(tmp_path),
                 "--resume",
                 "1.1",
-                "--phase",
-                "design",
-                "--phase",
-                "planning",
                 "--dry-run",
                 "--debug",
             ]
@@ -67,7 +63,6 @@ def test_run_command_builds_orchestrator_options(monkeypatch: pytest.MonkeyPatch
 
     options = seen["options"]
     assert options.resume_step == "1.1"
-    assert options.phases == ("design", "planning")
     assert options.dry_run is True
     assert options.debug is True
 
@@ -77,6 +72,7 @@ def test_run_command_builds_orchestrator_options(monkeypatch: pytest.MonkeyPatch
     (
         ["run", "--resume"],
         ["run", "--step", "1.1"],
+        ["run", "--phase", "design"],
     ),
 )
 def test_run_command_rejects_removed_step_forms(argv: list[str]) -> None:
