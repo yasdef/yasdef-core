@@ -9,6 +9,7 @@ from yasdef_worker.app.init_asdlc_worker import (
     default_install_entries,
 )
 from yasdef_worker.infra.git_repo import GitRepo
+from yasdef_worker.infra.prompts import Prompter
 
 from ._shared import EXIT_SUCCESS, output
 
@@ -29,6 +30,7 @@ def handle(args: argparse.Namespace) -> int:
         entries=default_install_entries(target),
         exclude_entries=default_exclude_entries(),
         git=GitRepo(target),
+        prompts=Prompter(),
         force=args.force,
     ).install()
     return EXIT_SUCCESS

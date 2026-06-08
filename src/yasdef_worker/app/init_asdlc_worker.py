@@ -10,10 +10,11 @@ from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-from yasdef_worker.app.mainline_branch_policy import checkout_work_branch
+from yasdef_worker.app.mainline_branch_policy import checkout_work_branch, offer_merge_back
 from yasdef_worker import __version__
 from yasdef_worker.infra.errors import InstallSafetyError, YasdefError
 from yasdef_worker.infra.git_repo import GitRepo
+from yasdef_worker.infra.prompts import Prompter
 from yasdef_worker.infra.user_output import UserOutput
 from yasdef_worker.infra.yaml_io import read_yaml_file, write_yaml_file
 
@@ -132,6 +133,7 @@ class Installer:
         entries: tuple[InstallEntry, ...],
         exclude_entries: tuple[str, ...] = (),
         git: GitRepo | None = None,
+        prompts: Prompter | None = None,
         force: bool = False,
     ):
         self.target_root = target_root.resolve()
@@ -139,6 +141,7 @@ class Installer:
         self.entries = entries
         self.exclude_entries = exclude_entries
         self.git = git
+        self.prompts = prompts
         self.force = force
         self.manifest_path = self.target_root / ".asdlc_worker" / "install_manifest.yaml"
 
@@ -164,7 +167,7 @@ class Installer:
             self._write_manifest(installed)
             self._commit_durable_files(installed)
             self._announce_complete(installed)
-            self._warn_merge_back(start_branch)
+            self._offer_merge_back(start_branch)
         except Exception:
             self._write_manifest(installed, failed=True)
             raise
@@ -285,11 +288,15 @@ class Installer:
         if self.git.has_staged_changes(paths=paths):
             self.git.commit("asdlc worker added", paths=paths)
 
-    def _warn_merge_back(self, start_branch: str | None) -> None:
-        if start_branch is None:
+    def _offer_merge_back(self, start_branch: str | None) -> None:
+        if start_branch is None or self.git is None:
             return
-        self.output.warn(
-            f"yasdef init finished on branch {INIT_BRANCH}; merge it back into {start_branch} when ready"
+        offer_merge_back(
+            self.git,
+            self.output,
+            self.prompts or Prompter(interactive=False),
+            work_branch=INIT_BRANCH,
+            start_branch=start_branch,
         )
 
     def _announce_complete(self, installed: list[InstalledFile]) -> None:

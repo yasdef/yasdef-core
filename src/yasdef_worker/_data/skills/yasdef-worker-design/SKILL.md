@@ -89,7 +89,9 @@ If bootstrap is required, add `## First-Feature Bootstrap (only if needed)` with
 - blueprint evidence or explicit user stack decision
 - concrete planning handoff
 
-When stack/architecture guidance is needed, run `.asdlc_worker/scripts/helpers/helper_find_blueprints.sh` from the ASDLC feature folder context where `implementation_plan.md` and `requirements_ears.md` live. If class metadata is missing/unsupported or no relevant blueprint exists, ask the user for stack/scaffold direction instead of inventing one.
+When stack/architecture guidance is needed, run:
+   `uv run python .codex/skills/yasdef-worker-design/scripts/find_blueprints.py`
+from the worker repo root. The script reads the bound project path and worker class from `.asdlc_worker/project_overmind.yaml`, scans for `project_stack_blueprint_*.md` files, and filters them by class. If class metadata is missing/unsupported or no relevant blueprint exists, ask the user for stack/scaffold direction instead of inventing one.
 
 ## Missing Discussion Points Gate
 

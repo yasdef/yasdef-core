@@ -1,6 +1,6 @@
 # AI Run History - Template
 
-This file is updated by `.asdlc_worker/scripts/post_review.sh` with one consolidated record per step.
+This file is updated by `yasdef post-review` with one consolidated record per step.
 
 Entry template:
 

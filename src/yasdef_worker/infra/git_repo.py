@@ -115,6 +115,10 @@ class GitRepo:
             result.stderr.strip(),
         )
 
+    def merge_ff(self, branch: str) -> None:
+        """Fast-forward merge *branch* into the current HEAD. Raises on conflict."""
+        self._run(["merge", "--ff-only", branch], op="merge")
+
     def push(self) -> None:
         self._run(["push"], op="push")
 

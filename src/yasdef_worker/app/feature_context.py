@@ -6,7 +6,7 @@ from typing import Literal
 
 from yasdef_worker.domain.plans.feature_selector import analyze_for_worker
 from yasdef_worker.domain.plans.implementation_plan import ImplementationPlan
-from yasdef_worker.infra.errors import YasdefError
+from yasdef_worker.infra.errors import GitOperationFailed, YasdefError
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
 from yasdef_worker.infra.prompts import Prompter
@@ -14,6 +14,14 @@ from yasdef_worker.infra.user_output import UserOutput
 from yasdef_worker.infra.yaml_io import read_yaml_file, write_yaml_file
 
 SelectionMode = Literal["resume_reuse", "auto_single", "user_prompt"]
+
+
+class _FeatureExhausted(Exception):
+    """Raised internally when the cached feature has no remaining unchecked steps."""
+
+    def __init__(self, feature_id: str, sync_file_path: Path) -> None:
+        self.feature_id = feature_id
+        self.sync_file_path = sync_file_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +88,13 @@ class FeatureContextBuilder:
         self._built = True
 
         binding = self._load_binding()
-        reused = self._try_fast_path(binding)
+        self._sync_bound_project(binding)
+        try:
+            reused = self._try_fast_path(binding)
+        except _FeatureExhausted as exc:
+            self._handle_exhausted_feature(exc)
+            raise SystemExit(0) from exc  # reached only after interactive clean exit
+
         if reused is not None and (self.resume_step is not None or not self.prompts.interactive):
             self._write_meta_sync(reused)
             self.output.step(
@@ -126,7 +140,7 @@ class FeatureContextBuilder:
         worker_uuid = _required_str(data, "worker_uuid")
         source_path = Path(overmind_source_path).expanduser().resolve()
         if not source_path.is_dir():
-            raise YasdefError(f"bound overmind project repo does not exist: {source_path}")
+            raise YasdefError(f"bound ASDLC project repo does not exist: {source_path}")
         _validate_project_id(source_path, project_id)
         return ProjectBinding(
             overmind_source_path=source_path,
@@ -156,8 +170,12 @@ class FeatureContextBuilder:
             if plan_step is None or plan_step.assigned_uuid != binding.worker_uuid:
                 return None
         else:
-            selected_step = str(data.get("selected_step") or "").strip()
             analysis = analyze_for_worker(plan, binding.worker_uuid)
+            if analysis.assigned_any and analysis.first_unchecked is None:
+                # All assigned steps are complete: feature is exhausted.
+                # Never fall through to new-feature discovery.
+                raise _FeatureExhausted(feature_id, self.layout.feature_sync_file)
+            selected_step = str(data.get("selected_step") or "").strip()
             step = analysis.first_unchecked or selected_step
             if not step:
                 return None
@@ -188,6 +206,20 @@ class FeatureContextBuilder:
         if str(data.get("worker_uuid") or "") != binding.worker_uuid:
             return None
         return data
+
+    def _sync_bound_project(self, binding: ProjectBinding) -> None:
+        project_git = GitRepo(binding.overmind_source_path)
+        if not project_git.is_inside_worktree():
+            return
+        try:
+            project_git.pull_rebase()
+            self.output.step(f"synced bound project repo {binding.overmind_source_path}")
+        except GitOperationFailed as exc:
+            raise YasdefError(
+                f"Failed to sync bound ASDLC project repo {binding.overmind_source_path}: "
+                f"{exc.stderr or exc.op}. "
+                "Resolve the rebase conflict or dirty state and rerun."
+            ) from exc
 
     def _validate_runtime_git(self) -> None:
         if not self.git.is_inside_worktree():
@@ -266,6 +298,37 @@ class FeatureContextBuilder:
                 )
         return _Discovery(tuple(candidates), assigned_any, blocked_by)
 
+    def _handle_exhausted_feature(self, exc: _FeatureExhausted) -> None:
+        """Handle an exhausted cached feature.
+
+        Non-interactive: raise YasdefError with removal instructions.
+        Interactive: offer to delete the sync file or exit for manual handling.
+        """
+        feature_id = exc.feature_id
+        sync_path = exc.sync_file_path
+
+        if not self.prompts.interactive:
+            raise YasdefError(
+                f"Feature '{feature_id}' is exhausted — all assigned steps are complete. "
+                f"Remove {sync_path} to select a new feature, then re-run."
+            )
+
+        self.output.warn(
+            f"Feature '{feature_id}' is exhausted — all assigned steps are complete."
+        )
+        choice = self.prompts.choose_numbered(
+            f"How do you want to proceed with {sync_path.name}?",
+            [
+                f"Delete {sync_path.name} (clear cached feature for next run)",
+                f"Keep {sync_path.name} and exit for manual handling",
+            ],
+        )
+        if choice == 0:
+            sync_path.unlink(missing_ok=True)
+            self.output.step(f"deleted {sync_path}")
+        else:
+            self.output.step(f"keeping {sync_path} — remove it manually when ready")
+
     def _write_meta_sync(self, state: FeatureRunState) -> None:
         self.layout.feature_sync_file.parent.mkdir(parents=True, exist_ok=True)
         write_yaml_file(
@@ -297,7 +360,7 @@ def _usable_feature_files(source_plan: Path, source_ears: Path) -> bool:
 def _validate_project_id(source_path: Path, expected_project_id: str) -> None:
     definition = source_path / "init_progress_definition.yaml"
     if not definition.is_file():
-        raise YasdefError(f"bound overmind project repo is missing init_progress_definition.yaml: {source_path}")
+        raise YasdefError(f"bound ASDLC project repo is missing init_progress_definition.yaml: {source_path}")
     data = read_yaml_file(definition)
     meta = data.get("meta_info")
     if isinstance(meta, dict):

@@ -3,21 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from yasdef_worker.app.mainline_branch_policy import checkout_work_branch
-from yasdef_worker.domain.workers_registry import WorkerMatch, resolve_single_worker_match
+from yasdef_worker.app.mainline_branch_policy import checkout_work_branch, offer_merge_back
+from yasdef_worker.domain.workers_registry import (
+    WorkerMatch,
+    WorkersRegistryError,
+    resolve_single_worker_match,
+)
 from yasdef_worker.infra.errors import YasdefError
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
+from yasdef_worker.infra.prompts import Prompter
 from yasdef_worker.infra.user_output import UserOutput
 from yasdef_worker.infra.yaml_io import read_yaml_file, write_yaml_file
 
 REGISTER_BRANCH = "register_yasdef_worker_in_coordinator"
-
-
-@dataclass(frozen=True, slots=True)
-class RegisterWorkerInput:
-    worker_uuid: str
-    overmind_source_path: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,29 +36,29 @@ class RegisterWorkerOperation:
         layout: RuntimeLayout,
         git: GitRepo,
         output: UserOutput,
+        prompts: Prompter | None = None,
     ):
         self.layout = layout
         self.git = git
         self.output = output
+        self.prompts = prompts or Prompter(interactive=False)
 
-    def execute(self, request: RegisterWorkerInput) -> RegisterWorkerResult:
-        worker_uuid = request.worker_uuid.strip()
-        if not worker_uuid:
-            raise YasdefError("worker UUID must not be empty")
-        source_path = request.overmind_source_path.expanduser().resolve()
-        if not source_path.is_dir():
-            raise YasdefError(f"overmind repo path is not a directory: {source_path}")
-
+    def execute(self) -> RegisterWorkerResult:
         start_branch = self._ensure_register_branch()
+        source_path = self._prompt_asdlc_project_repo_path()
         project_id = _read_project_id(source_path)
-        worker_match = resolve_single_worker_match(read_yaml_file(source_path / "workers.yaml"), worker_uuid)
+        worker_uuid = self._prompt_worker_uuid()
+        worker_match = _resolve_worker_match(source_path, worker_uuid)
         self._warn_missing_agents_guidance(source_path, worker_match)
         self._write_binding(source_path, project_id, worker_uuid, worker_match)
         self._commit_binding_if_changed(worker_uuid, project_id)
         self.output.step("worker registration complete")
-        self.output.warn(
-            f"yasdef register finished on branch {REGISTER_BRANCH}; "
-            f"merge it back into {start_branch} when ready"
+        offer_merge_back(
+            self.git,
+            self.output,
+            self.prompts,
+            work_branch=REGISTER_BRANCH,
+            start_branch=start_branch,
         )
         return RegisterWorkerResult(
             binding_file=self.layout.binding_file,
@@ -69,6 +68,25 @@ class RegisterWorkerOperation:
             worker_match=worker_match,
             start_branch=start_branch,
         )
+
+    def _prompt_asdlc_project_repo_path(self) -> Path:
+        raw_path = self.prompts.prompt_non_empty("Enter ASDLC project repo path: ")
+        source_path = Path(raw_path).expanduser()
+        if not source_path.exists():
+            raise YasdefError(f"ASDLC project repo path not found: {source_path}")
+        if not source_path.is_dir():
+            raise YasdefError(f"ASDLC project repo path is not a directory: {source_path}")
+        resolved = source_path.resolve()
+        workers_file = resolved / "workers.yaml"
+        if not workers_file.is_file():
+            raise YasdefError(f"ASDLC project repo does not contain a root workers.yaml: {resolved}")
+        definition = resolved / "init_progress_definition.yaml"
+        if not definition.is_file():
+            raise YasdefError(f"ASDLC project repo is missing init_progress_definition.yaml: {resolved}")
+        return resolved
+
+    def _prompt_worker_uuid(self) -> str:
+        return self.prompts.prompt_non_empty("Enter worker UUID: ")
 
     def _ensure_register_branch(self) -> str:
         return checkout_work_branch(
@@ -116,14 +134,19 @@ class RegisterWorkerOperation:
 
 def _read_project_id(source_path: Path) -> str:
     definition = source_path / "init_progress_definition.yaml"
-    if not definition.is_file():
-        raise YasdefError(f"project repo is missing init_progress_definition.yaml: {source_path}")
     data = read_yaml_file(definition)
     meta = data.get("meta_info")
     if isinstance(meta, dict):
         project_id = str(meta.get("project_id") or "").strip()
     else:
-        project_id = str(data.get("project_id") or "").strip()
+        project_id = ""
     if not project_id:
         raise YasdefError("meta_info.project_id is missing or empty")
     return project_id
+
+
+def _resolve_worker_match(source_path: Path, worker_uuid: str) -> WorkerMatch:
+    try:
+        return resolve_single_worker_match(read_yaml_file(source_path / "workers.yaml"), worker_uuid)
+    except WorkersRegistryError as exc:
+        raise YasdefError(str(exc)) from exc

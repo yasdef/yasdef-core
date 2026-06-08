@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import subprocess
 from pathlib import Path
 
@@ -7,12 +8,12 @@ import pytest
 
 from yasdef_worker.app.register_worker import (
     REGISTER_BRANCH,
-    RegisterWorkerInput,
     RegisterWorkerOperation,
 )
 from yasdef_worker.infra.errors import YasdefError
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
+from yasdef_worker.infra.prompts import Prompter
 from yasdef_worker.infra.user_output import RecordingUserOutput
 from yasdef_worker.infra.yaml_io import read_yaml_file
 
@@ -30,7 +31,8 @@ def test_register_worker_writes_binding_on_register_branch_and_commits(tmp_path:
         layout=layout,
         git=repo,
         output=output,
-    ).execute(RegisterWorkerInput(worker_uuid=WORKER_UUID, overmind_source_path=source))
+        prompts=_prompts(source, WORKER_UUID),
+    ).execute()
 
     binding = read_yaml_file(layout.binding_file)
     assert result.register_branch == REGISTER_BRANCH
@@ -52,8 +54,6 @@ def test_register_worker_writes_binding_on_register_branch_and_commits(tmp_path:
 def test_register_worker_rejects_dirty_worktree_before_branch_switch(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "worker")
     layout = RuntimeLayout.from_root(repo.root)
-    source = tmp_path / "source"
-    _write_project(source)
     (repo.root / "dirty.txt").write_text("dirty\n", encoding="utf-8")
 
     with pytest.raises(YasdefError, match="clean working tree"):
@@ -61,7 +61,8 @@ def test_register_worker_rejects_dirty_worktree_before_branch_switch(tmp_path: P
             layout=layout,
             git=repo,
             output=RecordingUserOutput(),
-        ).execute(RegisterWorkerInput(worker_uuid=WORKER_UUID, overmind_source_path=source))
+            prompts=Prompter(stdin=io.StringIO(""), stderr=io.StringIO(), interactive=True),
+        ).execute()
 
 
 def test_register_worker_rejects_non_mainline_start_branch(tmp_path: Path) -> None:
@@ -76,7 +77,8 @@ def test_register_worker_rejects_non_mainline_start_branch(tmp_path: Path) -> No
             layout=layout,
             git=repo,
             output=RecordingUserOutput(),
-        ).execute(RegisterWorkerInput(worker_uuid=WORKER_UUID, overmind_source_path=source))
+            prompts=_prompts(source, WORKER_UUID),
+        ).execute()
 
 
 def test_register_worker_rejects_unknown_worker_uuid(tmp_path: Path) -> None:
@@ -85,17 +87,21 @@ def test_register_worker_rejects_unknown_worker_uuid(tmp_path: Path) -> None:
     source = tmp_path / "source"
     _write_project(source)
 
-    with pytest.raises(ValueError, match="no registered worker"):
+    with pytest.raises(YasdefError, match="no registered worker"):
         RegisterWorkerOperation(
             layout=layout,
             git=repo,
             output=RecordingUserOutput(),
-        ).execute(
-            RegisterWorkerInput(
-                worker_uuid="worker-beta-02",
-                overmind_source_path=source,
-            )
-        )
+            prompts=_prompts(source, "worker-beta-02"),
+        ).execute()
+
+
+def _prompts(source: Path, worker_uuid: str) -> Prompter:
+    return Prompter(
+        stdin=io.StringIO(f"{source}\n{worker_uuid}\n"),
+        stderr=io.StringIO(),
+        interactive=True,
+    )
 
 
 def _write_project(source: Path) -> None:
