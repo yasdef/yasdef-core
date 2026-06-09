@@ -23,10 +23,16 @@ This approach can be expressed in a few sentences:
 - ✅ Yasdef worker is part of framework. You need yasdef-coordinator to make it work. To get started with yasdef-coordinator you can a) examine yasdef-coordinator Readme.md here https://github.com/yasdef/yasdef-overmind/blob/main/README.md and follow instructions. b) mock yasdef-coordinator if you just need to take a look at framework. Step-by-step instruction can be found in this readme (scroll down to "How to mock yasdef-coordinator" section). 
 
 1. Install the `yasdef` tool. Recommended global install requires [uv](https://docs.astral.sh/uv/):
+  
+  * Option A (prod level instalation):
+
    ```
    uv tool install yasdef-worker
    ```
    This puts `yasdef` on your `PATH`. Run `yasdef --help` to verify.
+
+  * Option B (self-build instalation): 
+   
    During local development from this repository, you can build and install the local wheel instead:
    ```
    cd /path/to/yasdef
@@ -35,6 +41,9 @@ This approach can be expressed in a few sentences:
    uv tool install --force dist/*.whl
    yasdef --help
    ```
+
+  * Option C (no UV, simplest option just to try it out):
+
    Without `uv`, install into a normal Python venv:
    ```
    python3.11 -m venv ~/.venvs/yasdef
@@ -103,14 +112,14 @@ This approach can be expressed in a few sentences:
 
 ## Why we need yet another SDD framework?
 
-	•	Current SDD frameworks are great (I strongly recommend you forget about vibecoding and try open-spec, spec-kit, or another SDD framework), but they are built with the purpose of growing a vibecoder into a conscious product manager. That's not actually what enterprise developer teams need right now.
-	•	YASDEF is built for seamless adoption of AI in the usual SDLC — upgrading it to ASDLC. The goal is 10× productivity while keeping enterprise-level quality, familiar processes, and, most importantly, not shifting responsibility from the developer to AI. If that sounds boring — we're probably on the right track.
-	•	We consider AI coding agents as another tool for engineers — maybe the best and most promising one in many years — but still… it's a tool. And don't forget: the bottleneck is never technology, it's always people.
-	•	YASDEF has a distributed architecture for distributed teams: someone establishes plans, others write code, we have feedback loops, quality gates, and agile rituals… and we don't really think we need to throw all of that away just because AI appeared.
-	•	YASDEF is about shifting developers from writing code to making architectural decisions and finding effective approaches. AI can write code. The engineer's duty is to think, decide, and supervise.
-	•	We don't really need to choose between an agile (fluid) and a strict approach when writing code with AI. We prefer to stay agile at the product level, because requirements can appear, change, or disappear unexpectedly. But when AI writes code, the process should be extremely strict and straightforward to get predictable, reproducible, and deterministic results (as much as that's possible with AI).
-	•	We don't like the idea that a developer works for 5 minutes and spends the rest of the time doing something else. YASDEF is about an approach where we work as long as needed but deliver 10× more value per unit of time. Code quality, maintainability, and readability are not negotiable trade-offs.
-	•	We can outsource many tasks to AI — but not thinking and decision-making.
+* Current SDD frameworks are great (I strongly recommend you forget about vibecoding and try open-spec, spec-kit, or another SDD framework), but they are built with the purpose of growing a vibecoder into a conscious product manager. That's not actually what enterprise developer teams need right now.
+* YASDEF is built for seamless adoption of AI in the usual SDLC — upgrading it to ASDLC. The goal is 10× productivity while keeping enterprise-level quality, familiar processes, and, most importantly, not shifting responsibility from the developer to AI. If that sounds boring — we're probably on the right track.
+* We consider AI coding agents as another tool for engineers — maybe the best and most promising one in many years — but still… it's a tool. And don't forget: the bottleneck is never technology, it's always people.
+* YASDEF has a distributed architecture for distributed teams: someone establishes plans, others write code, we have feedback loops, quality gates, and agile rituals… and we don't really think we need to throw all of that away just because AI appeared.
+* YASDEF is about shifting developers from writing code to making architectural decisions and finding effective approaches. AI can write code. The engineer's duty is to think, decide, and supervise.
+* We don't really need to choose between an agile and a strict approach when writing code with AI. We prefer to stay agile at the product level, because requirements can appear, change, or disappear unexpectedly. But when AI writes code, the process should be extremely strict and straightforward to get predictable, reproducible, and deterministic results (as much as that's possible with AI).
+* We don't like the idea that a developer works for 5 minutes and spends the rest of the time doing something else. YASDEF is about an approach where we work as long as needed but deliver 10× more value per unit of time. Code quality, maintainability, and readability are not negotiable trade-offs.
+* We can outsource many tasks to AI — but not thinking and decision-making.
 
 ## How this works (or will be)
 
@@ -248,9 +257,6 @@ V-0.2.0 (current)
 
 ### security_improvement_proposals
 
-Next goals:
-
-- **Runner allowlist:** keep model runner execution limited to known runner adapters (`codex`, `claude`, `echo`) instead of arbitrary shell commands from config.
 - **Config trust check:** add a small trust file for `.asdlc_worker/setup/models.md` so runner/model changes require explicit operator approval before execution.
 - **Minimal child environment:** run model CLI subprocesses with a narrow environment allowlist and add explicit opt-in for extra variables when needed.
 - **Path safety:** continue rejecting symlinks and path escapes during `yasdef init`; extend the same checks to any future writable install/runtime paths.
