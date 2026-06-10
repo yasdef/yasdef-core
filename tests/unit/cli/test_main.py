@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import importlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,10 +8,12 @@ from types import SimpleNamespace
 import pytest
 
 from yasdef_worker.cli import init as init_cmd
+from yasdef_worker.cli import _shared
 from yasdef_worker.cli import post_review as post_review_cmd
 from yasdef_worker.cli import run as run_cmd
 from yasdef_worker.cli import uninstall as uninstall_cmd
 from yasdef_worker.domain.history.token_usage import TokenUsage
+from yasdef_worker.infra.errors import FeatureExhausted
 
 cli_main = importlib.import_module("yasdef_worker.cli.main")
 
@@ -31,6 +34,19 @@ def test_subcommand_help_exits_cleanly(command: str) -> None:
         cli_main.main([command, "--help"])
 
     assert raised.value.code == 0
+
+
+def test_cli_shared_factories_accept_explicit_streams() -> None:
+    stdin = io.StringIO("y\n")
+    stderr = io.StringIO()
+
+    prompter = _shared.prompter(stdin=stdin, stderr=stderr)
+    assert prompter.stdin is stdin
+    assert prompter.stderr is stderr
+
+    _shared.output(stderr=stderr).step("done")
+
+    assert "yasdef: done" in stderr.getvalue()
 
 
 def test_run_command_builds_orchestrator_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -65,6 +81,24 @@ def test_run_command_builds_orchestrator_options(monkeypatch: pytest.MonkeyPatch
     assert options.resume_step == "1.1"
     assert options.dry_run is True
     assert options.debug is True
+
+
+def test_run_command_returns_success_for_controlled_feature_exhaustion(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class FakeCoordinator:
+        def __init__(self, **kwargs: object):
+            pass
+
+        def run(self, options: object) -> object:
+            raise FeatureExhausted("feature-a", tmp_path / ".asdlc_worker" / "feature_sync.yaml")
+
+    monkeypatch.setattr(run_cmd, "Coordinator", FakeCoordinator)
+
+    assert cli_main.main(["run", "--repo", str(tmp_path)]) == 0
+    assert "ERROR:" not in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

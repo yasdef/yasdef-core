@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from yasdef_worker.app.feature_context import FeatureContextBuilder
+from yasdef_worker.app.feature_context import FeatureContextBuilder, FeatureRunState
 from yasdef_worker.app.mainline_branch_policy import require_clean_mainline_start
 from yasdef_worker.app.phases import ModelConfigRunnerFactory, PhaseContext
 from yasdef_worker.app.pipeline import DEFAULT_PHASES, Pipeline, PipelineResult
@@ -50,7 +50,10 @@ class Coordinator:
             output=self.output,
             resume_step=options.resume_step,
         ).build()
-        ctx = PhaseContext(
+        return Pipeline(ctx=self._phase_context(feature, options)).iterate(phases)
+
+    def _phase_context(self, feature: FeatureRunState, options: RunOptions) -> PhaseContext:
+        return PhaseContext(
             layout=self.layout,
             git=self.git,
             runner_factory=ModelConfigRunnerFactory(self.layout.models_file),
@@ -63,7 +66,6 @@ class Coordinator:
             dry_run=options.dry_run,
             debug=options.debug,
         )
-        return Pipeline(ctx=ctx).iterate(phases)
 
 
 def _configured_phases(layout: RuntimeLayout) -> tuple[str, ...]:

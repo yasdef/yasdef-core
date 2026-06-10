@@ -5,15 +5,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import ClassVar, Protocol
 
+from yasdef_worker.domain.phases import WORKFLOW_PHASES
 from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
 from pathlib import Path
 
 from yasdef_worker.domain.plans.implementation_plan import ImplementationPlan
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
-
-CANONICAL_PHASES = ("design", "planning", "implementation", "user_review", "ai_audit", "post_review")
-
 
 class ResumeFeature(Protocol):
     feature_id: str
@@ -216,8 +214,8 @@ class ResumeAnalysis:
     def phases_to_execute(self) -> tuple[str, ...]:
         if self.start_phase is None or self.blocked:
             return ()
-        start = CANONICAL_PHASES.index(self.start_phase)
-        return CANONICAL_PHASES[start:]
+        start = WORKFLOW_PHASES.index(self.start_phase)
+        return WORKFLOW_PHASES[start:]
 
     def dry_run_report(self, step: str) -> str:
         lines = [f"Resume dry-run for step {step}"]
@@ -225,16 +223,16 @@ class ResumeAnalysis:
             lines.append(f"  - {state.phase}: {state.status.value} ({state.detail})")
         if self.blocked:
             lines.append("Selected start phase: none (resume blocked by invalid phase state)")
-            lines.append(f"Skipped phases: {' '.join(CANONICAL_PHASES)}")
+            lines.append(f"Skipped phases: {' '.join(WORKFLOW_PHASES)}")
             lines.append("Executed phases: (none)")
             lines.append(f"Block reason: {self.block_reason}")
         elif self.all_done:
             lines.append("Selected start phase: none (all phases complete)")
-            lines.append(f"Skipped phases: {' '.join(CANONICAL_PHASES)}")
+            lines.append(f"Skipped phases: {' '.join(WORKFLOW_PHASES)}")
             lines.append("Executed phases: (none)")
         else:
             executed = self.phases_to_execute()
-            skipped = CANONICAL_PHASES[: CANONICAL_PHASES.index(self.start_phase or "design")]
+            skipped = WORKFLOW_PHASES[: WORKFLOW_PHASES.index(self.start_phase or "design")]
             lines.append(f"Selected start phase: {self.start_phase}")
             lines.append(f"Skipped phases: {' '.join(skipped) if skipped else '(none)'}")
             lines.append(f"Executed phases: {' '.join(executed)}")

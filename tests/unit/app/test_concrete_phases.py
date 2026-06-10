@@ -92,6 +92,17 @@ def test_planning_phase_does_not_recheck_ledgers_after_model_run(tmp_path: Path)
     assert result.is_complete
 
 
+def test_design_phase_prompt_uses_runtime_requirements_ears_path(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    layout = RuntimeLayout.from_root(tmp_path)
+    _seed_runtime(layout)
+
+    prompt = DesignPhase(_ctx(layout, repo, io.StringIO())).build_prompt()
+
+    assert str(layout.overmind_dir / "requirements_ears.md") in prompt
+    assert "reqirements_ears.md" not in prompt
+
+
 def _ctx(layout: RuntimeLayout, repo: GitRepo, output: io.StringIO) -> PhaseContext:
     return PhaseContext(
         layout=layout,
@@ -129,7 +140,7 @@ def _seed_runtime(layout: RuntimeLayout, *, skill_prefix: str = ".codex") -> Non
     layout.step_review_results_dir.mkdir(parents=True, exist_ok=True)
     layout.overmind_dir.mkdir(parents=True, exist_ok=True)
     (layout.overmind_dir / "implementation_plan.md").write_text("plan\n", encoding="utf-8")
-    (layout.overmind_dir / "reqirements_ears.md").write_text("ears\n", encoding="utf-8")
+    (layout.overmind_dir / "requirements_ears.md").write_text("ears\n", encoding="utf-8")
     (
         layout.step_designs_dir / "step-1.2a-feature-demo-design.md"
     ).write_text("# Feature Design: 1.2a - Demo\n", encoding="utf-8")

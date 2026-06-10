@@ -4,6 +4,7 @@ import argparse
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import TextIO
 
 from yasdef_worker.infra.errors import YasdefError
 from yasdef_worker.infra.git_repo import GitRepo
@@ -37,18 +38,23 @@ def git_from_layout(layout: RuntimeLayout) -> GitRepo:
     return GitRepo(layout.worker_repo_root)
 
 
-def prompter() -> Prompter:
-    return Prompter(stdin=sys.stdin, stderr=sys.stderr)
+def prompter(*, stdin: TextIO | None = None, stderr: TextIO | None = None) -> Prompter:
+    return Prompter(
+        stdin=stdin if stdin is not None else sys.stdin,
+        stderr=stderr if stderr is not None else sys.stderr,
+    )
 
 
-def output() -> UserOutput:
-    return TerminalUserOutput(sys.stderr)
+def output(*, stderr: TextIO | None = None) -> UserOutput:
+    return TerminalUserOutput(stderr if stderr is not None else sys.stderr)
 
 
 def handle_error(exc: Exception, user_output: UserOutput | None = None) -> int:
     target = user_output if user_output is not None else output()
     if isinstance(exc, YasdefError):
-        target.failure(str(exc))
+        if exc.exit_code != EXIT_SUCCESS:
+            target.failure(str(exc))
+        return exc.exit_code
     else:
         target.failure("unexpected error", detail=str(exc))
     return EXIT_ERROR

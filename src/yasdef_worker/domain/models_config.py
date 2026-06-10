@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from yasdef_worker.domain.phases import PhaseNameError, canonical_phase_name
+
 
 @dataclass(frozen=True, slots=True)
 class ModelConfig:
@@ -13,25 +15,6 @@ class ModelConfig:
 
 class ModelsConfigError(ValueError):
     pass
-
-
-_PHASE_ALIASES = {
-    "design": "design",
-    "planning": "planning",
-    "implementation": "implementation",
-    "user-review": "user_review",
-    "user_review": "user_review",
-    "ai-audit": "ai_audit",
-    "ai_audit": "ai_audit",
-}
-
-
-def canonical_phase_name(value: str) -> str:
-    normalized = value.strip().lower()
-    phase = _PHASE_ALIASES.get(normalized)
-    if phase is None:
-        raise ModelsConfigError(f"unsupported phase name: {value}")
-    return phase
 
 
 def parse_models_config(content: str) -> tuple[ModelConfig, ...]:
@@ -47,7 +30,7 @@ def parse_models_config(content: str) -> tuple[ModelConfig, ...]:
         if not phase:
             continue
         extras = tuple(part for part in parts[3:] if part)
-        rows.append(ModelConfig(canonical_phase_name(phase), cmd, model, extras))
+        rows.append(ModelConfig(_canonical_model_phase_name(phase), cmd, model, extras))
     return tuple(rows)
 
 
@@ -63,7 +46,7 @@ def list_phases(content: str) -> tuple[str, ...]:
 
 
 def load_model_config(content: str, phase: str) -> ModelConfig:
-    target = canonical_phase_name(phase).lower()
+    target = _canonical_model_phase_name(phase).lower()
     for row in parse_models_config(content):
         if row.phase.lower() == target:
             if not row.cmd or not row.model:
@@ -77,3 +60,13 @@ def load_model_config(content: str, phase: str) -> ModelConfig:
 
 def _trim(value: str) -> str:
     return value.strip(" \t")
+
+
+def _canonical_model_phase_name(value: str) -> str:
+    try:
+        phase = canonical_phase_name(value)
+    except PhaseNameError as exc:
+        raise ModelsConfigError(str(exc)) from exc
+    if phase == "post_review":
+        raise ModelsConfigError(f"unsupported phase name: {value}")
+    return phase

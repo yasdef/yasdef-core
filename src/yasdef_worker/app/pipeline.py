@@ -13,18 +13,20 @@ from yasdef_worker.app.phases import (
     UserReviewPhase,
     normalize_phase_token,
 )
+from yasdef_worker.domain.phases import MODEL_PHASES
 from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
 from yasdef_worker.infra.errors import YasdefError
 
 PhaseType: TypeAlias = type[Phase]
 
-DEFAULT_PHASES: dict[str, PhaseType] = {
+_PHASE_TYPES: dict[str, PhaseType] = {
     "design": DesignPhase,
     "planning": PlanningPhase,
     "implementation": ImplementationPhase,
     "user_review": UserReviewPhase,
     "ai_audit": AiAuditPhase,
 }
+DEFAULT_PHASES: dict[str, PhaseType] = {phase: _PHASE_TYPES[phase] for phase in MODEL_PHASES}
 
 
 @dataclass(frozen=True, slots=True)

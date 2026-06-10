@@ -11,6 +11,21 @@ class YasdefError(Exception):
 
 
 @dataclass(slots=True)
+class FeatureExhausted(YasdefError):
+    feature_id: str
+    sync_file_path: Path
+
+    exit_code = 0
+
+    def __post_init__(self) -> None:
+        Exception.__init__(
+            self,
+            f"Feature '{self.feature_id}' is exhausted; all assigned steps are complete. "
+            f"Cached feature sync file: {self.sync_file_path}",
+        )
+
+
+@dataclass(slots=True)
 class ProcessFailed(YasdefError):
     argv: list[str]
     returncode: int
@@ -56,4 +71,3 @@ class PhasePreconditionError(YasdefError):
 
     def __post_init__(self) -> None:
         Exception.__init__(self, f"{self.phase} phase precondition failed: {self.reason}")
-

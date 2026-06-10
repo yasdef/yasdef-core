@@ -57,7 +57,7 @@ class RetryPolicy:
 
 class TokenUsageSource(Protocol):
     def usage_for(self, *, step: str, phase: str) -> TokenUsage | None:
-        raise NotImplementedError
+        ...
 
 
 class LogTokenUsageSource:

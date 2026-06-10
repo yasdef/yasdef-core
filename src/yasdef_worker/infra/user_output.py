@@ -1,25 +1,31 @@
 from __future__ import annotations
 
 import sys
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TextIO
 
 
-class UserOutput:
+class UserOutput(ABC):
+    @abstractmethod
     def info(self, msg: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def warn(self, msg: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def failure(self, msg: str, *, detail: str | None = None) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def step(self, msg: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def event(self, kind: str, **fields: object) -> None:
-        raise NotImplementedError
+        ...
 
 
 class TerminalUserOutput(UserOutput):
@@ -41,7 +47,11 @@ class TerminalUserOutput(UserOutput):
         self.stream.write(f"yasdef: {msg}\n")
 
     def event(self, kind: str, **fields: object) -> None:
-        self.stream.write(f"{kind}: {fields}\n")
+        formatted = _format_event_fields(fields)
+        if formatted:
+            self.stream.write(f"{kind}: {formatted}\n")
+        else:
+            self.stream.write(f"{kind}\n")
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +59,7 @@ class OutputEvent:
     level: str
     message: str
     fields: dict[str, object]
+    kind: str | None = None
 
 
 class RecordingUserOutput(UserOutput):
@@ -71,4 +82,8 @@ class RecordingUserOutput(UserOutput):
         self.events.append(OutputEvent("step", msg, {}))
 
     def event(self, kind: str, **fields: object) -> None:
-        self.events.append(OutputEvent("event", kind, fields))
+        self.events.append(OutputEvent("event", kind, fields, kind=kind))
+
+
+def _format_event_fields(fields: dict[str, object]) -> str:
+    return " ".join(f"{key}={fields[key]!r}" for key in sorted(fields))

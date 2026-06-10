@@ -5,8 +5,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from yasdef_worker.app.pipeline import Pipeline
+from yasdef_worker.app.pipeline import DEFAULT_PHASES, Pipeline
 from yasdef_worker.app.phases import ModelConfigRunnerFactory, PhaseContext, PlanningPhase
+from yasdef_worker.domain.phases import MODEL_PHASES
 from yasdef_worker.domain.phase_types import PhaseStatus
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
@@ -22,6 +23,11 @@ class Feature:
     step: str
     feature_id: str
     worker_uuid: str = "worker-uuid"
+
+
+def test_default_pipeline_phases_follow_model_phase_registry() -> None:
+    assert tuple(DEFAULT_PHASES) == MODEL_PHASES
+    assert "post_review" not in DEFAULT_PHASES
 
 
 def test_pipeline_runs_concrete_echo_phases_in_order(tmp_path: Path) -> None:
@@ -193,7 +199,7 @@ def _seed_runtime(layout: RuntimeLayout) -> None:
     ]:
         directory.mkdir(parents=True, exist_ok=True)
     (layout.overmind_dir / "implementation_plan.md").write_text("plan\n", encoding="utf-8")
-    (layout.overmind_dir / "reqirements_ears.md").write_text("ears\n", encoding="utf-8")
+    (layout.overmind_dir / "requirements_ears.md").write_text("ears\n", encoding="utf-8")
     (
         layout.step_designs_dir / "step-1.2a-feature-demo-design.md"
     ).write_text("# Feature Design: 1.2a - Demo\n", encoding="utf-8")

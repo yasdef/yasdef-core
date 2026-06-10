@@ -6,7 +6,7 @@ from typing import Literal
 
 from yasdef_worker.domain.plans.feature_selector import analyze_for_worker
 from yasdef_worker.domain.plans.implementation_plan import ImplementationPlan
-from yasdef_worker.infra.errors import GitOperationFailed, YasdefError
+from yasdef_worker.infra.errors import FeatureExhausted, GitOperationFailed, YasdefError
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
 from yasdef_worker.infra.prompts import Prompter
@@ -14,14 +14,6 @@ from yasdef_worker.infra.user_output import UserOutput
 from yasdef_worker.infra.yaml_io import read_yaml_file, write_yaml_file
 
 SelectionMode = Literal["resume_reuse", "auto_single", "user_prompt"]
-
-
-class _FeatureExhausted(Exception):
-    """Raised internally when the cached feature has no remaining unchecked steps."""
-
-    def __init__(self, feature_id: str, sync_file_path: Path) -> None:
-        self.feature_id = feature_id
-        self.sync_file_path = sync_file_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,12 +41,27 @@ class FeatureRunState:
 
 
 @dataclass(frozen=True, slots=True)
+class _ExhaustedFeature:
+    feature_id: str
+    sync_file_path: Path
+
+
+_FastPathResult = FeatureRunState | _ExhaustedFeature | None
+
+
+@dataclass(frozen=True, slots=True)
 class _Candidate:
     feature_id: str
     feature_path: Path
     source_plan_path: Path
     source_ears_path: Path
     step: str
+
+
+@dataclass(frozen=True, slots=True)
+class _SelectedCandidate:
+    candidate: _Candidate
+    selection_mode: SelectionMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +87,6 @@ class FeatureContextBuilder:
         self.output = output
         self.resume_step = resume_step
         self._built = False
-        self._candidate_cache: tuple[_Candidate, ...] = ()
 
     def build(self) -> FeatureRunState:
         if self._built:
@@ -89,11 +95,11 @@ class FeatureContextBuilder:
 
         binding = self._load_binding()
         self._sync_bound_project(binding)
-        try:
-            reused = self._try_fast_path(binding)
-        except _FeatureExhausted as exc:
-            self._handle_exhausted_feature(exc)
-            raise SystemExit(0) from exc  # reached only after interactive clean exit
+        fast_path = self._try_fast_path(binding)
+        if isinstance(fast_path, _ExhaustedFeature):
+            self._handle_exhausted_feature(fast_path)
+            raise FeatureExhausted(fast_path.feature_id, fast_path.sync_file_path)
+        reused = fast_path
 
         if reused is not None and (self.resume_step is not None or not self.prompts.interactive):
             self._write_meta_sync(reused)
@@ -104,7 +110,8 @@ class FeatureContextBuilder:
             return reused
 
         self._validate_runtime_git()
-        candidate = self._select_candidate(binding)
+        selected = self._select_candidate(binding)
+        candidate = selected.candidate
         state = FeatureRunState(
             binding=binding,
             feature_id=candidate.feature_id,
@@ -112,18 +119,8 @@ class FeatureContextBuilder:
             source_plan_path=candidate.source_plan_path,
             source_ears_path=candidate.source_ears_path,
             step=candidate.step,
-            selection_mode="auto_single",
+            selection_mode=selected.selection_mode,
         )
-        if len(self._candidate_cache) > 1:
-            state = FeatureRunState(
-                binding=state.binding,
-                feature_id=state.feature_id,
-                feature_path=state.feature_path,
-                source_plan_path=state.source_plan_path,
-                source_ears_path=state.source_ears_path,
-                step=state.step,
-                selection_mode="user_prompt",
-            )
         self._write_meta_sync(state)
         self.output.step(
             f"selected feature '{state.feature_id}' "
@@ -150,7 +147,7 @@ class FeatureContextBuilder:
             worker_status=str(data.get("status") or "").strip(),
         )
 
-    def _try_fast_path(self, binding: ProjectBinding) -> FeatureRunState | None:
+    def _try_fast_path(self, binding: ProjectBinding) -> _FastPathResult:
         data = self._current_feature_metadata(binding)
         if data is None:
             return None
@@ -174,7 +171,7 @@ class FeatureContextBuilder:
             if analysis.assigned_any and analysis.first_unchecked is None:
                 # All assigned steps are complete: feature is exhausted.
                 # Never fall through to new-feature discovery.
-                raise _FeatureExhausted(feature_id, self.layout.feature_sync_file)
+                return _ExhaustedFeature(feature_id, self.layout.feature_sync_file)
             selected_step = str(data.get("selected_step") or "").strip()
             step = analysis.first_unchecked or selected_step
             if not step:
@@ -225,10 +222,10 @@ class FeatureContextBuilder:
         if not self.git.is_inside_worktree():
             raise YasdefError("feature routing requires a git repository")
 
-    def _select_candidate(self, binding: ProjectBinding) -> _Candidate:
+    def _select_candidate(self, binding: ProjectBinding) -> _SelectedCandidate:
         discovery = self._find_candidates(binding)
-        self._candidate_cache = _order_candidates(discovery.candidates, self._current_feature_id(binding))
-        if not self._candidate_cache:
+        ordered = _order_candidates(discovery.candidates, self._current_feature_id(binding))
+        if not ordered:
             if discovery.blocked_by is not None:
                 raise YasdefError(
                     f"Next possible assigned step for your worker {binding.worker_uuid} "
@@ -244,17 +241,17 @@ class FeatureContextBuilder:
                 f"no candidate features under project '{binding.project_id}' "
                 f"for worker UUID '{binding.worker_uuid}'"
             )
-        if len(self._candidate_cache) == 1:
-            return self._candidate_cache[0]
+        if len(ordered) == 1:
+            return _SelectedCandidate(ordered[0], "auto_single")
         current_feature_id = self._current_feature_id(binding)
         selected = self.prompts.choose_numbered(
             "Select feature",
             [
                 _candidate_label(candidate, current_feature_id)
-                for candidate in self._candidate_cache
+                for candidate in ordered
             ],
         )
-        return self._candidate_cache[selected]
+        return _SelectedCandidate(ordered[selected], "user_prompt")
 
     def _find_candidates(self, binding: ProjectBinding) -> _Discovery:
         candidates: list[_Candidate] = []
@@ -298,14 +295,14 @@ class FeatureContextBuilder:
                 )
         return _Discovery(tuple(candidates), assigned_any, blocked_by)
 
-    def _handle_exhausted_feature(self, exc: _FeatureExhausted) -> None:
+    def _handle_exhausted_feature(self, exhausted: _ExhaustedFeature) -> None:
         """Handle an exhausted cached feature.
 
         Non-interactive: raise YasdefError with removal instructions.
         Interactive: offer to delete the sync file or exit for manual handling.
         """
-        feature_id = exc.feature_id
-        sync_path = exc.sync_file_path
+        feature_id = exhausted.feature_id
+        sync_path = exhausted.sync_file_path
 
         if not self.prompts.interactive:
             raise YasdefError(

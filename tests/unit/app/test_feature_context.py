@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from yasdef_worker.app.feature_context import FeatureContextBuilder
-from yasdef_worker.infra.errors import YasdefError
+from yasdef_worker.infra.errors import FeatureExhausted, YasdefError
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
 from yasdef_worker.infra.prompts import Prompter
@@ -75,6 +75,41 @@ def test_feature_context_selects_single_candidate_and_writes_metadata(tmp_path: 
         "feature_id": "feature-a",
         "selected_step": "1.1",
     }
+
+
+def test_feature_context_raises_controlled_stop_for_interactive_exhausted_feature(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "worker")
+    layout = RuntimeLayout.from_root(repo.root)
+    source = tmp_path / "source"
+    _write_project(source)
+    _write_feature(source, "feature-a", step="1.1", checked=True)
+    _write_binding(layout, source)
+    layout.feature_sync_file.write_text(
+        "\n".join(
+            [
+                "project_id: project-a",
+                f"worker_uuid: {WORKER_UUID}",
+                "feature_id: feature-a",
+                "selected_step: 1.1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    output = RecordingUserOutput()
+
+    with pytest.raises(FeatureExhausted) as raised:
+        FeatureContextBuilder(
+            layout=layout,
+            git=repo,
+            prompts=RecordingPrompter(selection=0),
+            output=output,
+        ).build()
+
+    assert raised.value.exit_code == 0
+    assert raised.value.feature_id == "feature-a"
+    assert not layout.feature_sync_file.exists()
+    assert [event.level for event in output.events] == ["warn", "step"]
 
 
 def test_feature_context_prompts_when_multiple_candidates_exist(tmp_path: Path) -> None:

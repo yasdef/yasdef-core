@@ -21,11 +21,11 @@ from yasdef_worker.infra.user_output import UserOutput
 class PhaseFeature(Protocol):
     @property
     def step(self) -> str:
-        raise NotImplementedError
+        ...
 
     @property
     def feature_id(self) -> str:
-        raise NotImplementedError
+        ...
 
 
 
@@ -41,7 +41,7 @@ class PhaseRunner:
 
 class RunnerFactory(Protocol):
     def for_phase(self, phase: str) -> PhaseRunner:
-        raise NotImplementedError
+        ...
 
 
 class ModelConfigRunnerFactory:

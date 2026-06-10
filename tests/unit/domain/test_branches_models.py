@@ -14,6 +14,7 @@ from yasdef_worker.domain.models_config import (
     load_model_config,
     parse_models_config,
 )
+from yasdef_worker.domain.phases import MODEL_PHASES, WORKFLOW_PHASES, canonical_phase_name
 from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
 
 
@@ -63,12 +64,24 @@ def test_models_config_parses_comments_aliases_and_runner_rows() -> None:
     assert load_model_config(content, "AI-AUDIT").cmd == "echo"
 
 
+def test_phase_registry_canonicalizes_aliases_and_distinguishes_workflow_phases() -> None:
+    assert canonical_phase_name("user-review") == "user_review"
+    assert canonical_phase_name("post-review") == "post_review"
+    assert MODEL_PHASES == ("design", "planning", "implementation", "user_review", "ai_audit")
+    assert WORKFLOW_PHASES == (*MODEL_PHASES, "post_review")
+
+
 def test_models_config_rejects_unknown_phase_names() -> None:
     with pytest.raises(ModelsConfigError, match="unsupported phase name"):
         parse_models_config("audit-review | codex | gpt-5.4\n")
 
     with pytest.raises(ModelsConfigError, match="unsupported phase name"):
         load_model_config("design | codex | gpt-5.4\n", "audit-review")
+
+
+def test_models_config_rejects_non_model_workflow_phase() -> None:
+    with pytest.raises(ModelsConfigError, match="unsupported phase name"):
+        parse_models_config("post-review | echo | mock-model\n")
 
 
 def test_missing_model_config_raises_user_facing_error() -> None:
