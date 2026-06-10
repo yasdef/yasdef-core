@@ -137,7 +137,7 @@ class FeatureContextBuilder:
         worker_uuid = _required_str(data, "worker_uuid")
         source_path = Path(overmind_source_path).expanduser().resolve()
         if not source_path.is_dir():
-            raise YasdefError(f"bound ASDLC project repo does not exist: {source_path}")
+            raise YasdefError(f"bound ASDLC project path does not exist: {source_path}")
         _validate_project_id(source_path, project_id)
         return ProjectBinding(
             overmind_source_path=source_path,
@@ -210,10 +210,10 @@ class FeatureContextBuilder:
             return
         try:
             project_git.pull_rebase()
-            self.output.step(f"synced bound project repo {binding.overmind_source_path}")
+            self.output.step(f"synced bound ASDLC project {binding.overmind_source_path}")
         except GitOperationFailed as exc:
             raise YasdefError(
-                f"Failed to sync bound ASDLC project repo {binding.overmind_source_path}: "
+                f"Failed to sync bound ASDLC project {binding.overmind_source_path}: "
                 f"{exc.stderr or exc.op}. "
                 "Resolve the rebase conflict or dirty state and rerun."
             ) from exc
@@ -357,7 +357,7 @@ def _usable_feature_files(source_plan: Path, source_ears: Path) -> bool:
 def _validate_project_id(source_path: Path, expected_project_id: str) -> None:
     definition = source_path / "init_progress_definition.yaml"
     if not definition.is_file():
-        raise YasdefError(f"bound ASDLC project repo is missing init_progress_definition.yaml: {source_path}")
+        raise YasdefError(f"bound ASDLC project path is missing init_progress_definition.yaml: {source_path}")
     data = read_yaml_file(definition)
     meta = data.get("meta_info")
     if isinstance(meta, dict):

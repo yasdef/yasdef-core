@@ -66,14 +66,14 @@ This approach can be expressed in a few sentences:
 
 3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` (or `CLAUDE.md` for claude.cli) with project-specific best practices in a root of you working project - it's extremely important for codebase consistency.
 
-4. Register this worker with an ASDLC project repo:
-  - prepare valid path to ASDLC repo, you will be asked about it
-  - prepare you UUID fro ASDLC repo, you will be asked about it
+4. Register this worker with an ASDLC project:
+  - prepare the ASDLC project folder path, for example `<asdlc-repo>/projects/<project-id>`
+  - prepare your worker UUID from that ASDLC project's `workers.yaml`
    ```
    cd /path/to/worker-repo
    yasdef register
    ```
-   The command prompts for the ASDLC project repo path and worker UUID. The worker UUID must already exist in the ASDLC project repo's root `workers.yaml`. The command reads `project_id` from `<path-to-asdlc-project-repo>/init_progress_definition.yaml` under `meta_info.project_id`, writes a deterministic binding to `.asdlc_worker/project_overmind.yaml`, and commits on a new `register_yasdef_worker_in_coordinator` branch. This path is the ASDLC/coordinator repo that owns feature folders and planning artifacts, not the implementation codebase repo.
+   The command prompts for the ASDLC project path and worker UUID. The path must be the project folder that contains `workers.yaml`, `init_progress_definition.yaml`, and feature folders; for the coordinator layout this is usually `<asdlc-repo>/projects/<project-id>`, not the ASDLC repo root. The worker UUID must already exist in that project's `workers.yaml`. The command reads `project_id` from `<asdlc-project-path>/init_progress_definition.yaml` under `meta_info.project_id`, writes a deterministic binding to `.asdlc_worker/project_overmind.yaml`, and commits on a new `register_yasdef_worker_in_coordinator` branch. This path is not the implementation codebase repo.
 
 5. Run the worker:
 
@@ -84,7 +84,7 @@ This approach can be expressed in a few sentences:
 
   - here is the brief explanation how exactly worker will operate, just in case anyone interested, since all works in interactive mode it can be skiped
 
-   The worker reads `.asdlc_worker/project_overmind.yaml`, refreshes the bound ASDLC repo with `git pull --rebase`, and scans feature folders for `implementation_plan.md` / `requirements_ears.md`.
+   The worker reads `.asdlc_worker/project_overmind.yaml`, refreshes the bound ASDLC project worktree with `git pull --rebase`, and scans feature folders for `implementation_plan.md` / `requirements_ears.md`.
 
    5.1. Feature and step selection:
    - The worker looks for steps assigned to its `worker_uuid` with `#### Assigned: <worker-uuid>`.
@@ -132,8 +132,8 @@ This approach can be expressed in a few sentences:
 - **Orchestration:** `yasdef run` drives the configured worker phase pipeline.
   - Worker/project binding rule: reads `worker_uuid` and `project_id` from `.asdlc_worker/project_overmind.yaml`.
   - Phase configuration rule: phase order comes from `.asdlc_worker/setup/models.md`; phases normally run as `design -> planning -> implementation -> user_review -> ai_audit -> post_review`.
-  - Candidate discovery rule: scans bound ASDLC project repo features (`<asdlc-project-repo>/<feature-id>/implementation_plan.md`), skipping `.git` and directories without usable `implementation_plan.md` / `requirements_ears.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
-  - Bound-repo freshness rule: when the bound ASDLC project repo is a Git worktree, the worker runs `git pull --rebase` before feature discovery.
+  - Candidate discovery rule: scans bound ASDLC project features (`<asdlc-project-path>/<feature-id>/implementation_plan.md`), skipping `.git` and directories without usable `implementation_plan.md` / `requirements_ears.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
+  - Bound-project freshness rule: when the bound ASDLC project path is inside a Git worktree, the worker runs `git pull --rebase` before feature discovery.
   - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
   - Single-source rule: reads and writes `implementation_plan.md` and `requirements_ears.md` directly at the bound-source paths — there is no local runtime mirror.
   - Post-ai_audit sync rule: before `post_review`, stages the updated bound-source `implementation_plan.md`, commits it in the bound ASDLC repo, runs `git pull --rebase`, and pushes on success.
@@ -267,7 +267,7 @@ V-0.2.0 (current)
 
 ## How to mock yasdef-coordinator
 
-Create a minimal mock ASDLC project repo for local testing. 
+Create a minimal mock ASDLC project folder for local testing.
 ✅ Or you can just pass this instruction to you model/agent
 
 ---
@@ -275,10 +275,10 @@ Instruction for mock yasdef-coordinator:
 
 Required files:
 - Worker repo before `yasdef init`: any existing Git repo root.
-- ASDLC repo before `yasdef register`: root `init_progress_definition.yaml` with `meta_info.project_id`, and root `workers.yaml` with the worker UUID, class, and status.
+- ASDLC project folder before `yasdef register`: root `init_progress_definition.yaml` with `meta_info.project_id`, and root `workers.yaml` with the worker UUID, class, and status.
 - Feature folder before `yasdef run`: `requirements_ears.md` and `implementation_plan.md`.
 
-Create the mock ASDLC repo:
+Create the mock ASDLC project folder:
 
 ```bash
 mkdir -p /tmp/mock-asdlc/project-demo/feature-demo

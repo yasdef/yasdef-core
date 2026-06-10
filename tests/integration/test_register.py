@@ -72,7 +72,7 @@ def test_register_fails_outside_initialized_worker_repo_before_prompting(tmp_pat
     combined = result.stdout + result.stderr
     assert "worker runtime is not initialized" in combined
     assert "yasdef init <path-to-your-worker-repo>" in combined
-    assert "Enter ASDLC project repo path" not in combined
+    assert "Enter ASDLC project path" not in combined
 
 
 def test_register_fails_when_project_path_input_empty(tmp_path: Path) -> None:
@@ -91,7 +91,7 @@ def test_register_fails_when_project_path_missing(tmp_path: Path) -> None:
     result = _run_register(repo, tmp_path / "nonexistent")
     assert result.returncode != 0
     combined = result.stdout + result.stderr
-    assert "ASDLC project repo path not found" in combined
+    assert "ASDLC project path not found" in combined
 
 
 def test_register_fails_when_workers_yaml_missing(tmp_path: Path) -> None:
@@ -203,5 +203,5 @@ def test_register_fails_on_dirty_working_tree(tmp_path: Path) -> None:
     assert result.returncode != 0
     combined = result.stdout + result.stderr
     assert "clean working tree" in combined
-    assert "Enter ASDLC project repo path" not in combined
+    assert "Enter ASDLC project path" not in combined
     assert git("branch", "--show-current", cwd=repo).stdout.strip() == "master"

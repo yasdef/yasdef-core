@@ -55,6 +55,25 @@ def test_orchestrator_rejects_design_run_from_non_mainline_branch(tmp_path: Path
         ).run(RunOptions())
 
 
+def test_orchestrator_allows_design_resume_from_non_mainline_branch(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "worker")
+    repo.checkout_new("step-1.1-feature-branch")
+    layout = RuntimeLayout.from_root(repo.root)
+    layout.models_file.parent.mkdir(parents=True, exist_ok=True)
+    layout.models_file.write_text("design | echo | mock-model\n", encoding="utf-8")
+
+    with pytest.raises(YasdefError) as exc_info:
+        Coordinator(
+            layout=layout,
+            git=repo,
+            prompts=Prompter(interactive=False),
+            process=ProcessRunner(),
+            output=RecordingUserOutput(),
+        ).run(RunOptions(resume_step="1.1"))
+
+    assert "must start from main or master" not in str(exc_info.value)
+
+
 def test_orchestrator_allows_non_design_run_from_non_mainline_branch(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "worker")
     repo.checkout_new("feature")

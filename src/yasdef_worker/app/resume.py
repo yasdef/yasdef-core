@@ -202,7 +202,13 @@ class ResumeAnalysis:
 
     @property
     def blocked(self) -> bool:
-        return any(state.status is PhaseStatus.FAILED for state in self.states)
+        for state in self.states:
+            if state.status is PhaseStatus.FAILED:
+                return True
+            if not state.is_complete:
+                # Phases after the first incomplete haven't run yet; their state is meaningless.
+                return False
+        return False
 
     @property
     def block_reason(self) -> str | None:

@@ -22,6 +22,8 @@ from yasdef_worker.infra.user_output import RecordingUserOutput
 class Feature:
     step: str
     feature_id: str
+    source_plan_path: Path
+    source_ears_path: Path
     worker_uuid: str = "worker-uuid"
 
 
@@ -169,7 +171,7 @@ def _ctx(layout: RuntimeLayout, repo: GitRepo, prompts: Prompter, output: io.Str
         log_capture=LogCapture(layout, project="demo"),
         templates=TemplateLoader(layout),
         output=RecordingUserOutput(),
-        feature=Feature(step="1.2a", feature_id="feature-demo"),
+        feature=_feature(layout),
         process_output=output,
     )
 
@@ -200,6 +202,9 @@ def _seed_runtime(layout: RuntimeLayout) -> None:
         directory.mkdir(parents=True, exist_ok=True)
     (layout.overmind_dir / "implementation_plan.md").write_text("plan\n", encoding="utf-8")
     (layout.overmind_dir / "requirements_ears.md").write_text("ears\n", encoding="utf-8")
+    _source_plan_path(layout).parent.mkdir(parents=True, exist_ok=True)
+    _source_plan_path(layout).write_text("source plan\n", encoding="utf-8")
+    _source_ears_path(layout).write_text("source ears\n", encoding="utf-8")
     (
         layout.step_designs_dir / "step-1.2a-feature-demo-design.md"
     ).write_text("# Feature Design: 1.2a - Demo\n", encoding="utf-8")
@@ -264,6 +269,23 @@ def _seed_runtime(layout: RuntimeLayout) -> None:
 def _write_script(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("from __future__ import annotations\n\nraise SystemExit(0)\n", encoding="utf-8")
+
+
+def _feature(layout: RuntimeLayout) -> Feature:
+    return Feature(
+        step="1.2a",
+        feature_id="feature-demo",
+        source_plan_path=_source_plan_path(layout),
+        source_ears_path=_source_ears_path(layout),
+    )
+
+
+def _source_plan_path(layout: RuntimeLayout) -> Path:
+    return layout.worker_repo_root / "asdlc-source" / "feature-demo" / "implementation_plan.md"
+
+
+def _source_ears_path(layout: RuntimeLayout) -> Path:
+    return layout.worker_repo_root / "asdlc-source" / "feature-demo" / "requirements_ears.md"
 
 
 def _init_repo(path: Path) -> GitRepo:

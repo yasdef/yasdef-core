@@ -30,8 +30,8 @@ class DesignPhase(Phase):
             feature_id=self.ctx.feature.feature_id,
             branch=self.branch_name(),
             design_out=self.design_path(),
-            runtime_plan=self.ctx.layout.overmind_dir / "implementation_plan.md",
-            runtime_ears=self.ctx.layout.overmind_dir / "requirements_ears.md",
+            runtime_plan=self.ctx.feature.source_plan_path,
+            runtime_ears=self.ctx.feature.source_ears_path,
         )
 
     def run(self, prompt: str, log_path: Path) -> PhaseResult:

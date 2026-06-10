@@ -27,6 +27,14 @@ class PhaseFeature(Protocol):
     def feature_id(self) -> str:
         ...
 
+    @property
+    def source_plan_path(self) -> Path:
+        ...
+
+    @property
+    def source_ears_path(self) -> Path:
+        ...
+
 
 
 @dataclass(frozen=True, slots=True)

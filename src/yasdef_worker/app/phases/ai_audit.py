@@ -33,7 +33,7 @@ class AiAuditPhase(Phase):
             branch=self.branch_name(),
             step_plan=self.step_plan_path(),
             design_file=self.design_path(),
-            runtime_plan=self.ctx.layout.overmind_dir / "implementation_plan.md",
+            runtime_plan=self.ctx.feature.source_plan_path,
             worker_id=getattr(self.ctx.feature, "worker_uuid", ""),
         )
 

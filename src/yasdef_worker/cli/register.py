@@ -11,7 +11,7 @@ from ._shared import EXIT_SUCCESS, git_from_layout, output
 
 
 def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    parser = subparsers.add_parser("register", help="bind this worker to an ASDLC project repo")
+    parser = subparsers.add_parser("register", help="bind this worker to an ASDLC project")
     parser.set_defaults(handler=handle)
 
 

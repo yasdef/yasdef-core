@@ -28,7 +28,7 @@ class PlanningPhase(Phase):
             branch=self.branch_name(),
             design_file=self.design_path(),
             step_plan_out=self.step_plan_path(),
-            runtime_plan=self.ctx.layout.overmind_dir / "implementation_plan.md",
+            runtime_plan=self.ctx.feature.source_plan_path,
             open_questions_file=self.open_questions_path(),
             blockers_file=self.blockers_path(),
         )

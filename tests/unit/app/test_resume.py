@@ -70,7 +70,10 @@ def test_resume_analysis_reports_all_done(tmp_path: Path) -> None:
     assert "Selected start phase: none (all phases complete)" in analysis.dry_run_report("1.1")
 
 
-def test_resume_analysis_blocks_on_invalid_implementation_state(tmp_path: Path) -> None:
+def test_resume_analysis_starts_at_planning_when_step_plan_missing(tmp_path: Path) -> None:
+    # Matches sh orchestrator behaviour: "invalid" implementation state (step plan absent,
+    # even with the plan gate checked) is treated the same as incomplete — resume starts at
+    # the first non-complete phase rather than blocking.
     repo = _init_repo(tmp_path)
     layout = RuntimeLayout.from_root(tmp_path)
     plan = _plan(plan_checked=True, implementation_checked=False, review_checked=False)
@@ -85,10 +88,9 @@ def test_resume_analysis_blocks_on_invalid_implementation_state(tmp_path: Path) 
         git=repo,
     )
 
-    assert analysis.blocked is True
+    assert analysis.blocked is False
     assert analysis.start_phase == "planning"
-    assert "missing" in (analysis.block_reason or "")
-    assert analysis.phases_to_execute() == ()
+    assert analysis.phases_to_execute() == ("planning", "implementation", "user_review", "ai_audit", "post_review")
 
 
 def test_step_gate_counts_ignore_tag_prefixes() -> None:

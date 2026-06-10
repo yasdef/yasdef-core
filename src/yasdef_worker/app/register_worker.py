@@ -70,19 +70,21 @@ class RegisterWorkerOperation:
         )
 
     def _prompt_asdlc_project_repo_path(self) -> Path:
-        raw_path = self.prompts.prompt_non_empty("Enter ASDLC project repo path: ")
+        raw_path = self.prompts.prompt_non_empty(
+            "Enter ASDLC project path (folder with workers.yaml): "
+        )
         source_path = Path(raw_path).expanduser()
         if not source_path.exists():
-            raise YasdefError(f"ASDLC project repo path not found: {source_path}")
+            raise YasdefError(f"ASDLC project path not found: {source_path}")
         if not source_path.is_dir():
-            raise YasdefError(f"ASDLC project repo path is not a directory: {source_path}")
+            raise YasdefError(f"ASDLC project path is not a directory: {source_path}")
         resolved = source_path.resolve()
         workers_file = resolved / "workers.yaml"
         if not workers_file.is_file():
-            raise YasdefError(f"ASDLC project repo does not contain a root workers.yaml: {resolved}")
+            raise YasdefError(f"ASDLC project path does not contain workers.yaml: {resolved}")
         definition = resolved / "init_progress_definition.yaml"
         if not definition.is_file():
-            raise YasdefError(f"ASDLC project repo is missing init_progress_definition.yaml: {resolved}")
+            raise YasdefError(f"ASDLC project path is missing init_progress_definition.yaml: {resolved}")
         return resolved
 
     def _prompt_worker_uuid(self) -> str:

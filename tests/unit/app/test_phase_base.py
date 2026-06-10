@@ -29,6 +29,8 @@ from yasdef_worker.infra.user_output import RecordingUserOutput
 class Feature:
     step: str
     feature_id: str
+    source_plan_path: Path
+    source_ears_path: Path
 
 
 class StaticRunnerFactory:
@@ -156,6 +158,11 @@ def _ctx(
         log_capture=LogCapture(layout),
         templates=TemplateLoader(layout),
         output=RecordingUserOutput(),
-        feature=Feature(step="1.2a", feature_id="feature-demo"),
+        feature=Feature(
+            step="1.2a",
+            feature_id="feature-demo",
+            source_plan_path=tmp_path / "source" / "feature-demo" / "implementation_plan.md",
+            source_ears_path=tmp_path / "source" / "feature-demo" / "requirements_ears.md",
+        ),
         process_output=process_output,
     )
