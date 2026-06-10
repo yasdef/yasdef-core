@@ -76,7 +76,7 @@ def test_concrete_phases_run_once_with_echo_runner_and_expected_branches(tmp_pat
     assert "yasdef-worker-ai-audit" in output.getvalue()
 
 
-def test_planning_phase_returns_incomplete_when_ledgers_have_entries(tmp_path: Path) -> None:
+def test_planning_phase_does_not_recheck_ledgers_after_model_run(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     layout = RuntimeLayout.from_root(tmp_path)
     _seed_runtime(layout)
@@ -89,8 +89,7 @@ def test_planning_phase_returns_incomplete_when_ledgers_have_entries(tmp_path: P
 
     result = PlanningPhase(ctx).execute()
 
-    assert result.is_complete is False
-    assert "ledgers contain entries" in result.detail
+    assert result.is_complete
 
 
 def _ctx(layout: RuntimeLayout, repo: GitRepo, output: io.StringIO) -> PhaseContext:
@@ -108,7 +107,7 @@ def _ctx(layout: RuntimeLayout, repo: GitRepo, output: io.StringIO) -> PhaseCont
     )
 
 
-def _seed_runtime(layout: RuntimeLayout) -> None:
+def _seed_runtime(layout: RuntimeLayout, *, skill_prefix: str = ".codex") -> None:
     layout.models_file.parent.mkdir(parents=True, exist_ok=True)
     layout.models_file.write_text(
         "\n".join(
@@ -144,44 +143,35 @@ def _seed_runtime(layout: RuntimeLayout) -> None:
     (
         layout.step_blockers_dir / "step-1.2a-feature-demo-blockers.md"
     ).write_text("- No blockers.\n", encoding="utf-8")
+    skills_root = layout.worker_repo_root / skill_prefix / "skills"
     _write_script(
-        layout.worker_repo_root
-        / ".codex"
-        / "skills"
+        skills_root
         / "yasdef-worker-design"
         / "scripts"
         / "check_design_readiness.py"
     )
     _write_script(
-        layout.worker_repo_root
-        / ".codex"
-        / "skills"
+        skills_root
         / "yasdef-worker-plan"
         / "scripts"
         / "check_planning_readiness.py"
     )
     _write_script(
-        layout.worker_repo_root
-        / ".codex"
-        / "skills"
+        skills_root
         / "yasdef-worker-implementation"
         / "scripts"
         / "build_implementation_context.py"
     )
     _write_script(
-        layout.worker_repo_root
-        / ".codex"
-        / "skills"
+        skills_root
         / "yasdef-worker-implementation"
         / "scripts"
         / "check_implementation_readiness.py"
     )
-    user_review_skill = (
-        layout.worker_repo_root / ".codex" / "skills" / "yasdef-worker-user-review" / "SKILL.md"
-    )
+    user_review_skill = skills_root / "yasdef-worker-user-review" / "SKILL.md"
     user_review_skill.parent.mkdir(parents=True, exist_ok=True)
     user_review_skill.write_text("skill\n", encoding="utf-8")
-    audit_root = layout.worker_repo_root / ".codex" / "skills" / "yasdef-worker-ai-audit"
+    audit_root = skills_root / "yasdef-worker-ai-audit"
     (audit_root / "SKILL.md").parent.mkdir(parents=True, exist_ok=True)
     (audit_root / "SKILL.md").write_text("skill\n", encoding="utf-8")
     for name in [

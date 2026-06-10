@@ -90,6 +90,23 @@ class RuntimeLayout:
             return cls.from_root(root_value)
         return cls.from_root(binding.parent.parent)
 
+    def skill_dirs(self) -> tuple[Path, ...]:
+        return (
+            self.codex_skills_dir,
+            self.claude_skills_dir,
+            self.github_skills_dir,
+            self.agents_skills_dir,
+        )
+
+    def skill_path_candidates(self, skill_name: str, *parts: str) -> tuple[Path, ...]:
+        return tuple(skill_dir / skill_name / Path(*parts) for skill_dir in self.skill_dirs())
+
+    def existing_skill_path(self, skill_name: str, *parts: str) -> Path | None:
+        for candidate in self.skill_path_candidates(skill_name, *parts):
+            if candidate.is_file():
+                return candidate
+        return None
+
 
 def _find_worker_binding(start: Path) -> Path | None:
     for directory in (start, *start.parents):

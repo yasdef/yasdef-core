@@ -101,7 +101,7 @@ def test_pipeline_stops_when_user_denies_implementation_after_planning(tmp_path:
     assert repo.current_branch() == "step-1.2a-feature-demo-plan"
 
 
-def test_pipeline_stops_on_explicit_phase_check_failure(tmp_path: Path) -> None:
+def test_pipeline_does_not_recheck_planning_ledgers_after_model_run(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     layout = RuntimeLayout.from_root(tmp_path)
     _seed_runtime(layout)
@@ -115,9 +115,9 @@ def test_pipeline_stops_on_explicit_phase_check_failure(tmp_path: Path) -> None:
 
     result = Pipeline(ctx=ctx).iterate(("planning", "implementation"))
 
-    assert result.stopped is True
-    assert [phase.phase for phase in result.executed] == ["planning"]
-    assert result.executed[0].status is PhaseStatus.INCOMPLETE
+    assert result.stopped is False
+    assert [phase.phase for phase in result.executed] == ["planning", "implementation"]
+    assert all(phase.status is PhaseStatus.COMPLETE for phase in result.executed)
 
 
 def test_pipeline_converts_phase_precondition_error_to_stopped_result(tmp_path: Path) -> None:

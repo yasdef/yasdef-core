@@ -15,8 +15,8 @@ class ImplementationPhase(Phase):
     def preflight(self) -> None:
         _require_file(self.name, self.step_plan_path(), "step plan")
         _require_file(self.name, self.design_path(), "design artifact")
-        _require_file(self.name, self.context_script(), "implementation context script")
-        _require_file(self.name, self.readiness_script(), "implementation readiness script")
+        self.context_script()
+        self.readiness_script()
 
     def prepare_branch(self) -> None:
         BranchManager(self.ctx.git, self.ctx.output).ensure_implementation_branch(
@@ -50,23 +50,19 @@ class ImplementationPhase(Phase):
         )
 
     def context_script(self) -> Path:
-        return (
-            self.ctx.layout.worker_repo_root
-            / ".codex"
-            / "skills"
-            / "yasdef-worker-implementation"
-            / "scripts"
-            / "build_implementation_context.py"
+        return self.installed_skill_file(
+            "yasdef-worker-implementation",
+            "scripts",
+            "build_implementation_context.py",
+            label="implementation context script",
         )
 
     def readiness_script(self) -> Path:
-        return (
-            self.ctx.layout.worker_repo_root
-            / ".codex"
-            / "skills"
-            / "yasdef-worker-implementation"
-            / "scripts"
-            / "check_implementation_readiness.py"
+        return self.installed_skill_file(
+            "yasdef-worker-implementation",
+            "scripts",
+            "check_implementation_readiness.py",
+            label="implementation readiness script",
         )
 
 

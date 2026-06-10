@@ -37,20 +37,6 @@ class DesignPhase(Phase):
     def run(self, prompt: str, log_path: Path) -> PhaseResult:
         return self.run_model(prompt, log_path)
 
-    def postflight(self, log_path: Path) -> None:
-        if not self.design_path().is_file():
-            raise PhasePreconditionError(self.name, f"design artifact not found: {self.design_path()}")
-        readiness = (
-            self.ctx.layout.worker_repo_root
-            / ".codex"
-            / "skills"
-            / "yasdef-worker-design"
-            / "scripts"
-            / "check_design_readiness.py"
-        )
-        if readiness.is_file():
-            self.ctx.process.run(["uv", "run", "python", str(readiness), str(self.design_path())])
-
     def branch_name(self) -> str:
         return f"step-{self.ctx.feature.step}-{self.ctx.feature.feature_id}-plan"
 

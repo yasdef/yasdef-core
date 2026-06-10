@@ -16,6 +16,32 @@ def test_runtime_layout_from_root_populates_expected_paths(tmp_path: Path) -> No
     assert layout.models_file == tmp_path.resolve() / ".asdlc_worker" / "setup" / "models.md"
     assert layout.codex_skills_dir == tmp_path.resolve() / ".codex" / "skills"
     assert layout.claude_commands_dir == tmp_path.resolve() / ".claude" / "commands" / "yasdef"
+    assert layout.skill_dirs() == (
+        tmp_path.resolve() / ".codex" / "skills",
+        tmp_path.resolve() / ".claude" / "skills",
+        tmp_path.resolve() / ".github" / "skills",
+        tmp_path.resolve() / ".agents" / "skills",
+    )
+
+
+def test_runtime_layout_resolves_existing_skill_path_across_installed_prefixes(
+    tmp_path: Path,
+) -> None:
+    layout = RuntimeLayout.from_root(tmp_path)
+    script = (
+        layout.claude_skills_dir
+        / "yasdef-worker-plan"
+        / "scripts"
+        / "check_planning_readiness.py"
+    )
+    script.parent.mkdir(parents=True)
+    script.write_text("", encoding="utf-8")
+
+    assert layout.existing_skill_path(
+        "yasdef-worker-plan",
+        "scripts",
+        "check_planning_readiness.py",
+    ) == script
 
 
 def test_discover_reads_worker_binding(tmp_path: Path) -> None:

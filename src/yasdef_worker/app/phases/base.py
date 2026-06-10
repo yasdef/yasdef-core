@@ -8,6 +8,7 @@ from typing import ClassVar, Protocol, TextIO
 from yasdef_worker.domain.models_config import canonical_phase_name, load_model_config
 from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
 from yasdef_worker.domain.runners import ModelRunner, get_runner
+from yasdef_worker.infra.errors import PhasePreconditionError
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
 from yasdef_worker.infra.log_capture import LogCapture
@@ -114,6 +115,19 @@ class Phase(ABC):
 
     def log_path(self) -> Path:
         return self.ctx.log_capture.path_for(self.name, self.ctx.feature.step)
+
+    def installed_skill_file(self, skill_name: str, *parts: str, label: str) -> Path:
+        candidate = self.ctx.layout.existing_skill_path(skill_name, *parts)
+        if candidate is not None:
+            return candidate
+        tried = "\n".join(f"- {path}" for path in self.ctx.layout.skill_path_candidates(skill_name, *parts))
+        raise PhasePreconditionError(
+            self.name,
+            f"{label} not found in installed skill paths:\n{tried}",
+        )
+
+    def optional_skill_file(self, skill_name: str, *parts: str) -> Path | None:
+        return self.ctx.layout.existing_skill_path(skill_name, *parts)
 
     def run_model(self, prompt: str, log_path: Path) -> PhaseResult:
         selected = self.ctx.runner_factory.for_phase(self.name)

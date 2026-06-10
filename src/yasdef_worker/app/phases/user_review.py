@@ -15,11 +15,11 @@ class UserReviewPhase(Phase):
     def preflight(self) -> None:
         _require_file(self.name, self.step_plan_path(), "step plan")
         _require_file(self.name, self.design_path(), "design artifact")
-        _require_file(self.name, self.skill_file(), "user review skill")
+        self.skill_file()
 
     def prepare_branch(self) -> None:
         readiness = self.implementation_readiness_script()
-        if readiness.is_file():
+        if readiness is not None:
             self.ctx.process.run(
                 [
                     "uv",
@@ -63,22 +63,17 @@ class UserReviewPhase(Phase):
         )
 
     def skill_file(self) -> Path:
-        return (
-            self.ctx.layout.worker_repo_root
-            / ".codex"
-            / "skills"
-            / "yasdef-worker-user-review"
-            / "SKILL.md"
+        return self.installed_skill_file(
+            "yasdef-worker-user-review",
+            "SKILL.md",
+            label="user review skill",
         )
 
-    def implementation_readiness_script(self) -> Path:
-        return (
-            self.ctx.layout.worker_repo_root
-            / ".codex"
-            / "skills"
-            / "yasdef-worker-implementation"
-            / "scripts"
-            / "check_implementation_readiness.py"
+    def implementation_readiness_script(self) -> Path | None:
+        return self.optional_skill_file(
+            "yasdef-worker-implementation",
+            "scripts",
+            "check_implementation_readiness.py",
         )
 
 
