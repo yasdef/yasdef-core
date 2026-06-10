@@ -22,3 +22,15 @@ def test_packaged_resource_roots_are_readable() -> None:
         resource = package_root.joinpath(*rel.split("/"))
         assert resource.is_file(), rel
         resource.read_text(encoding="utf-8")
+
+
+def test_packaged_generic_golden_examples_match_documented_set() -> None:
+    golden_examples = resources.files("yasdef_worker").joinpath("_data", "golden_examples")
+
+    assert sorted(child.name for child in golden_examples.iterdir() if child.is_file()) == [
+        "blocker_log_GOLDEN_EXAMPLE.md",
+        "decisions_GOLDEN_EXAMPLE.md",
+        "history_GOLDEN_EXAMPLE.md",
+        "open_questions_GOLDEN_EXAMPLE.md",
+        "user_review_GOLDEN_EXAMPLE.md",
+    ]

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from .conftest import git, seed_repo, yasdef
 
 SKILL_NAMES = [
@@ -51,6 +49,13 @@ def test_init_bootstraps_existing_git_root(tmp_path: Path) -> None:
     assert (asdlc / "user_review.md").is_file()
 
     assert (asdlc / "golden_examples").is_dir()
+    assert sorted(path.name for path in (asdlc / "golden_examples").iterdir()) == [
+        "blocker_log_GOLDEN_EXAMPLE.md",
+        "decisions_GOLDEN_EXAMPLE.md",
+        "history_GOLDEN_EXAMPLE.md",
+        "open_questions_GOLDEN_EXAMPLE.md",
+        "user_review_GOLDEN_EXAMPLE.md",
+    ]
     assert (asdlc / "templates").is_dir()
     assert (asdlc / "setup").is_dir()
     # logs/ is lazy-created on first phase run; not present at init time
