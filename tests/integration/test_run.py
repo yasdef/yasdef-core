@@ -2,12 +2,14 @@
 orchestrator_resume_tests.sh, and feature-context exhausted/blocked scenarios."""
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
-import pytest
-
 from .conftest import (
+    GIT_ENV,
     create_design_artifact,
+    ScenarioFactory,
     git,
     seed_repo,
     write_binding,
@@ -62,18 +64,14 @@ def _configure_design_only(worker_root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_single_feature_auto_selected(tmp_path: Path) -> None:
-    worker = seed_repo(tmp_path / "worker")
-    project = write_project_repo(tmp_path / "project", project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
-    write_feature(project, feature_id=FEATURE_ID, worker_uuid=WORKER_UUID, step="1.1")
-    write_binding(worker, project_path=project, project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
-    create_design_artifact(worker, step="1.1", feature_id=FEATURE_ID)
+def test_single_feature_auto_selected(canonical_scenario: ScenarioFactory) -> None:
+    scenario = canonical_scenario("happy-path-clean-state")
 
-    result = _yasdef_run_design(worker)
+    result = _yasdef_run_design(scenario.worker)
     assert result.returncode == 0, result.stderr
     combined = result.stdout + result.stderr
-    assert FEATURE_ID in combined
-    assert "1.1" in combined
+    assert scenario.feature_id in combined
+    assert scenario.step in combined
 
 
 def test_git_directory_skipped_during_feature_enumeration(tmp_path: Path) -> None:
@@ -136,18 +134,13 @@ def test_fails_when_project_id_mismatch(tmp_path: Path) -> None:
     assert result.returncode != 0
 
 
-def test_resume_step_filters_candidate_features(tmp_path: Path) -> None:
-    worker = seed_repo(tmp_path / "worker")
-    project = write_project_repo(tmp_path / "project", project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
-    write_feature(project, feature_id="feature-a", worker_uuid=WORKER_UUID, step="1.1")
-    write_feature(project, feature_id="feature-b", worker_uuid=WORKER_UUID, step="2.1")
-    write_binding(worker, project_path=project, project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
-    create_design_artifact(worker, step="2.1", feature_id="feature-b")
+def test_resume_step_filters_candidate_features(canonical_scenario: ScenarioFactory) -> None:
+    scenario = canonical_scenario("resume-mid-plan")
 
-    result = _yasdef_run_design(worker, "--resume", "2.1")
+    result = _yasdef_run_design(scenario.worker, "--resume", scenario.step)
     assert result.returncode == 0, result.stderr
     combined = result.stdout + result.stderr
-    assert "feature-b" in combined or "2.1" in combined
+    assert scenario.feature_id in combined or scenario.step in combined
 
 
 # ---------------------------------------------------------------------------
@@ -379,8 +372,6 @@ def test_run_pulls_bound_project_repo_before_feature_selection(tmp_path: Path) -
         tmp_path / "project", project_id=PROJECT_ID, worker_uuid=WORKER_UUID
     )
     # Add a new feature commit directly to the bare remote (simulating a collaborator push)
-    import subprocess, os
-    from .conftest import GIT_ENV
     clone = tmp_path / "collaborator"
     subprocess.run(["git", "clone", "-q", str(bare), str(clone)], check=True,
                    env={**os.environ, **GIT_ENV})
@@ -414,8 +405,6 @@ def test_run_fails_when_bound_project_pull_rebase_fails(tmp_path: Path) -> None:
     git("add", "-A", cwd=project)
     git("commit", "-qm", "add feature", cwd=project)
     # Remove the remote so pull --rebase has no upstream
-    import subprocess, os
-    from .conftest import GIT_ENV
     subprocess.run(["git", "-C", str(project), "remote", "remove", "origin"], check=True,
                    env={**os.environ, **GIT_ENV})
 

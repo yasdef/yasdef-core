@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,24 @@ GIT_ENV = {
     "GIT_COMMITTER_NAME": "Test User",
     "GIT_COMMITTER_EMAIL": "test@example.com",
 }
+
+CANONICAL_WORKER_UUID = "11111111-1111-1111-1111-111111111111"
+CANONICAL_PROJECT_ID = "project-run"
+CANONICAL_FEATURE_ID = "feature-alpha"
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalScenario:
+    name: str
+    worker: Path
+    project: Path
+    project_id: str
+    worker_uuid: str
+    feature_id: str
+    step: str
+
+
+ScenarioFactory = Callable[[str], CanonicalScenario]
 
 
 def git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -131,7 +151,7 @@ def write_binding(
 
 
 def create_design_artifact(worker_root: Path, *, step: str, feature_id: str) -> Path:
-    """Create and commit a minimal design artifact so the design phase postflight passes."""
+    """Create and commit a minimal design artifact so later phases can run."""
     designs_dir = worker_root / ".asdlc_worker" / "step_designs"
     designs_dir.mkdir(parents=True, exist_ok=True)
     artifact = designs_dir / f"step-{step}-{feature_id}-design.md"
@@ -247,3 +267,85 @@ def tmp_project(tmp_path: Path) -> Path:
     p = tmp_path / "project"
     p.mkdir()
     return p
+
+
+@pytest.fixture()
+def canonical_scenario(tmp_path: Path) -> ScenarioFactory:
+    """Build a named canonical integration scenario from tests/fixtures/repos/."""
+
+    def build(name: str) -> CanonicalScenario:
+        if name == "happy-path-clean-state":
+            return _build_happy_path_clean_state(tmp_path / name)
+        if name == "resume-mid-plan":
+            return _build_resume_mid_plan(tmp_path / name)
+        raise ValueError(f"unknown canonical scenario: {name}")
+
+    return build
+
+
+def _build_happy_path_clean_state(base: Path) -> CanonicalScenario:
+    worker = seed_repo(base / "worker")
+    project = write_project_repo(
+        base / "project",
+        project_id=CANONICAL_PROJECT_ID,
+        worker_uuid=CANONICAL_WORKER_UUID,
+    )
+    write_feature(
+        project,
+        feature_id=CANONICAL_FEATURE_ID,
+        worker_uuid=CANONICAL_WORKER_UUID,
+        step="1.1",
+    )
+    write_binding(
+        worker,
+        project_path=project,
+        project_id=CANONICAL_PROJECT_ID,
+        worker_uuid=CANONICAL_WORKER_UUID,
+    )
+    create_design_artifact(worker, step="1.1", feature_id=CANONICAL_FEATURE_ID)
+    return CanonicalScenario(
+        name="happy-path-clean-state",
+        worker=worker,
+        project=project,
+        project_id=CANONICAL_PROJECT_ID,
+        worker_uuid=CANONICAL_WORKER_UUID,
+        feature_id=CANONICAL_FEATURE_ID,
+        step="1.1",
+    )
+
+
+def _build_resume_mid_plan(base: Path) -> CanonicalScenario:
+    worker = seed_repo(base / "worker")
+    project = write_project_repo(
+        base / "project",
+        project_id=CANONICAL_PROJECT_ID,
+        worker_uuid=CANONICAL_WORKER_UUID,
+    )
+    write_feature(
+        project,
+        feature_id="feature-a",
+        worker_uuid=CANONICAL_WORKER_UUID,
+        step="1.1",
+    )
+    write_feature(
+        project,
+        feature_id="feature-b",
+        worker_uuid=CANONICAL_WORKER_UUID,
+        step="2.1",
+    )
+    write_binding(
+        worker,
+        project_path=project,
+        project_id=CANONICAL_PROJECT_ID,
+        worker_uuid=CANONICAL_WORKER_UUID,
+    )
+    create_design_artifact(worker, step="2.1", feature_id="feature-b")
+    return CanonicalScenario(
+        name="resume-mid-plan",
+        worker=worker,
+        project=project,
+        project_id=CANONICAL_PROJECT_ID,
+        worker_uuid=CANONICAL_WORKER_UUID,
+        feature_id="feature-b",
+        step="2.1",
+    )
