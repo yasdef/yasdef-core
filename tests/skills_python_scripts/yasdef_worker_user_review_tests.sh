@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SKILL_DIR="$SOURCE_ROOT/ai/skills/yasdef-worker-user-review"
+SKILL_DIR="$SOURCE_ROOT/src/yasdef_worker/_data/skills/yasdef-worker-user-review"
 BUILD_CONTEXT="$SKILL_DIR/scripts/build_user_review_context.py"
 
 TMP_ROOT="$(mktemp -d)"

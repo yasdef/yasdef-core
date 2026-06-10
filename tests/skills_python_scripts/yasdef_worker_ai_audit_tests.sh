@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SKILL_DIR="$SOURCE_ROOT/ai/skills/yasdef-worker-ai-audit"
+SKILL_DIR="$SOURCE_ROOT/src/yasdef_worker/_data/skills/yasdef-worker-ai-audit"
 ENTRY_SCRIPT="$SKILL_DIR/scripts/check_ai_audit_entry.py"
 BUILD_CONTEXT="$SKILL_DIR/scripts/build_ai_audit_context.py"
 CHECK_CLOSURE="$SKILL_DIR/scripts/check_ai_audit_closure.py"
