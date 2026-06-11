@@ -17,6 +17,7 @@ class BranchSpec:
     target: str
     source_required: bool = False
     source_branch: str | None = None
+    source_dirty_check: bool = True
 
 
 def branch_phase_token(phase: str) -> str:
@@ -54,6 +55,7 @@ def ai_audit_branch_spec(step: str, feature: str) -> BranchSpec:
         target=step_branch_name(step, feature, "ai_audit"),
         source_required=True,
         source_branch=step_branch_name(step, feature, "user_review"),
+        source_dirty_check=False,
     )
 
 

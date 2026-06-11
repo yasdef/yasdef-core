@@ -42,7 +42,7 @@ If any input is missing, inconsistent, or points to a missing required file, do 
 
    Do not use design proposal details, design risks, design ADRs, design non-goals, or design UR rules as review input. Planning already grounded those details into the step plan.
 
-3. Run the pre-review self-check on the live patch first: inspect `git status`, `git diff`, and nearby code, then check for defects, regressions, missing verification, and drift from the step plan, translated FRs, design scope, accepted decisions, `AGENTS.md`, and applicable `.asdlc_worker/user_review.md` rules. Prioritize previous user decisions and accepted UR rules that apply to the current scope, including newly relevant rules not in the shortlist.
+3. Run the pre-review self-check on the live patch first: start by identifying current uncommitted step changes (for example, `git status --short` and `git diff --name-status`) and inspecting changed files and nearby code, then check for defects, regressions, missing verification, and drift from the step plan, translated FRs, design scope, accepted decisions, `AGENTS.md`, and applicable `.asdlc_worker/user_review.md` rules. Prioritize previous user decisions and accepted UR rules that apply to the current scope, including newly relevant rules not in the shortlist.
 
 4. Triage self-check findings before asking for feedback:
    - fix immediately only when a finding is current-scope and clear/objective or review-blocking

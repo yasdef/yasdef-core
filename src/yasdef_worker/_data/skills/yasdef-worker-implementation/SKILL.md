@@ -84,7 +84,7 @@ If any input is missing, inconsistent, or points to a missing required file, do 
 - Reuse existing code patterns; keep each change minimal, cohesive, readable, and directly traceable to ordered-plan work items. Remove unnecessary boilerplate and avoid extra guard checks.
 - Do not use `implementation_plan.md` target bullets as implementation-phase gating; their proof-check belongs to `ai_audit`.
 - Keep project-specific implementation constraints in `AGENTS.md`, not in this skill.
-- Implementation commits runtime and step-plan changes on the `step-<step>-<feature-id>-implementation` branch.
+- Do not commit changes at the end of the phase; leave them uncommitted so user_review can inspect the live patch directly.
 
 ## Completion
 

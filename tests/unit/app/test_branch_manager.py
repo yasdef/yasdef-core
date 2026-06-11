@@ -50,10 +50,21 @@ def test_branch_manager_refuses_dirty_switch_to_required_source(tmp_path: Path) 
     manager = BranchManager(repo, RecordingUserOutput())
     manager.ensure_implementation_branch(step="1.2a", feature_id="feature-demo")
     repo.checkout("main")
-    (tmp_path / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("modified\n", encoding="utf-8")  # tracked modification
 
     with pytest.raises(PhasePreconditionError, match="working tree must be clean"):
         manager.ensure_user_review_branch(step="1.2a", feature_id="feature-demo")
+
+
+def test_branch_manager_allows_source_switch_with_untracked_files(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    manager = BranchManager(repo, RecordingUserOutput())
+    manager.ensure_implementation_branch(step="1.2a", feature_id="feature-demo")
+    repo.checkout("main")
+    (tmp_path / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+
+    # untracked files must not block switching to source branch
+    manager.ensure_user_review_branch(step="1.2a", feature_id="feature-demo")
 
 
 def _init_repo(path: Path) -> GitRepo:

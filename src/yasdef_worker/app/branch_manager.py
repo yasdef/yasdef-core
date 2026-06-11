@@ -75,7 +75,7 @@ class BranchManager:
             raise PhasePreconditionError(phase, f"required source branch not found: {source}")
         if current == source:
             return
-        if self.git.status_porcelain().strip():
+        if spec.source_dirty_check and self.git.status_porcelain(untracked="no").strip():
             raise PhasePreconditionError(
                 phase,
                 f"working tree must be clean before switching to source branch {source}",
