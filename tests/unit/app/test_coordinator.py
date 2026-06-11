@@ -141,6 +141,11 @@ def _seed_worker(layout: RuntimeLayout, source: Path) -> None:
         "# Feature Design: 1.1 - Demo\n",
         encoding="utf-8",
     )
+    layout.step_review_results_dir.mkdir(parents=True, exist_ok=True)
+    (layout.step_review_results_dir / "review_result-1.1-feature-a.md").write_text(
+        "### F-01\n- [x] rejected: no issues\n",
+        encoding="utf-8",
+    )
     _write_script(
         layout.worker_repo_root
         / ".codex"

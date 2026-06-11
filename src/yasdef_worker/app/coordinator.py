@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from yasdef_worker.app.feature_context import FeatureContextBuilder, FeatureRunState
 from yasdef_worker.app.mainline_branch_policy import require_clean_mainline_start
 from yasdef_worker.app.phases import ModelConfigRunnerFactory, PhaseContext
-from yasdef_worker.app.pipeline import DEFAULT_PHASES, Pipeline, PipelineResult
+from yasdef_worker.app.pipeline import DEFAULT_PHASES, Pipeline, PipelineResult, WORKFLOW_PHASE_TYPES
 from yasdef_worker.app.resume import analyze_resume
 from yasdef_worker.domain.models_config import list_phases
 from yasdef_worker.domain.plans.implementation_plan import ImplementationPlan
@@ -57,7 +57,7 @@ class Coordinator:
             phases = _resume_phases(phases, feature, self.layout, self.git, self.output, options.resume_step)
             if phases is None:
                 return PipelineResult((), stopped=True, stop_reason=f"step {options.resume_step} is already complete")
-        return Pipeline(ctx=self._phase_context(feature, options)).iterate(phases)
+        return Pipeline(ctx=self._phase_context(feature, options), phase_types=WORKFLOW_PHASE_TYPES).iterate(phases)
 
     def _phase_context(self, feature: FeatureRunState, options: RunOptions) -> PhaseContext:
         return PhaseContext(
@@ -77,7 +77,8 @@ class Coordinator:
 
 def _configured_phases(layout: RuntimeLayout) -> tuple[str, ...]:
     configured = list_phases(layout.models_file.read_text(encoding="utf-8"))
-    return tuple(phase for phase in configured if phase in DEFAULT_PHASES)
+    model_phases = tuple(phase for phase in configured if phase in DEFAULT_PHASES)
+    return (*model_phases, "post_review")
 
 
 def _resume_phases(

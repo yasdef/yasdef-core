@@ -14,6 +14,7 @@ from .ai_audit import AiAuditPhase
 from .design import DesignPhase
 from .implementation import ImplementationPhase
 from .planning import PlanningPhase
+from .post_review import PostReviewPhase
 from .user_review import UserReviewPhase
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "PhaseFeature",
     "PlanningPhase",
     "PhaseRunner",
+    "PostReviewPhase",
     "RunnerFactory",
     "UserReviewPhase",
     "normalize_phase_token",

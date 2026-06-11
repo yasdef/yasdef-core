@@ -10,10 +10,11 @@ from yasdef_worker.app.phases import (
     Phase,
     PhaseContext,
     PlanningPhase,
+    PostReviewPhase,
     UserReviewPhase,
     normalize_phase_token,
 )
-from yasdef_worker.domain.phases import MODEL_PHASES
+from yasdef_worker.domain.phases import MODEL_PHASES, WORKFLOW_PHASES
 from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
 from yasdef_worker.infra.errors import YasdefError
 
@@ -25,8 +26,10 @@ _PHASE_TYPES: dict[str, PhaseType] = {
     "implementation": ImplementationPhase,
     "user_review": UserReviewPhase,
     "ai_audit": AiAuditPhase,
+    "post_review": PostReviewPhase,
 }
 DEFAULT_PHASES: dict[str, PhaseType] = {phase: _PHASE_TYPES[phase] for phase in MODEL_PHASES}
+WORKFLOW_PHASE_TYPES: dict[str, PhaseType] = {phase: _PHASE_TYPES[phase] for phase in WORKFLOW_PHASES}
 
 
 @dataclass(frozen=True, slots=True)
