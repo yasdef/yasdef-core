@@ -57,12 +57,15 @@ This approach can be expressed in a few sentences:
    source ~/.venvs/yasdef/bin/activate
    yasdef run
    ```
+   ⚠️ when you re-install yasdef it will not update installed skills in project-level folders (like .claude, .codex etc) - re-run init phase (see below)
 
 2. Bootstrap a worker directory:
    ```
    yasdef init <path-to-your-worker-repo>
    ```
    The command creates `.asdlc_worker/` inside the target git repo, installs worker skills into `.claude/skills/`, `.codex/skills/`, `.github/skills/`, and `.agents/skills/`, and commits on a new `init_yasdef_worker` branch. Configure the model runner in `.asdlc_worker/setup/models.md` before first run. ⚠️ After init phase will be finished you need to merge changes in main/master manually.
+
+   This is also valid way to re-write this folders to apply skills.
 
 3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` (or `CLAUDE.md` for claude.cli) with project-specific best practices in a root of you working project - it's extremely important for codebase consistency.
 
@@ -246,9 +249,12 @@ V-0.1.3
 - add external links processing
 - add first commit work logic
 
-V-0.2.0 (current)
+V-0.2.0
 - Python CLI (`yasdef`) replaces all bash scripts — see CHANGELOG.md for the full command rename table
 - Phase rules and helper scripts for all phases now is agentic skills, setup in native folders (.codex, .claude etc) in init phase 
+
+V-0.2.1 (current)
+- multiple bug fixes
 
 
 2. known problems/to-do's:
