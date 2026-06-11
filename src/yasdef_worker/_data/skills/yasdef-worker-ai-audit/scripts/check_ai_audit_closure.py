@@ -209,14 +209,6 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     findings = parse_findings(review_text)
-    if not findings:
-        emit_error_block(
-            "Disposition phase needed",
-            ["No findings found in review_result (expected `### F-NN` blocks)."],
-            "write findings first, then disposition each one.",
-        )
-        return 1
-
     steps_by_id = index_steps_by_id(plan_text)
     categories = evaluate_findings(findings, steps_by_id, asdlc_root)
     current_step = steps_by_id.get(args.step)

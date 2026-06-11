@@ -476,8 +476,8 @@ test_closure_no_findings() {
   out="$(cd "$repo_dir" && uv run python "$CHECK_CLOSURE" \
     --step "$STEP" --feature-id "$FEATURE_ID" \
     --runtime-plan "$plan_path" --worker-id "$WORKER_ID" 2>&1)" && status=$? || status=$?
-  assert_status 1 "$status"
-  assert_contains "$out" "ERROR: Disposition phase needed"
+  assert_status 0 "$status"
+  assert_contains "$out" "OK: ai_audit closure check passed"
 }
 
 test_closure_errors_go_to_stderr() {
