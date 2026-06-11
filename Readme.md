@@ -254,7 +254,8 @@ V-0.2.0
 - Phase rules and helper scripts for all phases now is agentic skills, setup in native folders (.codex, .claude etc) in init phase 
 
 V-0.2.1 (current)
-- multiple bug fixes
+- add blueprints search on design phase
+- bug fixes and code cleanup
 
 
 2. known problems/to-do's:
