@@ -78,6 +78,9 @@ def test_plan_sync_operation_reports_source_plan_outside_inferred_git_root(tmp_p
 
 def test_post_review_operation_writes_history_with_metrics(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
+    # plan branch marks the metrics base; implementation and review happen on a separate branch
+    repo.checkout_new("step-1.1-feature-a-plan")
+    repo.checkout_new("step-1.1-feature-a-ai-audit")
     layout = RuntimeLayout.from_root(tmp_path)
     layout.step_review_results_dir.mkdir(parents=True)
     layout.step_plans_dir.mkdir(parents=True)
@@ -101,6 +104,8 @@ def test_post_review_operation_writes_history_with_metrics(tmp_path: Path) -> No
             title="Demo",
             step_plan_path=step_plan,
             phase_usages=(("design", TokenUsage(total=1, input=1)),),
+            metrics_ref="step-1.1-feature-a-plan..HEAD",
+            metrics_cached=False,
         )
     )
 

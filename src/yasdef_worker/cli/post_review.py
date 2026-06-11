@@ -26,7 +26,7 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
     parser.add_argument("--title", required=True, help="step title for history.md")
     parser.add_argument("--step-plan", type=Path, default=None, help="step plan path")
     parser.add_argument("--no-plan-sync", action="store_true", help="skip source plan sync")
-    parser.add_argument("--metrics-ref", default="HEAD", help="git ref/range for metrics collection")
+    parser.add_argument("--metrics-ref", default=None, help="git ref/range for metrics collection (default: plan branch..HEAD)")
     parser.add_argument(
         "--working-tree-metrics",
         action="store_true",

@@ -8,6 +8,7 @@ from typing import Literal, Protocol
 
 from yasdef_worker.app.history_writer import HistoryWriter, total_usage
 from yasdef_worker.app.metrics_collector import MetricsCollector
+from yasdef_worker.domain.branches import step_branch_name
 from yasdef_worker.domain.history.records import HistoryRecord
 from yasdef_worker.domain.history.token_usage import TokenUsage
 from yasdef_worker.infra.errors import GitOperationFailed, YasdefError
@@ -214,8 +215,8 @@ class PostReviewInput:
     title: str
     step_plan_path: Path
     phase_usages: tuple[tuple[str, TokenUsage], ...] = ()
-    metrics_ref: str | None = "HEAD"
-    metrics_cached: bool = True
+    metrics_ref: str | None = None
+    metrics_cached: bool = False
 
 
 class PostReviewOperation:
@@ -241,7 +242,13 @@ class PostReviewOperation:
         if not artifact.is_file():
             raise YasdefError(f"cannot start post_review: missing review artifact {artifact}")
 
-        collected_metrics = self.metrics.collect(review.metrics_ref, cached=review.metrics_cached)
+        self._commit_pending_worker_changes(review, label="review completion")
+        if review.metrics_ref is not None:
+            metrics_ref, metrics_cached = review.metrics_ref, review.metrics_cached
+        else:
+            metrics_ref = f"{step_branch_name(review.step, review.feature_id, 'planning')}..HEAD"
+            metrics_cached = False
+        collected_metrics = self.metrics.collect(metrics_ref, cached=metrics_cached)
         record = HistoryRecord(
             step=review.step,
             title=review.title,
@@ -250,8 +257,6 @@ class PostReviewOperation:
             metrics=collected_metrics,
             phase_usages=review.phase_usages,
         )
-
-        self._commit_pending_worker_changes(review, label="review completion")
         self.history.write_record(record)
         self.output.step(f"updated history for step {review.step}")
         self._commit_pending_worker_changes(review, label="post-review")
