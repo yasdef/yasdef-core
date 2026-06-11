@@ -174,8 +174,15 @@ class PlanSyncOperation:
         return SyncResult.OK
 
     def _stage(self) -> None:
-        rel = self._source_plan_relpath()
-        self.git.add(rel)
+        plan_rel = self._source_plan_relpath()
+        self.git.add(plan_rel)
+        raised_questions_dir = self.source_plan_path.parent / "raised_questions"
+        if raised_questions_dir.is_dir():
+            try:
+                rq_rel = str(raised_questions_dir.resolve().relative_to(self.git.root.resolve()))
+                self.git.add(rq_rel)
+            except ValueError:
+                pass
         if self.git.diff_name_only(cached=True):
             self.git.commit(f"Post-review sync: step {self.step_number} implementation plan")
             self.output.step(f"committed source plan update for step {self.step_number}")
@@ -243,11 +250,22 @@ class PostReviewOperation:
             metrics=collected_metrics,
             phase_usages=review.phase_usages,
         )
+
+        self._commit_pending_worker_changes(review, label="review completion")
         self.history.write_record(record)
         self.output.step(f"updated history for step {review.step}")
+        self._commit_pending_worker_changes(review, label="post-review")
         if self.plan_sync is not None:
             self.plan_sync.execute()
         return record
+
+    def _commit_pending_worker_changes(self, review: PostReviewInput, *, label: str) -> None:
+        if not self.git.status_porcelain():
+            return
+        self.git.add_all()
+        suffix = f" - {review.title}" if review.title else ""
+        self.git.commit(f"Step {review.step} {label}{suffix}")
+        self.output.step(f"committed worker changes ({label}) for step {review.step}")
 
 
 def _history_sections(content: str) -> tuple[str, ...]:

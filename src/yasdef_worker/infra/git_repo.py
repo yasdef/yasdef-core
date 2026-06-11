@@ -93,6 +93,9 @@ class GitRepo:
         argv.extend(paths)
         self._run(argv, op="add")
 
+    def add_all(self) -> None:
+        self._run(["add", "-A"], op="add -A")
+
     def commit(self, message: str, *, paths: list[str] | None = None) -> None:
         if paths:
             self._run(["commit", "-m", message, "--", *paths], op="commit")
@@ -123,7 +126,7 @@ class GitRepo:
         self._run(["push"], op="push")
 
     def pull_rebase(self) -> None:
-        self._run(["pull", "--rebase"], op="pull --rebase")
+        self._run(["pull", "--rebase", "--autostash"], op="pull --rebase")
 
     def rebase(self, onto: str, *, autostash: bool = True) -> None:
         argv = ["rebase"]
