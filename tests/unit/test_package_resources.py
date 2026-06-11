@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from importlib import resources
+
+
+def test_packaged_resource_roots_are_readable() -> None:
+    package_root = resources.files("yasdef_worker")
+
+    for rel in (
+        "_data/skills/yasdef-worker-design/SKILL.md",
+        "_data/commands/yasdef/design.md",
+        "_data/templates/history_TEMPLATE.md",
+        "_data/golden_examples/history_GOLDEN_EXAMPLE.md",
+        "_data/setup/models.md",
+        "_data/runtime/history_INITIAL.md",
+        "templates/prompts/design.md",
+        "templates/prompts/planning.md",
+        "templates/prompts/implementation.md",
+        "templates/prompts/user_review.md",
+        "templates/prompts/ai_audit.md",
+    ):
+        resource = package_root.joinpath(*rel.split("/"))
+        assert resource.is_file(), rel
+        resource.read_text(encoding="utf-8")
+
+
+def test_packaged_generic_golden_examples_match_documented_set() -> None:
+    golden_examples = resources.files("yasdef_worker").joinpath("_data", "golden_examples")
+
+    assert sorted(child.name for child in golden_examples.iterdir() if child.is_file()) == [
+        "blocker_log_GOLDEN_EXAMPLE.md",
+        "decisions_GOLDEN_EXAMPLE.md",
+        "history_GOLDEN_EXAMPLE.md",
+        "open_questions_GOLDEN_EXAMPLE.md",
+        "user_review_GOLDEN_EXAMPLE.md",
+    ]

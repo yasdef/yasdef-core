@@ -2,115 +2,156 @@
 
 ## Word from first commit
 
-There’s nothing wrong with vibecoding. Building prototypes with AI — is a new superpower and it’s unlocked a huge wave of experimentation and helps people start something new that really matters. 
+There's nothing wrong with vibecoding. Building prototypes with AI — is a new superpower and it's unlocked a huge wave of experimentation and helps people start something new that really matters. 
 But sometimes what you need - is not prototype. Some of us work in complex codebases — often in enterprise environments where predictability, maturity, and long-term maintainability matter more than raw velocity. This is sometimes true for startups as well.
-This framework is built to help when vibecoding is not the best option. It uses AI to support developer productivity, but never at the expense of code quality. It is also designed to reduce token consumption so one can work comfortably with an entry-level subscription, regardless of how complex one’s codebase is and how many tasks should be implemented.
+This framework is built to help when vibecoding is not enough. It uses AI to support developer productivity, but never at the expense of code quality. It is also designed to reduce token consumption so one can work comfortably with an entry-level subscription, regardless of how complex one's codebase is and how many tasks should be implemented.
 
 This approach can be expressed in a few sentences:
-- Governance over “fire-and-forget” prompting.
-- Reproducibility over speed.
-- Human control over agent swarms.
-- Spec-driven science over vibe-magic.
+- Spec-driven, but you dont need to write and read specs -> developers will deliver maximum value by making the right system design decisions.
+- Human in the loop who supervise the model -> guaranty of predictable code quality level and responcibility shift from model to operator
+- Strict phase-based context management -> stable reproduceble outcome and efficient token usage 
+- Design/Plan split -> separation of "WHAT we building" question from "HOW we build", which previent model drift and improve codebase consistency
+- Final ai-backed audit for each implementation step -> clear and efficient way to handle implementation issues
 
-## Ouick start
+## Quick start
 
 0. Read this carefully:
-- ⚠️ This is pre-alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project!
-- ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that.
-- ✅ You need the Codex CLI (https://chatgpt.com/codex) available to run this framework, or you can change the model in `ai/setup/models.md` but scripts was not tested with another CLI's
+- ⚠️ This is alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project!
+- ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that. 
+- ✅ You need a supported AI CLI available (currently `codex cli` and `claude cli`). Configure your model runner in `.asdlc_worker/setup/models.md` after init.
+- ✅ You need at least Python3 installed. For real prod instalation you need [uv](https://docs.astral.sh/uv/)
+- ✅ Yasdef worker is part of framework. You need yasdef-coordinator to make it work. To get started with yasdef-coordinator you can a) examine yasdef-coordinator Readme.md here https://github.com/yasdef/yasdef-overmind/blob/main/README.md and follow instructions. b) mock yasdef-coordinator if you just need to take a look at framework. Step-by-step instruction can be found in this readme (scroll down to "How to mock yasdef-coordinator" section). 
 
-1. Pull this repo to your local machine, then run ai/scripts/init_asdlc_worker.sh. Script will prompts you for the path to the repo we'll work on, it will copy necessary files from `ai/` folder to `.asdlc_worker` folder in the root of your project. Also it'll setup git repo (if not yet) and add the exclusions to .git/info/exclude)
+1. Install the `yasdef` tool. Recommended global install requires [uv](https://docs.astral.sh/uv/):
+  
+  * Option A (prod level instalation):
 
-2. Make the bash scripts in `.asdlc_worker/scripts` executable:
-  `chmod -R +x .asdlc_worker/scripts`
+   ```
+   uv tool install yasdef-worker
+   ```
+   This puts `yasdef` on your `PATH`. Run `yasdef --help` to verify.
 
-3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` with project-specific best practices. If you already have `AGENTS.md`, make sure it does not embed or conflict with the AI-dev process rules in `AI_DEVELOPMENT_PROCESS.md`.
+  * Option B (self-build instalation): 
+   
+   During local development from this repository, you can build and install the local wheel instead:
+   ```
+   cd /path/to/yasdef
+   rm -rf dist
+   uv build
+   uv tool install --force dist/*.whl
+   yasdef --help
+   ```
 
-4. Run `bash .asdlc_worker/scripts/register_worker.sh` to bind your local worker repo to an already registered overmind worker UUID.
-   The script prompts for:
-   - worker UUID (must already exist in the project repo's root `workers.yaml`),
-   - path to the single ASDLC project repo (not a parent of many projects).
-   The script reads `project_id` from `<project_repo>/init_progress_definition.yaml` under `meta_info.project_id`.
-   Before switching branches, if the worker repo root has no `AGENTS.md`, the script prints a non-blocking reminder. When `<project_repo>/project_stack_blueprint_<worker-class>.md` exists, the reminder includes that blueprint path so a model can use it when drafting `AGENTS.md`.
-   On success it creates/checks out local branch `overmind`, writes deterministic project binding `ai/project_overmind.yaml` (including `project_id`), and commits the change.
+  * Option C (no UV, simplest option just to try it out):
 
-5. Keep source-of-truth coordinator artifacts in ASDLC feature folders:
-   - `<project-repo>/<feature-id>/implementation_plan.md`
-   - `<project-repo>/<feature-id>/requirements_ears.md`
-   - optional project-level blueprint files one directory above feature folders: `<project-repo>/project_stack_blueprint_*.md`
-   In default mode the orchestrator reads and writes `implementation_plan.md` and `requirements_ears.md` directly from the bound source paths — there is no local runtime mirror under `overmind/`.
-   Default mode expects that ASDLC project repo to be a Git worktree on a branch with a configured upstream.
+   Without `uv`, install into a normal Python venv:
+   ```
+   python3.11 -m venv ~/.venvs/yasdef
+   source ~/.venvs/yasdef/bin/activate
+   python -m pip install /path/to/yasdef
+   yasdef --help
+   ```
+   That same venv should be activated from any worker repo before running `yasdef`:
+   ```
+   cd /path/to/worker-repo
+   source ~/.venvs/yasdef/bin/activate
+   yasdef run
+   ```
+   ⚠️ when you re-install yasdef it will not update installed skills in project-level folders (like .claude, .codex etc) - re-run init phase (see below)
 
-6. In each feature `implementation_plan.md`, keep one shared plan for BE/FE/mobile and mark repo ownership on every step with `#### Repo:`. Worker routing uses `#### Assigned: <worker-uuid>` blocks only. Example:
-```
-### Step 1.9 Some cool feature here
-#### Repo: backend
-#### Depends on: none
-#### Assigned: 7d88ab4d-be02-4bb2-9c92-d8c8d0c8591a
-/some plan bullets/
-```
+2. Bootstrap a worker directory:
+   ```
+   yasdef init <path-to-your-worker-repo>
+   ```
+   The command creates `.asdlc_worker/` inside the target git repo, installs worker skills into `.claude/skills/`, `.codex/skills/`, `.github/skills/`, and `.agents/skills/`, and commits on a new `init_yasdef_worker` branch. Configure the model runner in `.asdlc_worker/setup/models.md` before first run. ⚠️ After init phase will be finished you need to merge changes in main/master manually.
 
-7. Run the orchestrator:
-  `bash .asdlc_worker/scripts/orchestrator.sh` and follow the instructions.
-  Routing behavior:
-  - in default mode orchestrator refreshes the bound ASDLC repo with `git pull --rebase`, selects a feature assigned to the worker, and points phase scripts directly at `<project-repo>/<feature-id>/implementation_plan.md` and `requirements_ears.md`
-  - after `ai_audit`, orchestrator commits the updated bound-source plan and pushes it through the bound ASDLC repo
-  - if that outbound sync fails, interactive mode offers `1. retry` or `2. finish`; non-interactive runs stop before `post_review`
-  Selected-feature traceability is recorded in `.asdlc_worker/feature_meta_sync.yaml` (4 fields: `project_id`, `worker_uuid`, `feature_id`, `selected_step`) and is sticky across runs: the stored feature is reused on startup and `--resume` as long as validation passes. Remove the file to force reselection.
-  Use debug mode to keep per-step artifacts:
-  `bash ai/scripts/orchestrator.sh --debug -- --step 1.3`
-  To recover interrupted work for a specific step deterministically:
-  `bash ai/scripts/orchestrator.sh --resume <step>`
-  Preview planned resume behavior without executing:
-  `bash ai/scripts/orchestrator.sh --resume <step> --dry-run`
+   This is also valid way to re-write this folders to apply skills.
 
-8. OPTIONAL — allow your AI CLI to work with git (except merge to `main`/`master`) to avoid repeated permission prompts.
-  `bash .asdlc_worker/scripts/orchestrator.sh --dry-run`
+3. Add `AGENTS.md` to the project root. If you don't know what should be in it, ask your model to generate `AGENTS.md` (or `CLAUDE.md` for claude.cli) with project-specific best practices in a root of you working project - it's extremely important for codebase consistency.
+
+4. Register this worker with an ASDLC project:
+  - prepare the ASDLC project folder path, for example `<asdlc-repo>/projects/<project-id>`
+  - prepare your worker UUID from that ASDLC project's `workers.yaml`
+   ```
+   cd /path/to/worker-repo
+   yasdef register
+   ```
+   The command prompts for the ASDLC project path and worker UUID. The path must be the project folder that contains `workers.yaml`, `init_progress_definition.yaml`, and feature folders; for the coordinator layout this is usually `<asdlc-repo>/projects/<project-id>`, not the ASDLC repo root. The worker UUID must already exist in that project's `workers.yaml`. The command reads `project_id` from `<asdlc-project-path>/init_progress_definition.yaml` under `meta_info.project_id`, writes a deterministic binding to `.asdlc_worker/project_overmind.yaml`, and commits on a new `register_yasdef_worker_in_coordinator` branch. This path is not the implementation codebase repo.
+
+5. Run the worker:
+
+  - simply run worker and follow interactive steps.
+   ```
+   yasdef run
+   ```
+
+  - here is the brief explanation how exactly worker will operate, just in case anyone interested, since all works in interactive mode it can be skiped
+
+   The worker reads `.asdlc_worker/project_overmind.yaml`, refreshes the bound ASDLC project worktree with `git pull --rebase`, and scans feature folders for `implementation_plan.md` / `requirements_ears.md`.
+
+   5.1. Feature and step selection:
+   - The worker looks for steps assigned to its `worker_uuid` with `#### Assigned: <worker-uuid>`.
+   - If `.asdlc_worker/feature_meta_sync.yaml` points to a valid unfinished feature, the worker reuses it.
+   - Otherwise, if one candidate feature exists, the worker selects it automatically.
+   - If multiple candidate features exist, the worker asks the operator to choose one.
+   - The selected feature and step are written back to `.asdlc_worker/feature_meta_sync.yaml`.
+
+   5.2. Worker execution:
+   - The worker runs configured phases one by one in order, normally `design -> planning -> implementation -> user_review -> ai_audit -> post_review`.
+   - Each model-driven phase uses its installed `yasdef-worker-*` skill and the selected feature/step context.
+   - Each model-driven phase uses model and (sometimes) reasoning depth based on `/setup/models.md`, so it can be changed manually at any time. You can mix different cli's and models in one setup, it'll work. ⚠️ All works in interactive mode, NOT headless (which will save your tokens).
+   - After `ai_audit`, the worker commits the updated ASDLC implementation plan and pushes it through the bound ASDLC repo. If outbound sync fails, interactive mode offers retry/finish; non-interactive mode stops before `post_review`.
+
+6. To recover interrupted work for a specific step deterministically:
+   ```
+   yasdef run --resume <step>
+   ```
+
+7. OPTIONAL — uninstall the tool when no longer needed:
+   ```
+   yasdef uninstall
+   ```
+   This removes the global `yasdef` tool. Worker skills and `.asdlc_worker/` artifacts in target repos are unaffected.
 
 ## Why we need yet another SDD framework?
 
-	•	Current SDD frameworks are great (I strongly recommend you forget about vibecoding and try open-spec, spec-kit, or another SDD framework), but they are built with the purpose of growing a vibecoder into a conscious product manager. That’s not actually what enterprise developer teams need right now.
-	•	YASDEF is built for seamless adoption of AI in the usual SDLC — upgrading it to ASDLC. The goal is 10× productivity while keeping enterprise-level quality, familiar processes, and, most importantly, not shifting responsibility from the developer to AI. If that sounds boring — we’re probably on the right track.
-	•	We consider AI coding agents as another tool for engineers — maybe the best and most promising one in many years — but still… it’s a tool. And don’t forget: the bottleneck is never technology, it’s always people.
-	•	YASDEF has a distributed architecture for distributed teams: someone establishes plans, others write code, we have feedback loops, quality gates, and agile rituals… and we don’t really think we need to throw all of that away just because AI appeared.
-	•	YASDEF is about shifting developers from writing code to making architectural decisions and finding effective approaches. AI can write code. The engineer’s duty is to think, decide, and supervise.
-	•	We don’t really need to choose between an agile (fluid) and a strict approach when writing code with AI. We prefer to stay agile at the product level, because requirements can appear, change, or disappear unexpectedly. But when AI writes code, the process should be extremely strict and straightforward to get predictable, reproducible, and deterministic results (as much as that’s possible with AI).
-	•	We don’t like the idea that a developer works for 5 minutes and spends the rest of the time doing something else. YASDEF is about an approach where we work as long as needed but deliver 10× more value per unit of time. Code quality, maintainability, and readability are not negotiable trade-offs.
-	•	We can outsource many tasks to AI — but not thinking and decision-making.
+* Current SDD frameworks are great (I strongly recommend you forget about vibecoding and try open-spec, spec-kit, or another SDD framework), but they are built with the purpose of growing a vibecoder into a conscious product manager. That's not actually what enterprise developer teams need right now.
+* YASDEF is built for seamless adoption of AI in the usual SDLC — upgrading it to ASDLC. The goal is 10× productivity while keeping enterprise-level quality, familiar processes, and, most importantly, not shifting responsibility from the developer to AI. If that sounds boring — we're probably on the right track.
+* We consider AI coding agents as another tool for engineers — maybe the best and most promising one in many years — but still… it's a tool. And don't forget: the bottleneck is never technology, it's always people.
+* YASDEF has a distributed architecture for distributed teams: someone establishes plans, others write code, we have feedback loops, quality gates, and agile rituals… and we don't really think we need to throw all of that away just because AI appeared.
+* YASDEF is about shifting developers from writing code to making architectural decisions and finding effective approaches. AI can write code. The engineer's duty is to think, decide, and supervise.
+* We don't really need to choose between an agile and a strict approach when writing code with AI. We prefer to stay agile at the product level, because requirements can appear, change, or disappear unexpectedly. But when AI writes code, the process should be extremely strict and straightforward to get predictable, reproducible, and deterministic results (as much as that's possible with AI).
+* We don't like the idea that a developer works for 5 minutes and spends the rest of the time doing something else. YASDEF is about an approach where we work as long as needed but deliver 10× more value per unit of time. Code quality, maintainability, and readability are not negotiable trade-offs.
+* We can outsource many tasks to AI — but not thinking and decision-making.
 
 ## How this works (or will be)
 
-- **Coordinator:** The Coordinator manages the whole project based on technical requirements, architecture, and core technical decisions. All tasks and subtasks form a cyclic graph. One branch of the graph is a sequence (a stack) of tasks. A stack becomes the source of an implementation plan. Each implementation plan contains a sequence of tasks that can be done one by one. The Coordinator should act agilely, manage the development process and task allocation based on feedback, and constantly optimize and recalculate the graph. The Coordinator never adds new tasks on its own; it only structures them in the graph. Requests to add tasks come from Workers (bottom-up) or from a human operator (top-down) as specific decisions. Coordinator responsible for token management and optimisation, for this it performs task-slicing based on model and reasoning.  
+- **Coordinator:** The Coordinator manages the whole project based on technical requirements, architecture, and core technical decisions. All tasks and subtasks form a cyclic graph. Each implementation plan contains a sequence of tasks that can be done one by one. The Coordinator should act agilely, manage the development process and task allocation based on feedback, and constantly optimize and recalculate the graph. The Coordinator never adds new tasks on its own; it only structures them in the graph. Requests to add tasks come from Workers (bottom-up) or from a human operator (top-down) as specific decisions. 
 
-- **Worker:** (/ai) Workers are the actual code implementers. They take the implementation plan as input and split it into reasonable steps. Each step is implemented following a strict AI-dev process. The main goal is to guarantee high code quality while reducing manual coding burden for the operator. This shifts the human operator's role from coding to making complex technical decisions and ensuring architectural quality.
+- **Worker:** Workers are the actual code implementers. They take the implementation plan as input and split it into reasonable steps. Each step is implemented following a strict AI-dev process. The main goal is to guarantee high code quality while reducing manual coding burden for the operator. This shifts the human operator's role from coding to making complex technical decisions and ensuring architectural quality.
 
-- **AI-dev process:** The AI_DEVELOPMENT_PROCESS.md is a set of rules for Workers and a strict sequence of gates that involve the human operator in some loops. The process flow is: design -> plan -> implementation -> user_review -> ai_audit (post-step audit/review, AI) -> post-review (non-AI). We do not share ai-context between model-driven phases. We run phase-scripts to create a stable, comprehensive prompt from the process artifacts and pass it to the chosen model.
+- **Phase-script behavior:** A phase-script, managed by the model, creates a task context, then the model (via pipe worker -> cli) consumes this context. Specifically, the worker runs a coding agent (cli) with parameters like model, reasoning effort, and a request to run a script. Script-driven context generation makes the input prompt stable.
 
-- **Phase-script behavior:** A phase-script managed by orchestrator, creates prompt, then model (via pipe orchestrator -> cli) consumes the script's result as a prompt. Specifically, orchestrator runs a coding agent (cli) with parameters like model, reasoning effort, and a request to run a script. Script-driven prompt generation make input prompt stable and guaranty it fils up context with correct set of system files. 
-
-- **Orchestration:** Since each phase starts as a terminal command, we can orchestrate the whole process from top-level script `ai/scripts/orchestrator.sh`.
-  - Worker/project binding rule: orchestrator reads `worker_uuid` and `project_id` from `ai/project_overmind.yaml` (legacy `ai/*_dont_touch.txt` is no longer used).
-  - Candidate discovery rule: orchestrator scans bound project repo features (`<project-repo>/<feature-id>/implementation_plan.md`), skipping `.git` and subdirectories without `implementation_plan.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
-  - Bound-repo freshness rule: in default mode orchestrator requires the bound ASDLC project repo to be a Git worktree with a configured upstream and runs `git -C <bound-project-repo> pull --rebase` before feature discovery and runtime mirroring.
+- **Orchestration:** `yasdef run` drives the configured worker phase pipeline.
+  - Worker/project binding rule: reads `worker_uuid` and `project_id` from `.asdlc_worker/project_overmind.yaml`.
+  - Phase configuration rule: phase order comes from `.asdlc_worker/setup/models.md`; phases normally run as `design -> planning -> implementation -> user_review -> ai_audit -> post_review`.
+  - Candidate discovery rule: scans bound ASDLC project features (`<asdlc-project-path>/<feature-id>/implementation_plan.md`), skipping `.git` and directories without usable `implementation_plan.md` / `requirements_ears.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
+  - Bound-project freshness rule: when the bound ASDLC project path is inside a Git worktree, the worker runs `git pull --rebase` before feature discovery.
   - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
-  - Single-source rule: in default mode the orchestrator reads and writes `implementation_plan.md` and `requirements_ears.md` directly at the bound-source paths — there is no local runtime mirror under `overmind/`.
-  - Post-ai_audit sync rule: before `post_review`, orchestrator stages the updated bound-source `implementation_plan.md`, commits it in the bound ASDLC repo, runs `git pull --rebase`, and pushes on success.
+  - Single-source rule: reads and writes `implementation_plan.md` and `requirements_ears.md` directly at the bound-source paths — there is no local runtime mirror.
+  - Post-ai_audit sync rule: before `post_review`, stages the updated bound-source `implementation_plan.md`, commits it in the bound ASDLC repo, runs `git pull --rebase`, and pushes on success.
   - Outbound failure rule: commit/rebase/push failures offer exactly `1. retry` or `2. finish`; `finish` continues to `post_review`, while non-interactive runs stop before `post_review`.
-  - Feature sync state: orchestrator records selected feature metadata in `.asdlc_worker/feature_meta_sync.yaml` (4 fields: `project_id`, `worker_uuid`, `feature_id`, `selected_step`); valid metadata is sticky across runs. Stale metadata (identity mismatch or missing bound-source plan) is discarded and triggers slow-path discovery. If the stored feature is blocked by an upstream step, orchestrator exits with an explicit blocker message. If the stored feature is exhausted (all assigned bullets complete), orchestrator offers an interactive prompt to delete `.asdlc_worker/feature_meta_sync.yaml` (choice 1) or exit for manual handling (choice 2); non-interactive mode exits with an error. To reselect a feature manually, remove `.asdlc_worker/feature_meta_sync.yaml` before re-running.
-  - Startup proceed-or-change prompt: in default (non-resume) interactive mode, when a valid runnable current feature is confirmed via `feature_meta_sync.yaml`, orchestrator prompts `1. Proceed with current feature` / `2. Change feature` before starting work. Choosing 1 continues with the current feature; choosing 2 runs slow-path candidate discovery, placing the prior feature first in the picker with a `(CURRENT)` label so it is easy to re-select or explicitly skip. Non-interactive stdin (CI/automation) auto-proceeds without the prompt. `--resume` invocations skip the prompt entirely as the step flag is already an explicit continuation signal.
+  - Feature sync state: records selected feature metadata in `.asdlc_worker/feature_meta_sync.yaml` (4 fields: `project_id`, `worker_uuid`, `feature_id`, `selected_step`); valid metadata is sticky across runs. Stale metadata (identity mismatch or missing bound-source plan) is discarded and triggers slow-path discovery. If the stored feature is blocked by an upstream step, exits with an explicit blocker message. If the stored feature is exhausted (all assigned bullets complete), offers an interactive prompt to delete `.asdlc_worker/feature_meta_sync.yaml` (choice 1) or exit for manual handling (choice 2); non-interactive mode exits with an error. To reselect a feature manually, remove `.asdlc_worker/feature_meta_sync.yaml` before re-running.
   - Resume mode: `--resume <step>` evaluates phase completion markers in canonical order (`design -> planning -> implementation -> user_review -> ai_audit -> post_review`) and starts at the first unfinished phase.
   - Determinism rule: any missing/partial/inconsistent marker set is treated as unfinished, so the phase is re-run from phase start.
-  - Debug mode: `--debug` switches artifact retention to step-specific logs/prompts (`.asdlc_worker/logs/<project>-<phase>-<step>-log` and step-specific prompt filenames).
-  - Default mode (without `--debug`): orchestrator writes only latest-per-phase artifacts (`.asdlc_worker/logs/<project>-<phase>-latest-log` and `.asdlc_worker/prompts/<phase>_prompts/<project>-latest-<phase>-prompt.txt`), overwriting those latest files each run.
-  - Non-debug safeguard: previously generated step-specific prompt files are not modified when `--debug` is off.
 
 ## AI-dev process main rules
 
-- **Single source of truth for workflow rules**: Behavioral and process rules for AI execution live in `AI_DEVELOPMENT_PROCESS.md`. Scripts stay minimal and phase-scoped. All rules are defined once and referenced; they are never duplicated across phase scripts.
+- **Single source of truth for workflow rules**: Behavioral and process rules for AI execution live in the per-phase worker skills (`.claude/skills/yasdef-worker-*`, also installed under `.codex/`, `.github/`, `.agents/`). Scripts stay minimal and phase-scoped. All rules are defined once in the relevant skill and referenced; they are never duplicated across phase scripts.
 - **Clean separation of concerns**:
-  - `AI_DEVELOPMENT_PROCESS.md` defines the generic workflow (phases, gates, artifacts, per-step loop). It is project-agnostic and never includes project-specific details.
+  - The worker skills define the generic workflow (phases, gates, artifacts, per-step loop). They are project-agnostic and never include project-specific details.
   - `AGENTS.md` defines project-specific constraints: build commands, test runners, API specs, validation rules, branch strategy, tool paths, idempotency expectations. It never discusses the AI-dev process itself.
-  - Both files are required; they are kept independent so that workflow improvements do not leak into project configuration, and vice versa.
+  - Both the skills and `AGENTS.md` are required; they are kept independent so that workflow improvements do not leak into project configuration, and vice versa.
 - **Phase isolation**: Each model-driven phase (design, planning, implementation, user review, ai_audit/post-step audit) is executed in a separate AI-agent session with a distinct prompt. Context is never shared between phases (e.g., planning artifacts are frozen when implementation starts). Post-review is a non-AI phase. This ensures each phase uses the most suitable model and reasoning effort.
 - **Determinism over speed**: Every decision, blocker, and new finding is recorded in durable artifacts (`decisions.md`, `blocker_log.md`, `open_questions.md`, `step_review_results/`). This enables reproducibility and allows the project to continue without AI assistance at any point. Since technical decisions records in structured format to further retro with team or/and with AI
 - **Human in the loop**: Complex technical decisions and architectural choices are not made by the Worker. Workers must explicitly ask the user for decisions before proceeding; user feedback during the dedicated user review phase is incorporated as generalizable rules in `user_review.md` to improve future iterations. 
@@ -119,57 +160,19 @@ This approach can be expressed in a few sentences:
 
 Each artifact below serves a specific role in the AI-dev process:
 
-- **<project-repo>/<feature-id>/requirements_ears.md**: Source-of-truth behavioral requirements for each feature (EARS format).
-- **<project-repo>/<feature-id>/implementation_plan.md**: Source-of-truth execution plan for each feature; `#### Assigned:` routes work to workers.
-- **project_overmind.yaml**: Durable local binding (`overmind_source_path`, `project_id`, worker metadata) created by `init_worker`.
-- **feature_meta_sync.yaml**: Per-run selected-feature metadata (`project_id`, `worker_uuid`, `feature_id`, `selected_step`) used for traceability and `--resume` reuse.
-- **designs/**: Per-step design artifacts (`feature-<N>.md`) with API/UX and data-flow decisions. Acts as input for planning and implementation.
-- **step_plans/**: Per-step planning artifacts (`step-<N>-<feature-id>.md`) produced during the "Plan and discuss the step" bullet. Serve as the detailed execution contract for Workers. Include `## Plan (ordered)`, translated functional requirements, preconditions, architecture, risks, and test strategy.
-- **blocker_log.md**: Unknowns and blocking issues discovered during implementation, organized by step. Includes impact, required decision, and resolution status. Only for in-progress steps.
-- **open_questions.md**: Non-blocking questions tracked per step, reviewed at step planning start. Removed once answered.
-- **decisions.md**: Durable technical decisions (Architecture Decision Records) recorded during planning and implementation. Includes decision context, alternatives considered, and rationale. Used to avoid rehashing settled choices.
-- **user_review.md**: Rule-based review insights, generalizable feedback patterns, and references to accepted implementations. Evolves as design patterns stabilize.
-- **step_review_results/**: Post-step audit findings (`review_result-<N>-<feature-id>.md`), organized by severity (Critical/High/Medium/Low). Each finding has an explicit disposition (Accepted/Rejected) and follow-up work assignment.
-- **history.md**: Optional step completion log tracking dates, effort, surprises, and key decisions per step.
+- **<asdlc-project-repo>/<feature-id>/requirements_ears.md**: Source-of-truth behavioral requirements for each feature (EARS format).
+- **<asdlc-project-repo>/<feature-id>/implementation_plan.md**: Source-of-truth execution plan for each feature; `#### Assigned:` routes work to workers.
+- **.asdlc_worker/project_overmind.yaml**: Durable local binding created by `yasdef register`; stores the bound ASDLC repo path, `project_id`, worker UUID, class, and status.
+- **.asdlc_worker/feature_meta_sync.yaml**: Selected-feature cache (`project_id`, `worker_uuid`, `feature_id`, `selected_step`) used for traceability and `--resume` reuse.
+- **.asdlc_worker/step_designs/**: Per-step design artifacts (`step-<N>-<feature-id>-design.md`) with scope, data-flow, API/UX, risks, and planning handoff decisions.
+- **.asdlc_worker/step_plans/**: Per-step planning artifacts (`step-<N>-<feature-id>.md`) that define ordered implementation work, translated functional requirements, architecture, risks, and test strategy.
+- **.asdlc_worker/blocker_log.md**: Durable blocker ledger for unresolved issues that stop progress.
+- **.asdlc_worker/open_questions.md**: Durable non-blocking question ledger for questions that should be resolved in the appropriate phase.
+- **.asdlc_worker/decisions.md**: Durable technical decisions recorded during the worker process. Used to avoid rehashing settled choices.
+- **.asdlc_worker/user_review.md**: Generalizable user-review rules and accepted feedback patterns that should influence future work.
+- **.asdlc_worker/step_review_results/**: Post-step audit findings (`review_result-<N>-<feature-id>.md`). Each finding has exactly one terminal disposition: `follow_up_created`, `raised_to_coordinator`, or `rejected`.
+- **.asdlc_worker/history.md**: Step completion log tracking outcomes, effort, surprises, and key decisions.
 
-## Phases inputs and outputs
-
-### Coordinator phases
-
-### Worker cycle  - The AI-dev process runs in six phases per step:
-
-**Phase 1: Design**
-- Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, existing architecture/context docs.
-- Output: `.asdlc_worker/designs/feature-<N>.md` with feature-level design decisions and constraints. If the step must create the initial runnable scaffold/stack because there is no meaningful existing implementation to extend, add a compact `## First-Feature Bootstrap (only if needed)` handoff section.
-- Gate: Design assumptions and unknowns are captured before planning starts; if bootstrap is explicitly raised in design, scaffold direction must be resolved through a relevant blueprint or explicit user stack decision before handoff.
-
-**Phase 2: Planning**
-- Input: Current `overmind/implementation_plan.md`, `overmind/reqirements_ears.md`, `decisions.md`, `blocker_log.md`, `open_questions.md`.
-- Input (additional): `.asdlc_worker/designs/feature-<N>.md`.
-- Output: `.asdlc_worker/step_plans/step-<N>-<feature-id>.md` with `## Plan (ordered)`, translated functional requirements from design-selected EARS blocks, architecture, test strategy, and execution command for the implementation phase. If the design explicitly marks bootstrap required, planning also adds `## Scaffold Bootstrap Plan` and places scaffold creation before dependent feature work.
-- Gate: All open questions must be answered before planning completion, and bootstrap-required plans must preserve scaffold creation as mandatory ordered work.
-
-**Phase 3: Implementation**
-- Input: Step plan (`.asdlc_worker/step_plans/step-<N>-<feature-id>.md`), design (`.asdlc_worker/step_designs/step-<N>-<feature-id>-design.md`), source code, test suite, `AGENTS.md`, `decisions.md`.
-- Output: Implemented changes on a local topic branch (`step-<N>-<feature-id>-implementation`), updated tests/docs/planning artifacts, plus Evidence Reasoning Summary and Review Brief handoff for the next phase.
-- Gate: All ordered bullets must be `[x]`, all translated functional requirement checklist items must be `[x]`, verification closure must pass, and implementation does not commit before user review starts.
-
-**Phase 4: User Review**
-- Input: Implementation outputs from Phase 3, step plan/design context, `.asdlc_worker/user_review.md`.
-- Output: User-requested adjustments on `step-<N>-<feature-id>-user-review`, targeted tests/docs updates, and generalized review rules in `.asdlc_worker/user_review.md` when applicable.
-- Gate: Entry precheck requires all `## Plan (ordered)` checklist items `[x]` and all translated functional requirement checklist items `[x]` before model execution.
-
-**Phase 5: Post-Step Audit & Review (AI)**
-- Input: Implemented + user-review changes, step plan, design, and user feedback outcomes.
-- Output: `.asdlc_worker/step_review_results/review_result-<N>-<feature-id>.md`, updated `implementation_plan.md`, commit on review branch (`step-<N>-<feature-id>-review`). No push or merge to `main`/`master`.
-- Gate: Every finding must have an explicit disposition; all accepted work must be captured as follow-up steps or questions.
-
-**Phase 6: Post-Review**
-- Input: `.asdlc_worker/step_review_results/review_result-<N>-<feature-id>.md`, updated plan artifacts, review branch state.
-- Output: Post-review updates (for example metrics/history updates and follow-up step alignment), performed without AI model execution.
-- Gate: Review dispositions are reflected in planning artifacts before next step starts.
-
-**Worker cycle LAR flow:** `overmind/reqirements_ears.md` carries external artifact links (Figma mocks, Confluence schemas, OpenAPI specs, etc.) as a `## Linked Artifacts` registry. The design phase funnels the per-step LAR shortlist from that registry into the design artifact. Planning mirrors the shortlist into the step plan and fetches each LAR locator as one more clarification-loop input (structure, copy, field shapes); fetch failures are routed through the existing ask-user mechanisms (`.asdlc_worker/open_questions.md`, `.asdlc_worker/blocker_log.md`) using the standard "cannot resolve LAR-NNN" question pattern. Implementation re-fetches each LAR locator and uses the content as source of truth for whatever the artifact represents — UI details, schema structure, API contracts, architecture diagrams, or any other artifact-specific detail that FR text cannot encode.
 ## What's done + plans
 
 V-0.0.1
@@ -224,7 +227,7 @@ V-0.1.0
 - CRP-041 — UR Hygiene: Enforce Template Schema + De-dup on Update
 - CRP-042 — Optional Feature-Rich Design/Planning Mode
 
-V-0.1.1 (current)
+V-0.1.1
 - CRP-044 — Worker Init Script for Overmind Registration (worker now can register in orchestrator with unique id)
 - CRP-045 — Split Worker Identity Persistence (`master`) From Registry Coordination (`overmind`)
 - CRP-046 — UUID-Scoped Step Selection From `overmind` Git Branch
@@ -239,42 +242,151 @@ V-0.1.2
 - add integration with new coordinator (asdlc folder) - now orchestrator can register itself in overmind and 
 fetch tasks directly from asdlc folder for particular feature (user can select if mutliple features available) 
 
-V-0.1.3 (current)
+V-0.1.3
 - remove outdated git logic from worker-overmind interaction
 - add init script
 - add agents.md warning and blueprint search
 - add external links processing
 - add first commit work logic
 
+V-0.2.0
+- Python CLI (`yasdef`) replaces all bash scripts — see CHANGELOG.md for the full command rename table
+- Phase rules and helper scripts for all phases now is agentic skills, setup in native folders (.codex, .claude etc) in init phase 
+
+V-0.2.1 (current)
+- add blueprints search on design phase
+- bug fixes and code cleanup
+
+
 2. known problems/to-do's:
-- only codex cli supported
-- you need to manually ctrl-c from codex session in the end of each model-driven phase
-- ai_audit step creates relatively small improvement/tech-debt steps (5-8 SP) which is not efficient from token management perspective
 - incorrect SP countion on post_review
 
-3. main plans
-- change bash scripts to lightweight cli (wrapper above coding agent cli's), see yasdef-wrapper
-- investigate "skills" usage
-- coordinator service
-- onboarding script
 
 ### security_improvement_proposals
 
-Scope: General
-- Introduce checksums 
-Scope: command-execution safety (non-git concerns).
-- Restrict runner command to trusted values only. Do not execute arbitrary binaries from config; use an allowlist-based runner mapping.
-- For implementation execution, use only `ai/setup/models.md` as the trusted source of runner/model/args.
-- Treat step-plan metadata as non-executable context only (for example prompt path/version), not as command authority.
-- Add integrity checks for command-driving artifacts (at minimum `ai/setup/models.md`) using a trust-lock/checksum file and require explicit re-trust after changes.
-- Run child model commands with a minimal environment allowlist by default: `PATH`, `HOME`, `LANG`, `TMPDIR`.
-- Add explicit opt-in for extra environment variables (for example `--pass-env KEY1,KEY2`) instead of inheriting full environment.
+- **Config trust check:** add a small trust file for `.asdlc_worker/setup/models.md` so runner/model changes require explicit operator approval before execution.
+- **Minimal child environment:** run model CLI subprocesses with a narrow environment allowlist and add explicit opt-in for extra variables when needed.
+- **Path safety:** continue rejecting symlinks and path escapes during `yasdef init`; extend the same checks to any future writable install/runtime paths.
+- **Prompt-input boundaries:** treat implementation plans, step plans, and model outputs as data only; never let artifact content become executable command arguments.
+- **Audit trail:** record runner, model, phase, branch, selected feature/step, and relevant config checksum in `.asdlc_worker/history.md` or a dedicated run log.
+- **Secret hygiene:** add lightweight checks to avoid printing common secret-like values from child command environments or captured logs.
 
-### Helpers
-- Here is the prompt to create `overmind/reqirements_ears.md` from usual technical requirements (run from repo root):
-`carefully examine technical_requirements.md and create overmind/reqirements_ears.md; use the reqirements_ears template and golden example from the standalone yasdef-overmind repo`
---Here is the prompt to create `overmind/implementation_plan.md` from `overmind/reqirements_ears.md` and `technical_requirements.md` (run from repo root): 
-`carefully examine all project files especially AGENTS.md and README.md if they are presented, then from overmind/reqirements_ears.md, technical_requirements.md, and feature_contract_delta.md (all mandatory when presented in the feature flow), create overmind/implementation_plan.md using the implementation_plan template and golden example from the standalone yasdef-overmind repo; keep a single implementation plan for backend/frontend/mobile, assign every step to exactly one repo with \`#### Repo:\`, use \`#### Depends on:\` when cross-repo sequencing matters, add already implemented steps as well as not implemented ones, and slice not implemented steps by concrete function/component so implementation effort stays roughly balanced (10-20 SP means 1-3 day of work for a human dev)`
+
+## How to mock yasdef-coordinator
+
+Create a minimal mock ASDLC project folder for local testing.
+✅ Or you can just pass this instruction to you model/agent
+
+---
+Instruction for mock yasdef-coordinator:
+
+Required files:
+- Worker repo before `yasdef init`: any existing Git repo root.
+- ASDLC project folder before `yasdef register`: root `init_progress_definition.yaml` with `meta_info.project_id`, and root `workers.yaml` with the worker UUID, class, and status.
+- Feature folder before `yasdef run`: `requirements_ears.md` and `implementation_plan.md`.
+
+Create the mock ASDLC project folder:
+
+```bash
+mkdir -p /tmp/mock-asdlc/project-demo/feature-demo
+cd /tmp/mock-asdlc/project-demo
+git init -b main
+git config user.name "Mock ASDLC"
+git config user.email "mock-asdlc@example.local"
+cat > init_progress_definition.yaml <<'EOF'
+meta_info:
+  project_id: project-demo
+EOF
+cat > workers.yaml <<'EOF'
+workers:
+  - uuid: worker-demo
+    class: platform
+    status: ready
+EOF
+touch feature-demo/feature_request.txt
+git add .
+git commit -m "Create mock ASDLC project"
+git init --bare ../project-demo-remote.git
+git remote add origin ../project-demo-remote.git
+git push -u origin main
+```
+
+--- IF YOU ARE USER ---
+Fill `feature-demo/feature_request.txt` with the feature you want to implement.
+
+--- IF YOU ARE MODEL/AGENT ---
+ask user to provide you a path to valid requirements in txt format, examine them, ask user if something not clear before starting next prompts. Then run Prompt to create `requirements_ears.md` (see below). Then run Prompt to create `implementation_plan.md`, use `requirements_ears.md` as valid input for `implementation_plan.md`.
+--- IF YOU ARE MODEL/AGENT BLOCK END---
+
+Prompt to create `requirements_ears.md`:
+
+`Carefully examine feature-demo/feature_request.txt and create feature-demo/requirements_ears.md in EARS format. Keep requirements clear, testable, and scoped to this feature. Respect this strict structure:`
+
+```markdown
+# Requirements (EARS)
+
+System name: <feature/system name>
+Scope: <one paragraph describing included behavior and explicit exclusions>
+
+---
+
+## Overview
+- Product/Domain: <domain>
+- Goals: <goal list in one line>
+- Out of scope: <explicit exclusions>
+
+## Glossary
+- <Term>: <meaning>
+
+## Actors
+- <Actor>: <what they do>
+
+## Assumptions
+- <Assumption or unresolved gap>
+
+---
+
+## Requirements
+
+### Requirement 1 — <short requirement title>
+**User Story:** As a <actor>, I want <capability>, so that <outcome>.
+
+**Acceptance Criteria (EARS):**
+- WHEN <trigger>, THE <system name> SHALL <observable behavior>.
+
+**Verification:** <test or evidence that proves this requirement>
+```
+
+Prompt to create `implementation_plan.md`:
+
+`Carefully examine feature-demo/feature_request.txt and feature-demo/requirements_ears.md, then create feature-demo/implementation_plan.md. Keep one implementation plan for all repos, add concrete steps, include #### Repo: for every step, include #### Assigned: worker-demo for worker-owned steps, use #### Depends on: when sequencing matters, and keep each step small enough for one focused implementation cycle. Respect this strict structure:`
+
+```markdown
+# Implementation Plan
+
+Use one shared implementation plan for the whole feature.
+Ground the plan in `feature_request.txt` and `requirements_ears.md`.
+Each step belongs to exactly one repo class so workers can execute independently while following one ordered delivery sequence.
+
+### Step 1.1 <short step title> [REQ-1]
+Est. step total: <number> SP
+#### Repo: <backend|frontend|mobile|platform|docs>
+#### Depends on: none
+#### Evidence: <requirement ids, files, or components that justify the step>
+#### Assigned: worker-demo
+- [ ] Plan and discuss the step
+- [ ] <concrete implementation task>
+- [ ] <focused verification task>
+- [ ] Review step implementation
+```
+
+Commit generated ASDLC artifacts before registering/running a worker:
+
+```bash
+git add .
+git commit -m "Add feature plan"
+git push
+```
 
 ### License
 

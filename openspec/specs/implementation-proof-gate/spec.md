@@ -18,9 +18,9 @@ The authoritative details for proof-based bullet completion MUST live in `ai/AI_
 - **WHEN** implementation proof behavior is defined
 - **THEN** detailed policy and decision criteria are specified in `ai/AI_DEVELOPMENT_PROCESS.md`
 
-#### Scenario: Implementation script prompt remains concise
-- **WHEN** `ai/scripts/ai_implementation.sh` emits implementation guidance
-- **THEN** it contains at most a single short sentence referencing proof gating and defers details to `ai/AI_DEVELOPMENT_PROCESS.md`
+#### Scenario: Implementation skill guidance remains concise
+- **WHEN** `.codex/skills/yasdef-worker-implementation/SKILL.md` defines implementation guidance
+- **THEN** it references process gates without duplicating long process prose from `ai/AI_DEVELOPMENT_PROCESS.md`
 
 ### Requirement: Proof gate still controls checkbox completion
 Implementation bullets MUST only be marked `[x]` when proof criteria are satisfied according to process rules; otherwise they remain `[ ]`.
@@ -33,20 +33,20 @@ Implementation bullets MUST only be marked `[x]` when proof criteria are satisfi
 - **WHEN** a bullet lacks sufficient proof per process rules
 - **THEN** the bullet remains `[ ]`
 
-### Requirement: Implementation completion SHALL be gated by a shared readiness helper
-The implementation phase MUST require the implementation model to run a shared readiness helper from `ai/scripts/helpers/` before it emits its completion line, and MUST treat any non-zero exit as proof that implementation is not ready to leave the phase.
+### Requirement: Implementation completion SHALL be gated by the implementation skill readiness script
+The implementation phase MUST require the implementation model to run `.codex/skills/yasdef-worker-implementation/scripts/check_implementation_readiness.py` before it emits its completion line, and MUST treat any non-zero exit as proof that implementation is not ready to leave the phase.
 
 #### Scenario: Completion line is emitted only after readiness passes
-- **WHEN** the implementation model finishes step work and runs the shared readiness helper
+- **WHEN** the implementation model finishes step work and runs the implementation skill readiness script
 - **THEN** it emits the implementation completion line only if the helper exits successfully
 
 #### Scenario: Failed readiness keeps the phase open
-- **WHEN** the implementation model runs the shared readiness helper and it exits non-zero
+- **WHEN** the implementation model runs the implementation skill readiness script and it exits non-zero
 - **THEN** implementation does not emit its completion line
 - **THEN** implementation follows the remediation workflow defined in `ai/AI_DEVELOPMENT_PROCESS.md` for the Implementation Readiness Gate
 
-### Requirement: Shared readiness helper SHALL use step-plan completion state as the source of truth
-The shared implementation-readiness helper MUST evaluate `ai/step_plans/step-<N>.md` `## Plan (ordered)` checklist state and translated functional-requirement checklist state as the source of truth, and MUST communicate readiness success or failure through exit status.
+### Requirement: Implementation readiness script SHALL use step-plan completion state as the source of truth
+The implementation skill readiness script MUST evaluate `ai/step_plans/step-<N>.md` `## Plan (ordered)` checklist state and translated functional-requirement checklist state as the source of truth, and MUST communicate readiness success or failure through exit status.
 
 #### Scenario: Helper fails on incomplete ordered plan state
 - **WHEN** `## Plan (ordered)` is missing, empty, or contains unchecked items
@@ -57,12 +57,12 @@ The shared implementation-readiness helper MUST evaluate `ai/step_plans/step-<N>
 - **THEN** the helper exits non-zero and reports that implementation readiness has not been satisfied
 
 ### Requirement: Implementation readiness recovery SHALL be documented centrally
-The authoritative recovery steps for implementation-readiness-helper failure MUST live in a dedicated Implementation Readiness Gate section in `ai/AI_DEVELOPMENT_PROCESS.md`, while implementation prompt/script text remains concise.
+The authoritative recovery steps for implementation-readiness script failure MUST live in the implementation skill and the Implementation Readiness Gate section in `ai/AI_DEVELOPMENT_PROCESS.md`, while orchestrator prompt text remains variable-only.
 
 #### Scenario: Process documentation contains the detailed readiness workflow
 - **WHEN** contributors consult the implementation completion contract
 - **THEN** `ai/AI_DEVELOPMENT_PROCESS.md` contains a dedicated Implementation Readiness Gate section describing how to correct readiness-helper failures before retrying completion
 
-#### Scenario: Prompt guidance stays concise while deferring details
-- **WHEN** `ai/scripts/ai_implementation.sh` prepares implementation guidance for the model
-- **THEN** it references the process document for detailed recovery rules instead of duplicating the full workflow inline
+#### Scenario: Orchestrator prompt guidance stays concise while deferring details
+- **WHEN** the orchestrator prepares implementation guidance for the model
+- **THEN** it names `yasdef-worker-implementation` and passes variables only instead of duplicating the full workflow inline
