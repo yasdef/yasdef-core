@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import importlib
 from pathlib import Path
+import tomllib
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,12 @@ from yasdef_worker.infra.errors import FeatureExhausted
 cli_main = importlib.import_module("yasdef_worker.cli.main")
 
 
+def _project_version() -> str:
+    pyproject = Path(__file__).parents[3] / "pyproject.toml"
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+    return str(project["version"])
+
+
 def test_root_help_lists_subcommands() -> None:
     help_text = cli_main.build_parser().format_help()
 
@@ -26,6 +33,14 @@ def test_root_help_lists_subcommands() -> None:
     assert "init" in help_text
     assert "register" in help_text
     assert "uninstall" in help_text
+
+
+def test_root_version_matches_project_metadata(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as raised:
+        cli_main.main(["--version"])
+
+    assert raised.value.code == 0
+    assert capsys.readouterr().out.strip() == f"yasdef {_project_version()}"
 
 
 @pytest.mark.parametrize("command", ["run", "post-review", "init", "register", "uninstall"])
