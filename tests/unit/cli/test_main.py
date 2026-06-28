@@ -13,7 +13,7 @@ from yasdef_worker.cli import post_review as post_review_cmd
 from yasdef_worker.cli import run as run_cmd
 from yasdef_worker.cli import uninstall as uninstall_cmd
 from yasdef_worker.domain.history.token_usage import TokenUsage
-from yasdef_worker.infra.errors import FeatureExhausted
+from yasdef_worker.infra.errors import FeatureExhausted, YasdefError
 
 cli_main = importlib.import_module("yasdef_worker.cli.main")
 
@@ -168,6 +168,20 @@ def test_init_command_uses_packaged_entries(
     assert seen["init"]["entries"]
     assert seen["init"]["exclude_entries"] == (".asdlc_worker/logs",)
     assert seen["init"]["force"] is True
+
+
+def test_cli_boundary_reports_yasdef_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail(_args: object) -> int:
+        raise YasdefError("expected failure")
+
+    monkeypatch.setattr(init_cmd, "handle", fail)
+
+    assert cli_main.main(["init", str(tmp_path)]) == 1
+    assert "ERROR: expected failure" in capsys.readouterr().err
 
 
 def test_post_review_command_passes_collected_phase_usages(

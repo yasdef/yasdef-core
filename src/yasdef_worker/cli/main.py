@@ -35,7 +35,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return typed_handler(args)
     except KeyboardInterrupt:
         return handle_error(RuntimeError("interrupted"))
-    except Exception as exc:  # pragma: no cover - defensive boundary
+    except Exception as exc:
         return handle_error(exc)
 
 

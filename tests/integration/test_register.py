@@ -1,6 +1,7 @@
 """Integration tests for `yasdef register` — ports register_worker_tests.sh."""
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -26,9 +27,7 @@ def _run_register(
     worker_root: Path,
     project_path: Path,
     worker_uuid: str = WORKER_UUID,
-) -> "subprocess.CompletedProcess[str]":
-    import subprocess
-
+) -> subprocess.CompletedProcess[str]:
     return yasdef(
         "register",
         cwd=worker_root,
@@ -192,6 +191,69 @@ def test_register_rewrites_binding_deterministically(tmp_path: Path) -> None:
     assert second_result.returncode == 0, second_result.stderr
     second = (repo / ".asdlc_worker" / "project_overmind.yaml").read_text()
     assert first == second
+
+
+def test_register_fast_forwards_stale_existing_work_branch_to_mainline(tmp_path: Path) -> None:
+    repo = seed_repo(tmp_path / "repo")
+    _init_worker_runtime(repo)
+    project = write_project_repo(tmp_path / "project", project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
+
+    first = _run_register(repo, project)
+    assert first.returncode == 0, first.stderr
+    git("checkout", "master", cwd=repo)
+    git("merge", "--ff-only", "register_yasdef_worker_in_coordinator", cwd=repo)
+    marker = repo / "mainline-marker.txt"
+    marker.write_text("created after registration\n", encoding="utf-8")
+    git("add", marker.name, cwd=repo)
+    git("commit", "-qm", "advance mainline", cwd=repo)
+
+    second = _run_register(repo, project)
+
+    assert second.returncode == 0, second.stderr
+    assert (
+        "fast-forwarded existing branch: register_yasdef_worker_in_coordinator to master"
+        in second.stderr
+    )
+    assert (
+        git("branch", "--show-current", cwd=repo).stdout.strip()
+        == "register_yasdef_worker_in_coordinator"
+    )
+    ancestor = git(
+        "merge-base",
+        "--is-ancestor",
+        "master",
+        "register_yasdef_worker_in_coordinator",
+        cwd=repo,
+    )
+    assert ancestor.returncode == 0
+    assert marker.read_text(encoding="utf-8") == "created after registration\n"
+
+
+def test_register_rejects_existing_work_branch_diverged_from_mainline(tmp_path: Path) -> None:
+    repo = seed_repo(tmp_path / "repo")
+    _init_worker_runtime(repo)
+    project = write_project_repo(tmp_path / "project", project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
+
+    first = _run_register(repo, project)
+    assert first.returncode == 0, first.stderr
+    git("checkout", "master", cwd=repo)
+    marker = repo / "mainline-marker.txt"
+    marker.write_text("mainline-only commit\n", encoding="utf-8")
+    git("add", marker.name, cwd=repo)
+    git("commit", "-qm", "advance mainline independently", cwd=repo)
+    work_tip_before = git(
+        "rev-parse", "register_yasdef_worker_in_coordinator", cwd=repo
+    ).stdout.strip()
+
+    second = _run_register(repo, project)
+
+    assert second.returncode != 0
+    assert "has diverged from master" in second.stderr
+    assert git("branch", "--show-current", cwd=repo).stdout.strip() == "master"
+    work_tip_after = git(
+        "rev-parse", "register_yasdef_worker_in_coordinator", cwd=repo
+    ).stdout.strip()
+    assert work_tip_after == work_tip_before
 
 
 def test_register_fails_on_dirty_working_tree(tmp_path: Path) -> None:

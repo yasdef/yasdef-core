@@ -253,8 +253,11 @@ V-0.2.0
 - Python CLI (`yasdef`) replaces all bash scripts — see CHANGELOG.md for the full command rename table
 - Phase rules and helper scripts for all phases now is agentic skills, setup in native folders (.codex, .claude etc) in init phase 
 
-V-0.2.1 (current)
+V-0.2.1
 - add blueprints search on design phase
+- bug fixes and code cleanup
+
+V-0.2.2 (current)
 - bug fixes and code cleanup
 
 

@@ -29,8 +29,32 @@ def checkout_work_branch(
 ) -> str:
     start_branch = require_clean_mainline_start(git, operation=operation)
     if git.branch_exists(branch_name):
+        work_is_ancestor = git.is_ancestor(branch_name, start_branch)
+        start_is_ancestor = git.is_ancestor(start_branch, branch_name)
+        if not (work_is_ancestor or start_is_ancestor):
+            raise YasdefError(
+                f"{operation} work branch {branch_name} has diverged from {start_branch}; "
+                "merge or remove the existing work branch before retrying"
+            )
         git.checkout(branch_name)
-        output.step(f"switched to existing branch: {branch_name}")
+        if work_is_ancestor and not start_is_ancestor:
+            try:
+                git.merge_ff(start_branch)
+            except GitOperationFailed as merge_exc:
+                try:
+                    git.checkout(start_branch)
+                except GitOperationFailed as rollback_exc:
+                    raise YasdefError(
+                        f"{operation} failed to fast-forward {branch_name} to {start_branch}: "
+                        f"{merge_exc}; rollback to {start_branch} also failed: {rollback_exc}"
+                    ) from merge_exc
+                raise YasdefError(
+                    f"{operation} failed to fast-forward {branch_name} to {start_branch}; "
+                    f"restored to {start_branch}: {merge_exc}"
+                ) from merge_exc
+            output.step(f"fast-forwarded existing branch: {branch_name} to {start_branch}")
+        else:
+            output.step(f"switched to existing branch: {branch_name}")
     else:
         git.checkout_new(branch_name)
         output.step(f"created and switched to branch: {branch_name}")

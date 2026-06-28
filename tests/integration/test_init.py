@@ -107,6 +107,51 @@ def test_init_reinit_from_mainline_succeeds(tmp_path: Path) -> None:
     assert (repo / ".asdlc_worker" / "asdlc_worker.yaml").is_file()
 
 
+def test_init_fast_forwards_stale_existing_work_branch_to_mainline(tmp_path: Path) -> None:
+    repo = seed_repo(tmp_path / "stale-init-branch-repo")
+    first = yasdef("init", str(repo), cwd=tmp_path)
+    assert first.returncode == 0, first.stderr
+
+    git("checkout", "master", cwd=repo)
+    git("merge", "--ff-only", "init_yasdef_worker", cwd=repo)
+    marker = repo / "mainline-marker.txt"
+    marker.write_text("created after the first init\n", encoding="utf-8")
+    git("add", marker.name, cwd=repo)
+    git("commit", "-qm", "advance mainline", cwd=repo)
+
+    second = yasdef("init", str(repo), cwd=tmp_path)
+
+    assert second.returncode == 0, second.stderr
+    assert "fast-forwarded existing branch: init_yasdef_worker to master" in second.stderr
+    assert git("branch", "--show-current", cwd=repo).stdout.strip() == "init_yasdef_worker"
+    ancestor = git("merge-base", "--is-ancestor", "master", "init_yasdef_worker", cwd=repo)
+    assert ancestor.returncode == 0
+    assert marker.read_text(encoding="utf-8") == "created after the first init\n"
+    tracked = git("ls-tree", "-r", "--name-only", "HEAD", cwd=repo).stdout.splitlines()
+    assert ".asdlc_worker/asdlc_worker.yaml" in tracked
+
+
+def test_init_rejects_existing_work_branch_diverged_from_mainline(tmp_path: Path) -> None:
+    repo = seed_repo(tmp_path / "diverged-init-branch-repo")
+    first = yasdef("init", str(repo), cwd=tmp_path)
+    assert first.returncode == 0, first.stderr
+
+    git("checkout", "master", cwd=repo)
+    marker = repo / "mainline-marker.txt"
+    marker.write_text("mainline-only commit\n", encoding="utf-8")
+    git("add", marker.name, cwd=repo)
+    git("commit", "-qm", "advance mainline independently", cwd=repo)
+    work_tip_before = git("rev-parse", "init_yasdef_worker", cwd=repo).stdout.strip()
+
+    second = yasdef("init", str(repo), cwd=tmp_path)
+
+    assert second.returncode != 0
+    assert "has diverged from master" in second.stderr
+    assert git("branch", "--show-current", cwd=repo).stdout.strip() == "master"
+    work_tip_after = git("rev-parse", "init_yasdef_worker", cwd=repo).stdout.strip()
+    assert work_tip_after == work_tip_before
+
+
 def test_init_does_not_overwrite_seed_only_ledger_on_reinstall(tmp_path: Path) -> None:
     repo = seed_repo(tmp_path / "seed-only-repo")
     yasdef("init", str(repo), cwd=tmp_path)
