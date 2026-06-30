@@ -257,7 +257,7 @@ V-0.2.1
 - add blueprints search on design phase
 - bug fixes and code cleanup
 
-V-0.2.2 (current)
+V-0.2.3 (current)
 - bug fixes and code cleanup
 
 

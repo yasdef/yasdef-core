@@ -12,7 +12,7 @@ from pathlib import Path
 
 WORKER_HOME_DIR = ".asdlc_worker"
 SKILL_REL_PATH = ".codex/skills/yasdef-worker-ai-audit"
-PROJECTS_DIR = "projects"
+
 RAISED_QUESTIONS_DIR = "raised_questions"
 
 REQUIRED_SECTION_HEADINGS = (
@@ -92,20 +92,20 @@ def validate_design_identity(step: str, feature_id: str, design_path: Path, desi
 
 
 def derive_asdlc_repo_root(runtime_plan: Path) -> Path:
-    """Return the ASDLC repo root from `<root>/projects/<project>/<feature>/implementation_plan.md`."""
-    resolved = runtime_plan.resolve()
-    parts = resolved.parts
-    if len(parts) < 5 or parts[-1] != "implementation_plan.md":
-        raise ContextError(
-            "runtime plan must point at "
-            f"<asdlc-repo>/{PROJECTS_DIR}/<project>/<feature>/implementation_plan.md: {runtime_plan}"
-        )
-    if parts[-4] != PROJECTS_DIR:
-        raise ContextError(
-            "runtime plan must sit under "
-            f"<asdlc-repo>/{PROJECTS_DIR}/<project>/<feature>/: {runtime_plan}"
-        )
-    return Path(*parts[:-4])
+    """Return the ASDLC repo root via git rev-parse on the plan's parent directory."""
+    if not runtime_plan.is_file():
+        raise ContextError(f"runtime plan not found: {runtime_plan}")
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=runtime_plan.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or "unknown error"
+        raise ContextError(f"cannot determine ASDLC repo root for {runtime_plan}: {message}")
+    return Path(result.stdout.strip())
 
 
 def git_status_short(cwd: Path) -> str:
