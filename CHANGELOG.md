@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## v0.2.4 — Design bootstrap guidance and deterministic pipelines (2026-08-18)
+
+### Added
+
+- Class-aware first-feature bootstrap guidance for project `AGENTS.md` and
+  `CLAUDE.md`, with explicit operator approval, recovery backups, verification,
+  and rollback-safe pair installation.
+- Deterministic design-readiness validation and expanded blueprint / project
+  guidance discovery.
+
+### Changed
+
+- Model configuration is validated completely before workflow side effects.
+  All five model-driven phases are required and always run in canonical order.
+- Non-resume runs must start from a clean `main` or `master`; explicit resume
+  continues to support in-progress workflow branches.
+- Package and runtime CLI versions now share one verified release value.
+- Source distributions are limited to package, test, and release files so local
+  agent configuration cannot be included accidentally.
+
+### Quality
+
+- Expanded unit, integration, and skill-helper coverage for bootstrap guidance,
+  pipeline configuration, Git synchronization, and bound ASDLC repositories.
+- Ruff and full-package mypy checks are clean.
+
+---
+
 ## v0.2.0 — Python CLI cutover (2026-06-07)
 
 All operator-facing invocations changed in this release. The bash scripts under

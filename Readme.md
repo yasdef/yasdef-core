@@ -259,8 +259,15 @@ V-0.2.1
 - add blueprints search on design phase
 - bug fixes and code cleanup
 
-V-0.2.3 (current)
+V-0.2.3
 - bug fixes and code cleanup
+
+V-0.2.4 (current)
+- add class-aware first-feature bootstrap guidance for project `AGENTS.md` and `CLAUDE.md`, including explicit approval, backups, and rollback-safe installation
+- strengthen design readiness checks and blueprint / agent-guidance discovery
+- validate the complete model configuration before workflow side effects and always execute phases in canonical order
+- enforce clean mainline starts while preserving explicit resume behavior
+- expand unit, integration, and skill-helper coverage
 
 
 2. known problems/to-do's:
