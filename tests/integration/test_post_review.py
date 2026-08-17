@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from yasdef_worker.domain.branches import step_branch_name
+
 from .conftest import GIT_ENV, git, seed_repo, write_binding, write_project_repo, yasdef
 
 WORKER_UUID = "22222222-2222-2222-2222-222222222222"
@@ -29,6 +31,32 @@ def _yasdef_post_review(
     if no_plan_sync:
         args.append("--no-plan-sync")
     return yasdef(*args)
+
+
+def _create_planning_metrics_baseline(worker_root: Path, *, step: str, feature_id: str) -> str:
+    """Create the canonical planning branch at HEAD without switching branches.
+
+    post-review defaults its metrics range to `step-<step>-<feature-id>-plan..HEAD`,
+    which the production pipeline creates during the planning phase. Fixtures must
+    provide that baseline before any review-completion commits.
+    """
+    branch = step_branch_name(step, feature_id, "planning")
+    git("branch", branch, cwd=worker_root)
+    return branch
+
+
+def _commit_post_planning_product_change(worker_root: Path) -> None:
+    """Commit one added and one modified non-runtime file after the planning baseline.
+
+    `MetricsCollector` ignores `.asdlc_worker/` paths, so the review artifact alone
+    would not demonstrate that the planning-to-HEAD range is measured.
+    """
+    worker_root.joinpath("feature.py").write_text(
+        "def feature():\n    return 1\n", encoding="utf-8"
+    )
+    worker_root.joinpath("README.md").write_text("seed\nimplementation note\n", encoding="utf-8")
+    git("add", "-A", cwd=worker_root)
+    git("commit", "-qm", "implement step product change", cwd=worker_root)
 
 
 def _write_review_artifact(worker_root: Path, *, step: str, feature_id: str) -> Path:
@@ -99,6 +127,8 @@ def test_post_review_writes_history_entry(tmp_path: Path) -> None:
     worker = seed_repo(tmp_path / "worker")
     project = write_project_repo(tmp_path / "project", project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
     write_binding(worker, project_path=project, project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
+    _create_planning_metrics_baseline(worker, step="1.1", feature_id=FEATURE_ID)
+    _commit_post_planning_product_change(worker)
     _write_review_artifact(worker, step="1.1", feature_id=FEATURE_ID)
 
     result = _yasdef_post_review(worker, step="1.1", feature_id=FEATURE_ID, title="First step")
@@ -109,6 +139,10 @@ def test_post_review_writes_history_entry(tmp_path: Path) -> None:
     content = history.read_text()
     assert "Step: 1.1" in content
     assert "First step" in content
+    # feature.py adds 2 lines, README.md adds 1 line, all after the planning baseline.
+    assert "- New lines of code added: 3" in content
+    assert "- New files added: 1" in content
+    assert "- Files touched: 1" in content
 
 
 def test_post_review_fails_when_review_artifact_missing(tmp_path: Path) -> None:
@@ -126,6 +160,7 @@ def test_post_review_second_run_replaces_history_entry(tmp_path: Path) -> None:
     worker = seed_repo(tmp_path / "worker")
     project = write_project_repo(tmp_path / "project", project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
     write_binding(worker, project_path=project, project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
+    _create_planning_metrics_baseline(worker, step="1.1", feature_id=FEATURE_ID)
     _write_review_artifact(worker, step="1.1", feature_id=FEATURE_ID)
 
     _yasdef_post_review(worker, step="1.1", feature_id=FEATURE_ID, title="First run")
@@ -152,6 +187,7 @@ def test_post_review_plan_sync_succeeds_with_configured_remote(tmp_path: Path) -
     )
     worker = seed_repo(tmp_path / "worker")
     write_binding(worker, project_path=project, project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
+    _create_planning_metrics_baseline(worker, step="1.1", feature_id=FEATURE_ID)
     _write_review_artifact(worker, step="1.1", feature_id=FEATURE_ID)
 
     result = _yasdef_post_review(
@@ -168,6 +204,7 @@ def test_post_review_plan_sync_noninteractive_aborts_when_project_not_git(tmp_pa
     worker = seed_repo(tmp_path / "worker")
     project = write_project_repo(tmp_path / "project", project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
     write_binding(worker, project_path=project, project_id=PROJECT_ID, worker_uuid=WORKER_UUID)
+    _create_planning_metrics_baseline(worker, step="1.1", feature_id=FEATURE_ID)
     _write_review_artifact(worker, step="1.1", feature_id=FEATURE_ID)
 
     result = _yasdef_post_review(
