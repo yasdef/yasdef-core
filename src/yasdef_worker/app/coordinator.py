@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from yasdef_worker.app.feature_context import FeatureContextBuilder, FeatureRunState
 from yasdef_worker.app.mainline_branch_policy import require_clean_mainline_start
 from yasdef_worker.app.phases import ModelConfigRunnerFactory, PhaseContext
-from yasdef_worker.app.pipeline import DEFAULT_PHASES, Pipeline, PipelineResult, WORKFLOW_PHASE_TYPES
+from yasdef_worker.app.pipeline import Pipeline, PipelineResult, WORKFLOW_PHASE_TYPES
 from yasdef_worker.app.resume import analyze_resume
-from yasdef_worker.domain.models_config import list_phases
+from yasdef_worker.domain.models_config import ModelsConfigError, validate_models_config
+from yasdef_worker.domain.phases import MODEL_PHASES
 from yasdef_worker.domain.plans.implementation_plan import ImplementationPlan
 from yasdef_worker.infra.errors import YasdefError
 from yasdef_worker.infra.git_repo import GitRepo
@@ -43,8 +45,8 @@ class Coordinator:
         self.output = output
 
     def run(self, options: RunOptions = RunOptions()) -> PipelineResult:
-        phases = _configured_phases(self.layout)
-        if phases and phases[0] == "design" and options.resume_step is None:
+        phases = _workflow_phases(self.layout)
+        if options.resume_step is None:
             require_clean_mainline_start(self.git, operation="yasdef run design")
         feature = FeatureContextBuilder(
             layout=self.layout,
@@ -75,10 +77,26 @@ class Coordinator:
         )
 
 
-def _configured_phases(layout: RuntimeLayout) -> tuple[str, ...]:
-    configured = list_phases(layout.models_file.read_text(encoding="utf-8"))
-    model_phases = tuple(phase for phase in configured if phase in DEFAULT_PHASES)
-    return (*model_phases, "post_review")
+def _workflow_phases(layout: RuntimeLayout) -> tuple[str, ...]:
+    """Validate the complete model pipeline, then append the worker-managed final phase."""
+    path = layout.models_file
+    try:
+        rows = validate_models_config(_read_models_config(path))
+    except ModelsConfigError as exc:
+        raise YasdefError(f"invalid model configuration {path}: {exc}") from exc
+    return (*(row.phase for row in rows), "post_review")
+
+
+def _read_models_config(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise YasdefError(
+            f"missing model configuration: {path} "
+            f"(one row is required for each of {', '.join(MODEL_PHASES)})"
+        ) from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise YasdefError(f"unreadable model configuration: {path} ({exc})") from exc
 
 
 def _resume_phases(

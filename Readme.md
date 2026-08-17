@@ -97,7 +97,7 @@ This approach can be expressed in a few sentences:
    - The selected feature and step are written back to `.asdlc_worker/feature_meta_sync.yaml`.
 
    5.2. Worker execution:
-   - The worker runs configured phases one by one in order, normally `design -> planning -> implementation -> user_review -> ai_audit -> post_review`.
+   - The worker runs the full phase set one by one in canonical order: `design -> planning -> implementation -> user_review -> ai_audit -> post_review`. Partial pipelines are not supported — `models.md` must configure all five model-driven phases, and the run is rejected at startup otherwise.
    - Each model-driven phase uses its installed `yasdef-worker-*` skill and the selected feature/step context.
    - Each model-driven phase uses model and (sometimes) reasoning depth based on `/setup/models.md`, so it can be changed manually at any time. You can mix different cli's and models in one setup, it'll work. ⚠️ All works in interactive mode, NOT headless (which will save your tokens).
    - After `ai_audit`, the worker commits the updated ASDLC implementation plan and pushes it through the bound ASDLC repo. If outbound sync fails, interactive mode offers retry/finish; non-interactive mode stops before `post_review`.
@@ -134,7 +134,9 @@ This approach can be expressed in a few sentences:
 
 - **Orchestration:** `yasdef run` drives the configured worker phase pipeline.
   - Worker/project binding rule: reads `worker_uuid` and `project_id` from `.asdlc_worker/project_overmind.yaml`.
-  - Phase configuration rule: phase order comes from `.asdlc_worker/setup/models.md`; phases normally run as `design -> planning -> implementation -> user_review -> ai_audit -> post_review`.
+  - Phase configuration rule: `.asdlc_worker/setup/models.md` selects the CLI command and model per phase — it does not configure phase order. It MUST contain exactly one row for each of `design`, `planning`, `implementation`, `user_review`, `ai_audit`. Row order in the file is free; execution order is always canonical `design -> planning -> implementation -> user_review -> ai_audit -> post_review`. `post_review` is worker-managed and MUST NOT appear in the file.
+  - Configuration validation rule: the whole file is validated at startup, before the clean-mainline check, feature discovery, bound-project sync, metadata writes, branch creation, and any model run. A missing, unreadable, incomplete, duplicated, or malformed configuration aborts with an actionable error and no side effects. Rows are `<phase> | <command> | <model> | <args... optional>`; one leading and one trailing pipe are allowed, `#` comments and blank lines are ignored.
+  - Clean-mainline rule: every non-resume `yasdef run` must start on `main` or `master` with a clean working tree. `--resume <step>` is exempt so it can continue from an existing workflow branch.
   - Candidate discovery rule: scans bound ASDLC project features (`<asdlc-project-path>/<feature-id>/implementation_plan.md`), skipping `.git` and directories without usable `implementation_plan.md` / `requirements_ears.md`, and considers only `#### Assigned: <worker-uuid>` blocks.
   - Bound-project freshness rule: when the bound ASDLC project path is inside a Git worktree, the worker runs `git pull --rebase` before feature discovery.
   - Explicit selection rule: `0` candidates fails, `1` candidate auto-selects, and `>1` candidates require explicit user choice.
