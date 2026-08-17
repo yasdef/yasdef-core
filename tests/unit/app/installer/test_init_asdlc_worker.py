@@ -43,6 +43,28 @@ def test_installer_writes_allowed_file_and_manifest(tmp_path: Path) -> None:
     assert not [event for event in output.events if event.level == "warn" and "merge it back" in event.message]
 
 
+def test_skill_bundle_is_installed_as_copied_files_not_symlinks(tmp_path: Path) -> None:
+    """The design helper resolves its binding by walking up from its own location,
+    so `yasdef init` must copy skill files into the worker repo even when the tool
+    itself is installed from editable source."""
+    _init_repo(tmp_path)
+    helper = Path(".claude/skills/yasdef-worker-design/scripts/find_blueprints.py")
+
+    entries = default_install_entries(tmp_path)
+    helper_entry = next(entry for entry in entries if entry.relative_path == helper)
+    assert helper_entry.content
+
+    Installer(
+        target_root=tmp_path,
+        output=RecordingUserOutput(),
+        entries=(helper_entry,),
+    ).install()
+
+    installed = tmp_path / helper
+    assert not installed.is_symlink()
+    assert installed.read_bytes() == helper_entry.content
+
+
 def test_installer_rejects_destination_outside_allowlist(tmp_path: Path) -> None:
     _init_repo(tmp_path)
 

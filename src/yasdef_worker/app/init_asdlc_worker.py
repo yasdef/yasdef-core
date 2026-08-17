@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import os
 from dataclasses import dataclass
@@ -13,6 +12,8 @@ from pathlib import Path
 from yasdef_worker.app.mainline_branch_policy import checkout_work_branch, offer_merge_back
 from yasdef_worker import __version__
 from yasdef_worker.infra.errors import InstallSafetyError, YasdefError
+from yasdef_worker.infra.files import atomic_write_bytes as _atomic_write_bytes
+from yasdef_worker.infra.files import merge_exclude_entries
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.prompts import Prompter
 from yasdef_worker.infra.user_output import UserOutput
@@ -257,21 +258,7 @@ class Installer:
             return
         exclude_file = self.target_root / ".git" / "info" / "exclude"
         self._validate_dest(exclude_file)
-        exclude_file.parent.mkdir(parents=True, exist_ok=True)
-        if exclude_file.exists():
-            existing = exclude_file.read_text(encoding="utf-8")
-            lines = existing.splitlines()
-        else:
-            lines = []
-        present = set(lines)
-        changed = False
-        for entry in self.exclude_entries:
-            if entry not in present:
-                lines.append(entry)
-                present.add(entry)
-                changed = True
-        if changed:
-            _atomic_write_bytes(exclude_file, ("\n".join(lines) + "\n").encode("utf-8"))
+        merge_exclude_entries(exclude_file, self.exclude_entries)
 
     def _commit_durable_files(self, installed: list[InstalledFile]) -> None:
         if self.git is None:
@@ -301,30 +288,6 @@ class Installer:
 
     def _announce_complete(self, installed: list[InstalledFile]) -> None:
         self.output.step(f"worker runtime install complete ({len(installed)} files)")
-
-
-def _atomic_write_bytes(dest: Path, content: bytes) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    tmp = dest.with_name(dest.name + f".tmp.{os.getpid()}")
-    try:
-        fd = os.open(tmp, flags, 0o644)
-        try:
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(content)
-                handle.flush()
-                os.fsync(handle.fileno())
-        except Exception:
-            with contextlib.suppress(OSError):
-                os.close(fd)
-            raise
-        os.replace(tmp, dest)
-    except Exception:
-        with contextlib.suppress(FileNotFoundError):
-            tmp.unlink()
-        raise
 
 
 def _sha256(content: bytes) -> str:

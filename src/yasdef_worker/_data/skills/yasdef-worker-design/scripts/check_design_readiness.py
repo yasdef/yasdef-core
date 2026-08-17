@@ -12,6 +12,13 @@ from pathlib import Path
 
 REQUIRED_SECTIONS = ("Goal", "In Scope", "Out of Scope")
 
+GUIDANCE_STATES = ("present", "absent", "invalid-directory")
+GUIDANCE_DISPOSITIONS = (
+    "both-present-no-action",
+    "regenerate-both-approved",
+    "leave-unchanged-declined",
+)
+
 
 def markdown_sections(text: str) -> dict[str, str]:
     sections: dict[str, list[str]] = {}
@@ -89,6 +96,93 @@ def validate(path: Path) -> list[dict[str, str]]:
                     "message": "bootstrap-required design must include a concrete planning handoff",
                 }
             )
+        if bootstrap_required == "yes":
+            errors.extend(validate_agent_guidance(bootstrap))
+    return errors
+
+
+def validate_agent_guidance(bootstrap: str) -> list[dict[str, str]]:
+    errors: list[dict[str, str]] = []
+    states = {
+        "Project AGENTS.md state": scalar(bootstrap, "Project AGENTS.md state").lower(),
+        "Project CLAUDE.md state": scalar(bootstrap, "Project CLAUDE.md state").lower(),
+    }
+    for label, state in states.items():
+        if not state:
+            errors.append(
+                {
+                    "code": "bootstrap_guidance_state_required",
+                    "message": f"bootstrap-required design must record '{label}'",
+                }
+            )
+        elif state not in GUIDANCE_STATES:
+            errors.append(
+                {
+                    "code": "bootstrap_guidance_state_invalid",
+                    "message": f"'{label}' must be one of {', '.join(GUIDANCE_STATES)}",
+                }
+            )
+
+    if "invalid-directory" in states.values():
+        errors.append(
+            {
+                "code": "bootstrap_guidance_invalid_directory",
+                "message": (
+                    "a project-root guidance path is a directory: ask the user to resolve it "
+                    "and rerun find_blueprints.py before recording a disposition"
+                ),
+            }
+        )
+        return errors
+
+    disposition = scalar(bootstrap, "Agent-guidance disposition").lower()
+    if not disposition:
+        errors.append(
+            {
+                "code": "bootstrap_guidance_disposition_required",
+                "message": "bootstrap-required design must record 'Agent-guidance disposition'",
+            }
+        )
+        return errors
+    if disposition not in GUIDANCE_DISPOSITIONS:
+        errors.append(
+            {
+                "code": "bootstrap_guidance_disposition_invalid",
+                "message": (
+                    "'Agent-guidance disposition' must be one of "
+                    + ", ".join(GUIDANCE_DISPOSITIONS)
+                ),
+            }
+        )
+        return errors
+
+    both_present = all(state == "present" for state in states.values())
+    if both_present and disposition != "both-present-no-action":
+        errors.append(
+            {
+                "code": "bootstrap_guidance_disposition_inconsistent",
+                "message": (
+                    "both project-root guidance files are present: disposition must be "
+                    "both-present-no-action"
+                ),
+            }
+        )
+    if not both_present and disposition == "both-present-no-action":
+        errors.append(
+            {
+                "code": "bootstrap_guidance_disposition_inconsistent",
+                "message": (
+                    "both-present-no-action requires both project-root guidance files to be present"
+                ),
+            }
+        )
+    if disposition == "regenerate-both-approved" and not scalar(bootstrap, "Agent-guidance source"):
+        errors.append(
+            {
+                "code": "bootstrap_guidance_source_required",
+                "message": "regenerate-both-approved requires one 'Agent-guidance source'",
+            }
+        )
     return errors
 
 

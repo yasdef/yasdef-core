@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from yasdef_worker.app.agent_guidance import materialize_for_feature
 from yasdef_worker.app.branch_manager import BranchManager
 from yasdef_worker.app.phases.base import Phase
 from yasdef_worker.domain.phase_types import PhaseResult
@@ -17,6 +18,13 @@ class ImplementationPhase(Phase):
         _require_file(self.name, self.design_path(), "design artifact")
         self.context_script()
         self.readiness_script()
+        materialize_for_feature(
+            design_file=self.design_path(),
+            worker_root=self.ctx.layout.worker_repo_root,
+            source_plan_path=self.ctx.feature.source_plan_path,
+            binding_file=self.ctx.layout.binding_file,
+            output=self.ctx.output,
+        )
 
     def prepare_branch(self) -> None:
         BranchManager(self.ctx.git, self.ctx.output).ensure_implementation_branch(

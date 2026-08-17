@@ -87,9 +87,26 @@ If bootstrap is required, add `## First-Feature Bootstrap (only if needed)` with
 - `Bootstrap required: yes`
 - blueprint lookup result
 - blueprint evidence or explicit user stack decision
+- `Agents guidance lookup:` result and evidence
+- `Project AGENTS.md state:` and `Project CLAUDE.md state:` as reported by the helper
+- `Agent-guidance disposition:` exactly one of `both-present-no-action`, `regenerate-both-approved`, `leave-unchanged-declined`
+- `Agent-guidance source:` the selected artifact path, required only for `regenerate-both-approved`
 - concrete planning handoff
 
 When stack/architecture guidance is needed, run `uv run python .claude/skills/yasdef-worker-design/scripts/find_blueprints.py` from the ASDLC feature folder context where `implementation_plan.md` and `requirements_ears.md` live. If class metadata is missing/unsupported or no relevant blueprint exists, ask the user for stack/scaffold direction instead of inventing one.
+
+### Project AGENTS.md / CLAUDE.md reconciliation
+
+The same helper run reports project-root `AGENTS.md` and `CLAUDE.md` state and the `project_agents_md_claude_md_<class>.md` candidates. Use only those results; never inspect or modify global/user-home guidance files.
+
+- Both states `present`: record `Agent-guidance disposition: both-present-no-action`, ask nothing, and change nothing. Do not judge content quality — placeholders and symlinks still count as present.
+- Either state `invalid-directory`: the path is neither present nor absent. Do not ask the regeneration question and do not record a disposition. Ask the user to remove or rename that directory and rerun the helper; readiness stays blocked until both states are `present` or `absent`.
+- Either state `absent` with exactly one class-matching guidance artifact: ask exactly one binary question. State which file is present and which is absent, and that approval backs up any existing project-root guidance path and then overwrites both files with identical knowledgebase content, while declining leaves the repository unchanged. Offer only these two choices:
+  - `Yes, regenerate both files` → record `regenerate-both-approved` plus `Agent-guidance source:`
+  - `No, leave the repository unchanged` → record `leave-unchanged-declined`
+- Class unresolved, no class-matching artifact, or several ambiguous candidates: ask the user for agent-guidance direction. Never record `regenerate-both-approved` without one unambiguous source, and never regenerate from invented content.
+
+Never offer a per-file choice, a merge, partial preservation, or creation of only the missing file. The regeneration wording must say `regenerate`/`overwrite`, not merely `create`, whenever one file already exists.
 
 ## Missing Discussion Points Gate
 
