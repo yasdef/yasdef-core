@@ -45,16 +45,40 @@ assert_status() {
   fi
 }
 
-# Build a worker repo whose ABSOLUTE path itself contains "projects/" so we
-# exercise the right-most match in derive_asdlc_repo_root.
 new_repo() {
   local label="$1"
-  local repo_dir="$TMP_ROOT/projects/host-area/$label"
+  local repo_dir="$TMP_ROOT/workers/$label"
   mkdir -p "$repo_dir/.asdlc_worker/step_plans" \
            "$repo_dir/.asdlc_worker/step_designs" \
            "$repo_dir/.asdlc_worker/step_review_results"
   ( cd "$repo_dir" && git init -q && git checkout -q -b main )
   printf '%s\n' "$repo_dir"
+}
+
+asdlc_repo_dir() {
+  local repo_dir="$1"
+  printf '%s\n' "$TMP_ROOT/projects/host-area/source-$(basename "$repo_dir")"
+}
+
+init_asdlc_repo() {
+  local repo_dir="$1"
+  local source_dir remote_dir
+  source_dir="$(asdlc_repo_dir "$repo_dir")"
+  remote_dir="${source_dir}-remote.git"
+  if [[ -d "$source_dir/.git" ]]; then
+    return
+  fi
+
+  mkdir -p "$source_dir"
+  git init -q -b main "$source_dir"
+  git -C "$source_dir" config user.email t@t
+  git -C "$source_dir" config user.name t
+  printf '# ASDLC source\n' >"$source_dir/README.md"
+  git -C "$source_dir" add README.md
+  git -C "$source_dir" commit -qm init
+  git init --bare -q -b main "$remote_dir"
+  git -C "$source_dir" remote add origin "$remote_dir"
+  git -C "$source_dir" push -q -u origin main
 }
 
 seed_step_plan() {
@@ -101,7 +125,8 @@ seed_user_review_branch() {
 
 seed_asdlc_repo() {
   local repo_dir="$1"
-  local feature_dir="$repo_dir/asdlc-side/projects/proj-a/$FEATURE_ID"
+  init_asdlc_repo "$repo_dir"
+  local feature_dir="$(asdlc_repo_dir "$repo_dir")/$FEATURE_ID"
   mkdir -p "$feature_dir"
   cat >"$feature_dir/implementation_plan.md" <<EOF
 # Plan
@@ -117,7 +142,8 @@ EOF
 seed_asdlc_repo_with_repo_heading() {
   # Variant for append_follow_up_step tests: parent step carries #### Repo:.
   local repo_dir="$1" repo_value="${2:-backend}"
-  local feature_dir="$repo_dir/asdlc-side/projects/proj-a/$FEATURE_ID"
+  init_asdlc_repo "$repo_dir"
+  local feature_dir="$(asdlc_repo_dir "$repo_dir")/$FEATURE_ID"
   mkdir -p "$feature_dir"
   cat >"$feature_dir/implementation_plan.md" <<EOF
 # Plan
@@ -227,7 +253,7 @@ test_builder_happy_path_emits_required_sections() {
   assert_contains "$out" "## Linked Artifacts (in scope)"
   assert_contains "$out" "Worker id: $WORKER_ID"
   assert_contains "$out" "asdlc_repo_path:"
-  assert_contains "$out" "Raised questions directory (ASDLC repo): $repo_dir/asdlc-side/projects/proj-a/$FEATURE_ID/raised_questions"
+  assert_contains "$out" "Raised questions directory (ASDLC repo): $(dirname "$plan_path")/raised_questions"
   # Workflow rules live in SKILL.md, not in the context-builder output.
   assert_not_contains "$out" "## Phase Contract"
   assert_not_contains "$out" "PHASE_FINISHED_CAN_CLOSE"
@@ -291,9 +317,9 @@ test_builder_word_boundary_step_in_title() {
   assert_contains "$out" "EXPECTED design title to include step $STEP"
 }
 
-test_builder_derives_asdlc_root_with_projects_in_host_path() {
-  # new_repo seeds repos under $TMP_ROOT/projects/host-area/ — the very trap
-  # that broke the previous derive_asdlc_repo_root implementation.
+test_builder_derives_asdlc_root_from_bound_git_repo() {
+  # The bound repo path itself contains "projects/", proving discovery relies
+  # on the Git root rather than matching a path segment.
   local repo_dir plan_path
   repo_dir="$(new_repo builder_host_projects)"
   seed_step_plan "$repo_dir"
@@ -301,11 +327,9 @@ test_builder_derives_asdlc_root_with_projects_in_host_path() {
   plan_path="$(seed_asdlc_repo "$repo_dir")"
 
   local design="$repo_dir/.asdlc_worker/step_designs/step-$STEP-$FEATURE_ID-design.md"
-  # derive_asdlc_repo_root canonicalizes via .resolve(); the raised-questions
-  # path is built from the unresolved runtime-plan input. Build both forms.
-  local resolved_root unresolved_root
-  resolved_root="$(cd "$repo_dir/asdlc-side" && pwd -P)"
-  unresolved_root="$repo_dir/asdlc-side"
+  local source_dir resolved_root
+  source_dir="$(asdlc_repo_dir "$repo_dir")"
+  resolved_root="$(cd "$source_dir" && pwd -P)"
   local out status
   out="$(cd "$repo_dir" && uv run python "$BUILD_CONTEXT" \
     --step "$STEP" --feature-id "$FEATURE_ID" \
@@ -313,24 +337,26 @@ test_builder_derives_asdlc_root_with_projects_in_host_path() {
     --worker-id "$WORKER_ID")" && status=$? || status=$?
   assert_status 0 "$status"
   assert_contains "$out" "asdlc_repo_path: $resolved_root"
-  assert_contains "$out" "Raised questions directory (ASDLC repo): $unresolved_root/projects/proj-a/$FEATURE_ID/raised_questions"
+  assert_contains "$out" "Raised questions directory (ASDLC repo): $source_dir/$FEATURE_ID/raised_questions"
 }
 
-test_builder_rejects_runtime_plan_with_wrong_layout() {
+test_builder_rejects_runtime_plan_outside_git_repo() {
   local repo_dir
   repo_dir="$(new_repo builder_layout)"
   seed_step_plan "$repo_dir"
   seed_design "$repo_dir"
-  printf '# Plan\n' >"$repo_dir/bogus.md"
+  local non_repo_dir="$TMP_ROOT/non-repo"
+  mkdir -p "$non_repo_dir"
+  printf '# Plan\n' >"$non_repo_dir/implementation_plan.md"
 
   local design="$repo_dir/.asdlc_worker/step_designs/step-$STEP-$FEATURE_ID-design.md"
   local out status
   out="$(cd "$repo_dir" && uv run python "$BUILD_CONTEXT" \
     --step "$STEP" --feature-id "$FEATURE_ID" \
-    --design "$design" --runtime-plan "$repo_dir/bogus.md" \
+    --design "$design" --runtime-plan "$non_repo_dir/implementation_plan.md" \
     --worker-id "$WORKER_ID" 2>&1)" && status=$? || status=$?
   assert_status 1 "$status"
-  assert_contains "$out" "runtime plan must point at"
+  assert_contains "$out" "cannot determine ASDLC repo root"
 }
 
 # ─── Closure check tests ───────────────────────────────────────────────────
@@ -412,7 +438,7 @@ test_closure_missing_raised_question_file() {
   repo_dir="$(new_repo closure_no_raised)"
   plan_path="$(seed_asdlc_repo "$repo_dir")"
   mark_step_bullets_x "$plan_path"
-  local raised_ref="projects/proj-a/$FEATURE_ID/raised_questions/$STEP-$WORKER_ID-F01.md"
+  local raised_ref="$FEATURE_ID/raised_questions/$STEP-$WORKER_ID-F01.md"
   seed_review_result "$repo_dir" "$(closure_review_body_with_finding "$(printf '  - [ ] rejected:\n  - [ ] follow_up_created:\n  - [x] raised_to_coordinator: %s' "$raised_ref")")" >/dev/null
 
   local out status
@@ -445,7 +471,8 @@ test_closure_word_boundary_does_not_match_letter_suffix() {
   # current step section as missing, NOT mistakenly bind to 1.6a.
   local repo_dir feature_dir plan_path
   repo_dir="$(new_repo closure_word_boundary)"
-  feature_dir="$repo_dir/asdlc-side/projects/proj-a/$FEATURE_ID"
+  init_asdlc_repo "$repo_dir"
+  feature_dir="$(asdlc_repo_dir "$repo_dir")/$FEATURE_ID"
   mkdir -p "$feature_dir"
   plan_path="$feature_dir/implementation_plan.md"
   cat >"$plan_path" <<EOF
@@ -660,8 +687,8 @@ main() {
   run_test test_builder_rejects_filename_feature_mismatch
   run_test test_builder_rejects_title_without_step
   run_test test_builder_word_boundary_step_in_title
-  run_test test_builder_derives_asdlc_root_with_projects_in_host_path
-  run_test test_builder_rejects_runtime_plan_with_wrong_layout
+  run_test test_builder_derives_asdlc_root_from_bound_git_repo
+  run_test test_builder_rejects_runtime_plan_outside_git_repo
   run_test test_closure_happy_path
   run_test test_closure_missing_disposition
   run_test test_closure_conflicting_disposition

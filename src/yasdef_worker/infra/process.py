@@ -7,7 +7,9 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
+from types import FrameType
 from typing import TextIO
 
 from .errors import ProcessFailed
@@ -63,10 +65,15 @@ class ProcessRunner:
             # Direct passthrough: script writes output to the real terminal and logs to
             # log_path itself. No stdout pipe — the TUI renders natively.
             # Close-marker detection via log tailing is tracked in crp-140.
-            proc = subprocess.Popen(run_argv, cwd=cwd, start_new_session=True)
-            old_sigint = signal.signal(signal.SIGINT, _make_sigint_relay(proc))
+            tty_proc = subprocess.Popen(
+                run_argv,
+                cwd=cwd,
+                text=True,
+                start_new_session=True,
+            )
+            old_sigint = signal.signal(signal.SIGINT, _make_sigint_relay(tty_proc))
             try:
-                returncode = proc.wait()
+                returncode = tty_proc.wait()
             finally:
                 signal.signal(signal.SIGINT, old_sigint)
                 _restore_terminal()
@@ -148,8 +155,10 @@ def _wait_after_marker_termination(proc: subprocess.Popen[str]) -> int:
                 return proc.wait()
 
 
-def _make_sigint_relay(proc: subprocess.Popen[str]):
-    def _handler(_signum: int, _frame: object) -> None:
+def _make_sigint_relay(
+    proc: subprocess.Popen[str],
+) -> Callable[[int, FrameType | None], None]:
+    def _handler(_signum: int, _frame: FrameType | None) -> None:
         try:
             if proc.poll() is None:
                 if hasattr(os, "killpg"):

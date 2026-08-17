@@ -56,9 +56,17 @@ class Coordinator:
             resume_step=options.resume_step,
         ).build()
         if options.resume_step is not None:
-            phases = _resume_phases(phases, feature, self.layout, self.git, self.output, options.resume_step)
-            if phases is None:
+            resumed_phases = _resume_phases(
+                phases,
+                feature,
+                self.layout,
+                self.git,
+                self.output,
+                options.resume_step,
+            )
+            if resumed_phases is None:
                 return PipelineResult((), stopped=True, stop_reason=f"step {options.resume_step} is already complete")
+            phases = resumed_phases
         return Pipeline(ctx=self._phase_context(feature, options), phase_types=WORKFLOW_PHASE_TYPES).iterate(phases)
 
     def _phase_context(self, feature: FeatureRunState, options: RunOptions) -> PhaseContext:

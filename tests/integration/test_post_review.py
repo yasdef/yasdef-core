@@ -2,6 +2,7 @@
 and the plan-sync portions of orchestrator_git_sync_*.sh."""
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from yasdef_worker.domain.branches import step_branch_name

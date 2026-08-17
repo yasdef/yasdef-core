@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Protocol, TextIO
 
-from yasdef_worker.domain.models_config import canonical_phase_name, load_model_config
+from yasdef_worker.domain.models_config import load_model_config
 from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
+from yasdef_worker.domain.phases import canonical_phase_name
 from yasdef_worker.domain.runners import ModelRunner, get_runner
 from yasdef_worker.infra.errors import PhasePreconditionError
 from yasdef_worker.infra.git_repo import GitRepo

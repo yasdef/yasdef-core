@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+from importlib.metadata import version
 from importlib import resources
+
+from yasdef_worker import __version__
+
+
+def test_runtime_version_matches_distribution_metadata() -> None:
+    assert __version__ == version("yasdef-worker")
 
 
 def test_packaged_resource_roots_are_readable() -> None:

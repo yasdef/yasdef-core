@@ -14,7 +14,9 @@ from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
 
 class ResumeFeature(Protocol):
-    feature_id: str
+    @property
+    def feature_id(self) -> str:
+        ...
 
 
 @dataclass(frozen=True, slots=True)
