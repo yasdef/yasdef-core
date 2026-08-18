@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## v0.2.5 — GitHub Copilot CLI support (2026-08-18)
+
+### Added
+
+- GitHub Copilot CLI as a supported model runner for every model-driven phase,
+  using the shared interactive TTY, log capture, prompts, and installed skills.
+- Exact Copilot argument handling for configured models and extra options, with
+  the rendered phase prompt passed through `-i` as one final argument.
+
+### Changed
+
+- Fresh workers now default all five model-driven phases to `codex` with
+  `gpt-5.5`; existing operator-edited model configurations remain
+  preserved during reinitialization.
+- Runner documentation now covers Copilot installation and authentication
+  prerequisites and per-phase mixing with Codex and Claude.
+
+### Quality
+
+- Added runner, configuration, package-resource, and installer coverage for the
+  Copilot integration and Codex/GPT-5.5 packaged defaults.
+
+---
+
 ## v0.2.4 — Design bootstrap guidance and deterministic pipelines (2026-08-18)
 
 ### Added

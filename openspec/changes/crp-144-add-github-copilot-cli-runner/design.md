@@ -13,7 +13,7 @@ The installer already copies every canonical phase skill into `.claude/skills`, 
 - Add Copilot through the existing runner boundary with no phase-specific dispatch branches.
 - Preserve configured extra arguments exactly and keep the phase prompt as one argv element.
 - Use the shared TTY/logging execution behavior and canonical skill bundle.
-- Ship a complete Copilot/Claude-Haiku default pipeline while preserving operator configuration on reinitialization.
+- Keep a complete Codex/GPT-5.5 default pipeline while preserving operator configuration on reinitialization.
 - Keep the domain runner implementation pure and compatible with `mypy --strict`.
 
 **Non-Goals:**
@@ -66,24 +66,24 @@ Do not change phase prompt templates or canonical `SKILL.md` files for Copilot. 
 
 Alternative considered: add `.github`-specific prompt templates or Copilot custom agents. Rejected because that would create parallel process rules and increase drift risk without adding required behavior.
 
-### Decision 5: Make Copilot with `claude-haiku-4.5` the packaged default
+### Decision 5: Keep Codex with `gpt-5.5` as the packaged default
 
-Replace the five active Codex rows in the packaged `models.md` with complete Copilot rows using `claude-haiku-4.5` and no extra arguments. In particular, remove the Codex-only `--config model_reasoning_effort='high'` fields rather than carrying them into the Copilot defaults. Keep documented Codex and Claude examples, add the Copilot invocation shape, and add a full five-row commented Copilot/Haiku example block mirroring the existing commented Claude block. Do not add implicit model defaults in Python: the existing configuration continues to require a non-empty model for every phase.
+Keep the five active Codex rows in the packaged `models.md`, standardize their model on `gpt-5.5`, and retain the `--config model_reasoning_effort='high'` fields. Keep documented Codex and Claude examples, add the Copilot invocation shape, and add a full five-row commented Copilot/Haiku example block mirroring the existing commented Claude block. Do not add implicit model defaults in Python: the existing configuration continues to require a non-empty model for every phase.
 
 This affects new workers and reinitializations where the existing file still matches the prior install manifest. The installer's manifest-guarded overwrite behavior preserves operator-modified configurations unless `--force` is explicitly used.
 
-Alternative considered: leave Codex active and add only commented Copilot examples. Rejected because the requested default is Copilot with Claude Haiku 4.5.
+Alternative considered: make Copilot with Claude Haiku 4.5 the active default. Rejected because Copilot is an optional supported runner while the packaged default remains Codex.
 
 ### Decision 6: Test command construction without invoking the external CLI
 
-Unit tests assert the exact Copilot argv with and without extras, its TTY/log flags, registry resolution, and app-level factory selection. Package/installer tests assert that all five shipped rows resolve to `copilot` plus `claude-haiku-4.5`, have an empty extras tuple, and retain project skills with rewritten paths. Automated tests must not require Copilot installation, credentials, network access, or paid inference.
+Unit tests assert the exact Copilot argv with and without extras, its TTY/log flags, registry resolution, and app-level factory selection. Package/installer tests assert that all five shipped rows resolve to `codex` plus `gpt-5.5`, retain high reasoning effort, and retain project skills with rewritten paths. Automated tests must not require Copilot installation, credentials, network access, or paid inference.
 
 A manual smoke test remains the evidence for the external CLI interaction itself. The confirmed invocation is recorded in the change context, but no live Copilot call belongs in CI.
 
 ## Risks / Trade-offs
 
 - **Copilot CLI changes its option contract** → Keep the argv construction isolated in one runner and cover the currently verified shape exactly; update the runner and documentation together if the CLI changes.
-- **The default switch surprises existing operators** → Manifest-guarded installation preserves modified configurations; release notes and `Readme.md` state the new default explicitly.
+- **The default model update surprises existing operators** → Manifest-guarded installation preserves modified configurations; release notes and `Readme.md` state the packaged default explicitly.
 - **Copilot does not select the named skill reliably in a future version** → Keep the prompt explicit, verify installed skills in tests, and include a manual phase smoke check in validation without introducing duplicate rules preemptively.
 - **TTY sessions still require manual lifecycle handling** → Keep CRP-144 scoped to runner integration and complete the shared solution in CRP-140.
 - **Authentication or organization policy prevents startup** → Treat Copilot as an external prerequisite and surface its non-zero process failure through the existing error path.
@@ -91,7 +91,7 @@ A manual smoke test remains the evidence for the external CLI interaction itself
 ## Migration Plan
 
 1. Add and register the runner with focused unit tests.
-2. Change packaged model defaults and documentation, then add resource/installer assertions for the complete default pipeline.
+2. Standardize the packaged Codex model defaults and documentation, then add resource/installer assertions for the complete default pipeline.
 3. Run the targeted runner, app factory, package resource, and init suites followed by the full Python quality gate.
 4. Build/install the package into a scratch worker, authenticate Copilot externally, and run one interactive phase smoke using `claude-haiku-4.5`.
 

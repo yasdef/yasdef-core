@@ -11,7 +11,7 @@ from yasdef_worker.domain.models_config import (
     validate_models_config,
 )
 from yasdef_worker.domain.phases import MODEL_PHASES
-from yasdef_worker.domain.runners import CopilotRunner, get_runner
+from yasdef_worker.domain.runners import CodexRunner, get_runner
 
 
 def test_runtime_version_matches_distribution_metadata() -> None:
@@ -59,15 +59,15 @@ def _packaged_models_config_text() -> str:
     )
 
 
-def test_packaged_models_config_defaults_to_copilot_with_claude_haiku() -> None:
+def test_packaged_models_config_defaults_to_codex_with_gpt_5_5() -> None:
     rows = validate_models_config(_packaged_models_config_text())
 
     assert tuple(row.phase for row in rows) == MODEL_PHASES
     for row in rows:
-        assert row.cmd == "copilot", row.phase
-        assert row.model == "claude-haiku-4.5", row.phase
-        assert row.extras == (), row.phase
-        assert isinstance(get_runner(row.cmd), CopilotRunner)
+        assert row.cmd == "codex", row.phase
+        assert row.model == "gpt-5.5", row.phase
+        assert row.extras == ("--config", "model_reasoning_effort='high'"), row.phase
+        assert isinstance(get_runner(row.cmd), CodexRunner)
 
 
 def test_packaged_models_config_documents_a_complete_commented_copilot_example() -> None:

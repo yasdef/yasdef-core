@@ -54,13 +54,13 @@ Yasdef SHALL use the existing `yasdef-worker-*` phase prompts and installed skil
 - **WHEN** an operator changes a phase command between `codex`, `claude`, and `copilot` without changing the phase inputs
 - **THEN** Yasdef renders the same phase prompt body for each runner
 
-### Requirement: New workers default to Copilot with Claude Haiku 4.5
-The packaged `.asdlc_worker/setup/models.md` SHALL configure `copilot` with model `claude-haiku-4.5` and no extra arguments for all five model-driven phases. Its guidance SHALL also include a full commented five-phase Copilot/Haiku configuration block, matching the format of the existing commented Claude configuration block. Operators SHALL remain able to replace the command, model, and extra arguments independently for each phase using the existing configuration format.
+### Requirement: New workers default to Codex with GPT-5.5
+The packaged `.asdlc_worker/setup/models.md` SHALL configure `codex` with model `gpt-5.5` and high reasoning effort for all five model-driven phases. Its guidance SHALL also include a full commented five-phase Copilot/Haiku configuration block, matching the format of the existing commented Claude configuration block. Operators SHALL remain able to replace the command, model, and extra arguments independently for each phase using the existing configuration format.
 
 #### Scenario: New worker receives packaged defaults
 - **WHEN** Yasdef initializes a worker that has no existing model configuration
-- **THEN** `design`, `planning`, `implementation`, `user_review`, and `ai_audit` are each configured with command `copilot` and model `claude-haiku-4.5`
-- **THEN** no extra arguments are configured for any of the five default rows
+- **THEN** `design`, `planning`, `implementation`, `user_review`, and `ai_audit` are each configured with command `codex` and model `gpt-5.5`
+- **THEN** all five default rows configure high reasoning effort
 
 #### Scenario: Packaged guidance shows a complete Copilot example
 - **WHEN** an operator reads the packaged `models.md` guidance
@@ -68,7 +68,7 @@ The packaged `.asdlc_worker/setup/models.md` SHALL configure `copilot` with mode
 - **THEN** each commented Copilot example row shows no extra arguments
 
 #### Scenario: Operator mixes supported runners
-- **WHEN** an operator replaces one or more packaged rows with valid `codex` or `claude` rows while keeping a complete five-phase configuration
+- **WHEN** an operator replaces one or more packaged rows with valid `copilot` or `claude` rows while keeping a complete five-phase configuration
 - **THEN** Yasdef accepts the configuration
 - **THEN** each phase uses its configured command and model
 

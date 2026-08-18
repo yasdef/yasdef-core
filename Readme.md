@@ -18,7 +18,7 @@ This approach can be expressed in a few sentences:
 0. Read this carefully:
 - ⚠️ This is alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project!
 - ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that. 
-- ✅ You need a supported AI CLI available (currently `github copilot cli`, `codex cli` and `claude cli`). Configure your model runner in `.asdlc_worker/setup/models.md` after init. New workers default to `copilot` with `claude-haiku-4.5` for all five model-driven phases — installing and authenticating GitHub Copilot CLI is your responsibility, yasdef does not manage it.
+- ✅ You need a supported AI CLI available (currently `github copilot cli`, `codex cli` and `claude cli`). Configure your model runner in `.asdlc_worker/setup/models.md` after init. New workers default to `codex` with `gpt-5.5` for all five model-driven phases. If you select Copilot, installing and authenticating GitHub Copilot CLI is your responsibility; yasdef does not manage it.
 - ✅ You need at least Python3 installed. For real prod instalation you need [uv](https://docs.astral.sh/uv/)
 - ✅ Yasdef worker is part of framework. You need yasdef-coordinator to make it work. To get started with yasdef-coordinator you can a) examine yasdef-coordinator Readme.md here https://github.com/yasdef/yasdef-overmind/blob/main/README.md and follow instructions. b) mock yasdef-coordinator if you just need to take a look at framework. Step-by-step instruction can be found in this readme (scroll down to "How to mock yasdef-coordinator" section). 
 
@@ -63,7 +63,7 @@ This approach can be expressed in a few sentences:
    ```
    yasdef init <path-to-your-worker-repo>
    ```
-   The command creates `.asdlc_worker/` inside the target git repo, installs worker skills into `.claude/skills/`, `.codex/skills/`, `.github/skills/`, and `.agents/skills/`, and commits on a new `init_yasdef_worker` branch. The packaged `.asdlc_worker/setup/models.md` ships with `copilot` + `claude-haiku-4.5` on every phase; review it and switch the command, model, or extra arguments per phase before first run. Re-running init keeps a `models.md` you have edited (use `--force` to overwrite it). ⚠️ After init phase will be finished you need to merge changes in main/master manually.
+   The command creates `.asdlc_worker/` inside the target git repo, installs worker skills into `.claude/skills/`, `.codex/skills/`, `.github/skills/`, and `.agents/skills/`, and commits on a new `init_yasdef_worker` branch. The packaged `.asdlc_worker/setup/models.md` ships with `codex` + `gpt-5.5` on every phase; review it and switch the command, model, or extra arguments per phase before first run. Re-running init keeps a `models.md` you have edited (use `--force` to overwrite it). ⚠️ After init phase will be finished you need to merge changes in main/master manually.
 
    This is also valid way to re-write this folders to apply skills.
 
@@ -263,12 +263,17 @@ V-0.2.1
 V-0.2.3
 - bug fixes and code cleanup
 
-V-0.2.4 (current)
+V-0.2.4
 - add class-aware first-feature bootstrap guidance for project `AGENTS.md` and `CLAUDE.md`, including explicit approval, backups, and rollback-safe installation
 - strengthen design readiness checks and blueprint / agent-guidance discovery
 - validate the complete model configuration before workflow side effects and always execute phases in canonical order
 - enforce clean mainline starts while preserving explicit resume behavior
 - expand unit, integration, and skill-helper coverage
+
+V-0.2.5 (current)
+- add GitHub Copilot CLI as a supported interactive runner for every model-driven phase
+- default fresh workers to `codex` with `gpt-5.5` while preserving operator-edited model configurations
+- document Copilot prerequisites and mixed Copilot, Codex, and Claude phase configurations
 
 
 2. known problems/to-do's:

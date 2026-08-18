@@ -8,14 +8,14 @@
 
 ## 2. Packaged model defaults
 
-- [x] 2.1 Add a package-resource test that validates the shipped `models.md` as a complete five-phase configuration and asserts every row uses command `copilot`, model `claude-haiku-4.5`, and `extras == ()`.
-- [x] 2.2 Update `src/yasdef_worker/_data/setup/models.md` so its five active rows use Copilot with `claude-haiku-4.5` and no extras, explicitly removing the Codex-only `--config model_reasoning_effort='high'` fields; document the exact Copilot interactive argv shape and add a full five-row commented Copilot/Haiku example block mirroring the existing commented Claude block.
+- [x] 2.1 Add a package-resource test that validates the shipped `models.md` as a complete five-phase configuration and asserts every row uses command `codex`, model `gpt-5.5`, and the configured high reasoning effort.
+- [x] 2.2 Keep the five active rows in `src/yasdef_worker/_data/setup/models.md` on Codex, standardize them on `gpt-5.5`, document the exact Copilot interactive argv shape, and add a full five-row commented Copilot/Haiku example block mirroring the existing commented Claude block.
 - [x] 2.3 Confirm existing manifest-guarded installer tests cover preservation of operator-modified `models.md`; add focused coverage only if the packaged-default update exposes a gap.
 
 ## 3. Skill and operator documentation
 
 - [x] 3.1 Strengthen installer coverage to assert the `.github/skills` copy contains rewritten `.github/skills/` script paths and that all canonical worker skills remain installed for every existing target prefix.
-- [x] 3.2 Update `Readme.md` to list GitHub Copilot CLI as supported, identify Copilot with `claude-haiku-4.5` as the new-worker default, retain mixed-runner configuration guidance, and state that Copilot installation/authentication is an operator prerequisite.
+- [x] 3.2 Update `Readme.md` to list GitHub Copilot CLI as supported, identify Codex with `gpt-5.5` as the new-worker default, retain mixed-runner configuration guidance, and state that Copilot installation/authentication is an operator prerequisite.
 - [x] 3.3 Add a concise `CHANGELOG.md` entry for Copilot runner support and the packaged default-runner/model change.
 
 ## 4. Verification

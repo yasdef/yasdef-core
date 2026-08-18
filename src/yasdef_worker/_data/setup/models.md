@@ -37,8 +37,8 @@
 # user_review | codex | gpt-5.4 | --config | model_reasoning_effort='high'
 # ai_audit | codex | gpt-5.4 | --config | model_reasoning_effort='high'
 
-design | copilot | claude-haiku-4.5
-planning | claude | claude-opus-4-8 | |
+design | codex | gpt-5.5 | --config | model_reasoning_effort='high'
+planning | codex | gpt-5.5 | --config | model_reasoning_effort='high'
 implementation | codex | gpt-5.5 | --config | model_reasoning_effort='high'
 user_review | codex | gpt-5.5 | --config | model_reasoning_effort='high'
-ai_audit | claude | claude-opus-4-8 | |
+ai_audit | codex | gpt-5.5 | --config | model_reasoning_effort='high'
