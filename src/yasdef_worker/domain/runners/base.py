@@ -21,12 +21,14 @@ class ModelRunner(ABC):
 def get_runner(cmd: str) -> ModelRunner:
     from .claude import ClaudeRunner
     from .codex import CodexRunner
+    from .copilot import CopilotRunner
     from .echo import EchoRunner
 
     normalized = cmd.strip()
     registry: dict[str, type[ModelRunner]] = {
         "codex": CodexRunner,
         "claude": ClaudeRunner,
+        "copilot": CopilotRunner,
         "echo": EchoRunner,
     }
     runner_cls = registry.get(normalized)

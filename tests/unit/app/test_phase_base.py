@@ -15,7 +15,7 @@ from yasdef_worker.app.phases import (
     normalize_step_token,
 )
 from yasdef_worker.domain.phase_types import PhaseResult, PhaseStatus
-from yasdef_worker.domain.runners import EchoRunner
+from yasdef_worker.domain.runners import CopilotRunner, EchoRunner
 from yasdef_worker.infra.git_repo import GitRepo
 from yasdef_worker.infra.layout import RuntimeLayout
 from yasdef_worker.infra.log_capture import LogCapture
@@ -129,6 +129,41 @@ def test_model_config_runner_factory_loads_existing_domain_runner_config(tmp_pat
     assert selected.model == "mock-model"
     assert selected.extras == ("--extra", "value")
     assert selected.build_argv("PROMPT") == ["echo", "-m", "mock-model", "--extra", "value", "PROMPT"]
+
+
+def test_model_config_runner_factory_selects_copilot_runner(tmp_path: Path) -> None:
+    models_file = tmp_path / "models.md"
+    models_file.write_text(
+        "design | copilot | claude-haiku-4.5\n"
+        "implementation | copilot | claude-haiku-4.5 | --effort | high\n",
+        encoding="utf-8",
+    )
+    factory = ModelConfigRunnerFactory(models_file)
+
+    design = factory.for_phase("design")
+    assert isinstance(design.runner, CopilotRunner)
+    assert design.model == "claude-haiku-4.5"
+    assert design.extras == ()
+    assert design.build_argv("PROMPT") == [
+        "copilot",
+        "--model",
+        "claude-haiku-4.5",
+        "-i",
+        "PROMPT",
+    ]
+
+    implementation = factory.for_phase("implementation")
+    assert isinstance(implementation.runner, CopilotRunner)
+    assert implementation.extras == ("--effort", "high")
+    assert implementation.build_argv("PROMPT") == [
+        "copilot",
+        "--model",
+        "claude-haiku-4.5",
+        "--effort",
+        "high",
+        "-i",
+        "PROMPT",
+    ]
 
 
 def test_phase_token_normalization_uses_canonical_phase_names() -> None:

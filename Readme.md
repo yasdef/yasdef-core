@@ -18,7 +18,7 @@ This approach can be expressed in a few sentences:
 0. Read this carefully:
 - ⚠️ This is alpha — things may break. Use at your own risk. Take precautions before integrating this repo into your project!
 - ⚠️ Your `AGENTS.md` will be used as part of the prompt to the AI model, and the AI model may examine your project code — make sure you're comfortable with that. 
-- ✅ You need a supported AI CLI available (currently `codex cli` and `claude cli`). Configure your model runner in `.asdlc_worker/setup/models.md` after init.
+- ✅ You need a supported AI CLI available (currently `github copilot cli`, `codex cli` and `claude cli`). Configure your model runner in `.asdlc_worker/setup/models.md` after init. New workers default to `copilot` with `claude-haiku-4.5` for all five model-driven phases — installing and authenticating GitHub Copilot CLI is your responsibility, yasdef does not manage it.
 - ✅ You need at least Python3 installed. For real prod instalation you need [uv](https://docs.astral.sh/uv/)
 - ✅ Yasdef worker is part of framework. You need yasdef-coordinator to make it work. To get started with yasdef-coordinator you can a) examine yasdef-coordinator Readme.md here https://github.com/yasdef/yasdef-overmind/blob/main/README.md and follow instructions. b) mock yasdef-coordinator if you just need to take a look at framework. Step-by-step instruction can be found in this readme (scroll down to "How to mock yasdef-coordinator" section). 
 
@@ -63,7 +63,7 @@ This approach can be expressed in a few sentences:
    ```
    yasdef init <path-to-your-worker-repo>
    ```
-   The command creates `.asdlc_worker/` inside the target git repo, installs worker skills into `.claude/skills/`, `.codex/skills/`, `.github/skills/`, and `.agents/skills/`, and commits on a new `init_yasdef_worker` branch. Configure the model runner in `.asdlc_worker/setup/models.md` before first run. ⚠️ After init phase will be finished you need to merge changes in main/master manually.
+   The command creates `.asdlc_worker/` inside the target git repo, installs worker skills into `.claude/skills/`, `.codex/skills/`, `.github/skills/`, and `.agents/skills/`, and commits on a new `init_yasdef_worker` branch. The packaged `.asdlc_worker/setup/models.md` ships with `copilot` + `claude-haiku-4.5` on every phase; review it and switch the command, model, or extra arguments per phase before first run. Re-running init keeps a `models.md` you have edited (use `--force` to overwrite it). ⚠️ After init phase will be finished you need to merge changes in main/master manually.
 
    This is also valid way to re-write this folders to apply skills.
 
@@ -99,7 +99,7 @@ This approach can be expressed in a few sentences:
    5.2. Worker execution:
    - The worker runs the full phase set one by one in canonical order: `design -> planning -> implementation -> user_review -> ai_audit -> post_review`. Partial pipelines are not supported — `models.md` must configure all five model-driven phases, and the run is rejected at startup otherwise.
    - Each model-driven phase uses its installed `yasdef-worker-*` skill and the selected feature/step context.
-   - Each model-driven phase uses model and (sometimes) reasoning depth based on `/setup/models.md`, so it can be changed manually at any time. You can mix different cli's and models in one setup, it'll work. ⚠️ All works in interactive mode, NOT headless (which will save your tokens).
+   - Each model-driven phase uses model and (sometimes) reasoning depth based on `/setup/models.md`, so it can be changed manually at any time. You can mix different cli's and models in one setup, it'll work — any phase may independently use `copilot`, `codex`, or `claude`. ⚠️ All works in interactive mode, NOT headless (which will save your tokens).
    - After `ai_audit`, the worker commits the updated ASDLC implementation plan and pushes it through the bound ASDLC repo. If outbound sync fails, interactive mode offers retry/finish; non-interactive mode stops before `post_review`.
 
 6. To recover interrupted work for a specific step deterministically:
@@ -134,6 +134,7 @@ This approach can be expressed in a few sentences:
 
 - **Orchestration:** `yasdef run` drives the configured worker phase pipeline.
   - Worker/project binding rule: reads `worker_uuid` and `project_id` from `.asdlc_worker/project_overmind.yaml`.
+  - Supported runner rule: the `<command>` column accepts exactly `copilot` (`copilot --model <model> <extras...> -i "<prompt>"`), `codex` (`codex -m <model> <extras...> "<prompt>"`), and `claude` (`claude --model <model> <extras...> "<prompt>"`), plus the test-only `echo`. Extra arguments pass through verbatim and always precede the prompt. Any other value is rejected.
   - Phase configuration rule: `.asdlc_worker/setup/models.md` selects the CLI command and model per phase — it does not configure phase order. It MUST contain exactly one row for each of `design`, `planning`, `implementation`, `user_review`, `ai_audit`. Row order in the file is free; execution order is always canonical `design -> planning -> implementation -> user_review -> ai_audit -> post_review`. `post_review` is worker-managed and MUST NOT appear in the file.
   - Configuration validation rule: the whole file is validated at startup, before the clean-mainline check, feature discovery, bound-project sync, metadata writes, branch creation, and any model run. A missing, unreadable, incomplete, duplicated, or malformed configuration aborts with an actionable error and no side effects. Rows are `<phase> | <command> | <model> | <args... optional>`; one leading and one trailing pipe are allowed, `#` comments and blank lines are ignored.
   - Clean-mainline rule: every non-resume `yasdef run` must start on `main` or `master` with a clean working tree. `--resume <step>` is exempt so it can continue from an existing workflow branch.

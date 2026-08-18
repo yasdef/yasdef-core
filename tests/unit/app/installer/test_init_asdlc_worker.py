@@ -7,6 +7,8 @@ import pytest
 
 from yasdef_worker.app.init_asdlc_worker import (
     INIT_BRANCH,
+    SKILL_NAMES,
+    SKILL_TARGET_PREFIXES,
     InstallEntry,
     Installer,
     OverwriteMode,
@@ -290,11 +292,85 @@ def test_default_install_entries_reads_package_data(
 
     assert Path(".asdlc_worker/asdlc_worker.yaml") in by_path
     assert Path(".asdlc_worker/setup/models.md") in by_path
+    assert by_path[Path(".asdlc_worker/setup/models.md")].mode is OverwriteMode.MANIFEST_GUARDED
     assert by_path[Path(".asdlc_worker/history.md")].mode is OverwriteMode.SEED_ONLY
     assert Path(".claude/commands/yasdef/design.md") in by_path
     assert b".codex/skills/yasdef-worker-design" in by_path[
         Path(".codex/skills/yasdef-worker-design/SKILL.md")
     ].content
+
+
+def test_default_install_entries_installs_every_skill_for_every_target_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    package_root = tmp_path / "package"
+    data_root = package_root / "_data"
+    (data_root / "setup").mkdir(parents=True)
+    (data_root / "setup" / "models.md").write_text("design | echo | mock\n", encoding="utf-8")
+    (data_root / "runtime").mkdir()
+    (data_root / "runtime" / "history_INITIAL.md").write_text("# History\n", encoding="utf-8")
+    for name in SKILL_NAMES:
+        skill = data_root / "skills" / name
+        (skill / "scripts").mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            f"Run .claude/skills/{name}/scripts/helper.py before starting.\n",
+            encoding="utf-8",
+        )
+        (skill / "scripts" / "helper.py").write_text("print('helper')\n", encoding="utf-8")
+    command = data_root / "commands" / "yasdef"
+    command.mkdir(parents=True)
+    (command / "design.md").write_text("/design\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "yasdef_worker.app.init_asdlc_worker.resources.files",
+        lambda package: package_root,
+    )
+
+    by_path = {entry.relative_path: entry for entry in default_install_entries(tmp_path / "target")}
+
+    for prefix in SKILL_TARGET_PREFIXES:
+        for name in SKILL_NAMES:
+            skill_md = Path(prefix) / "skills" / name / "SKILL.md"
+            assert skill_md in by_path, skill_md
+            assert Path(prefix) / "skills" / name / "scripts" / "helper.py" in by_path
+            content = by_path[skill_md].content
+            assert f"{prefix}/skills/{name}/scripts/helper.py".encode() in content, skill_md
+            if prefix != ".claude":
+                assert b".claude/skills/" not in content, skill_md
+
+
+def test_default_install_entries_rewrites_github_skill_script_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    package_root = tmp_path / "package"
+    data_root = package_root / "_data"
+    (data_root / "setup").mkdir(parents=True)
+    (data_root / "setup" / "models.md").write_text("design | echo | mock\n", encoding="utf-8")
+    (data_root / "runtime").mkdir()
+    (data_root / "runtime" / "history_INITIAL.md").write_text("# History\n", encoding="utf-8")
+    skill = data_root / "skills" / "yasdef-worker-design"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "python .claude/skills/yasdef-worker-design/scripts/find_blueprints.py\n",
+        encoding="utf-8",
+    )
+    command = data_root / "commands" / "yasdef"
+    command.mkdir(parents=True)
+    (command / "design.md").write_text("/design\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "yasdef_worker.app.init_asdlc_worker.resources.files",
+        lambda package: package_root,
+    )
+
+    by_path = {entry.relative_path: entry for entry in default_install_entries(tmp_path / "target")}
+    content = by_path[Path(".github/skills/yasdef-worker-design/SKILL.md")].content
+
+    assert content == (
+        b"python .github/skills/yasdef-worker-design/scripts/find_blueprints.py\n"
+    )
 
 
 def test_default_install_entries_refuses_symlinked_package_data(
